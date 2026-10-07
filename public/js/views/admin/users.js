@@ -167,7 +167,7 @@ export default async function render(container, ctx) {
     const m = openModal({ title: user ? 'Benutzer bearbeiten' : 'Benutzer anlegen', wide: true, body: h('div', null, tabBar, body), footer });
     if (!user) {
       // Rollenauswahl direkt im Anlege-Dialog
-      if (roles.length) panes.general.append(h('div', { class: 'sep' }), h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Rollen'), roleBoxes.map(([, c]) => c));
+      if (roles.length) panes.general.append(h('div', { class: 'sep' }), h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Rollen'), ...roleBoxes.map(([, c]) => c));
     }
   }
 
