@@ -1,6 +1,7 @@
 // Sperrbildschirm: nach Inaktivität (Timeout aus der Konfiguration) oder manuell. Entsperren = Passwort (Mitarbeiter) bzw. Code (Partner).
 // Die Sitzung bleibt bestehen; der Bildschirm ist bis zur erneuten Bestätigung verdeckt. Gesperrter Zustand überlebt einen Reload.
 import { h, mount } from './ui/dom.js';
+import { everySecond, timeParts, dateLong } from './clock.js';
 import { icon } from './ui/icons.js';
 import { state } from './state.js';
 
@@ -41,14 +42,10 @@ export function initLock({ who, secretLabel, verify, onLogout, scope }) {
   function draw() {
     // Nur die Personalnummer (AZ-…) – nie ein Name (Anonymität)
     const id = who.label ?? 'Mitglied';
-    const clock = h('div', { class: 'ls-clock' });
-    const tick = () => {
-      const d = new Date();
-      mount(clock, h('div', { class: 'ls-time' }, d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })),
-        h('div', { class: 'ls-date' }, d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })));
-    };
-    tick();
-    const iv = setInterval(() => { if (!clock.isConnected) clearInterval(iv); else tick(); }, 10_000);
+    const lsTime = h('div', { class: 'ls-time' }), lsDate = h('div', { class: 'ls-date' });
+    const clock = h('div', { class: 'ls-clock' }, lsTime, lsDate);
+    const tick = () => { const t = timeParts(); lsTime.textContent = `${t.hm}:${t.s}`; lsDate.textContent = dateLong(new Date(), true); };
+    everySecond(clock, tick);
 
     const err = h('div', { class: 'ls-error' });
     const input = h('input', { class: 'ls-input', type: 'password', autocomplete: 'current-password', placeholder: secretLabel, 'aria-label': secretLabel });

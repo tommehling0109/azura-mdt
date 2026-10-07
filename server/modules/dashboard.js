@@ -14,6 +14,7 @@ const STARTED = Date.now();
  */
 const WIDGETS = [
   { id: 'welcome', title: 'Willkommen', size: 'wide', data: (ctx) => ({ roles: ctx.user.roles }) },
+  { id: 'quick-links', title: 'Schnellzugriff', size: 'wide', data: () => ({}) },
   {
     id: 'user-stats', title: 'Benutzer', size: 'small', permission: 'users.view',
     data: () => ({ counts: Object.fromEntries(all('SELECT status, COUNT(*) c FROM users GROUP BY status').map((r) => [r.status, r.c])) }),

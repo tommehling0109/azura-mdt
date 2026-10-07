@@ -7,6 +7,7 @@ import { labelForUser } from '../core/identity.js';
 import { registerLookup, lookupEntries, isActiveEntry } from '../core/lookups.js';
 import { bookStock, usedSpace, totalStock, quote } from '../core/stock.js';
 import { registerMapLayer, postalCoords } from './map.js';
+import { registerWidget } from './dashboard.js';
 
 /**
  * Lagersystem: mehrere Lagerstandorte (Koordinaten oder Postleitzahl), Größe/Kapazität, Zugangsinfo, rollenbasierte Zugriffe
@@ -140,6 +141,23 @@ registerMapLayer({
     id: w.id, name: w.name, postal: w.postal, x: w.loc_x ?? undefined, y: w.loc_y ?? undefined,
     subtitle: [w.type_label, w.capacity != null ? `${usedSpace(w.id).toLocaleString('de-DE')} / ${w.capacity.toLocaleString('de-DE')} belegt` : null, w.warehouse_number].filter(Boolean).join(' · '),
   })),
+});
+
+registerWidget({
+  id: 'warehouse-overview', title: 'Lager', size: 'medium', permission: 'warehouse.view',
+  data: (ctx) => {
+    const list = visible(ctx.user).filter(({ w }) => w.is_active);
+    const ids = new Set(list.map(({ w }) => w.id));
+    const stock = all('SELECT s.warehouse_id, s.item_id, s.quantity FROM warehouse_stock s WHERE s.quantity > 0').filter((s) => ids.has(s.warehouse_id));
+    const byItem = new Map();
+    for (const s of stock) byItem.set(s.item_id, (byItem.get(s.item_id) ?? 0) + s.quantity);
+    const items = all('SELECT id, name, unit, target_stock FROM market_items WHERE is_active = 1').filter((i) => i.target_stock > 0);
+    return {
+      warehouses: list.map(({ w }) => ({ id: w.id, name: w.name, used: usedSpace(w.id), capacity: w.capacity })).sort((a, b) => (b.capacity ? b.used / b.capacity : 0) - (a.capacity ? a.used / a.capacity : 0)).slice(0, 5),
+      count: list.length, kinds: byItem.size, units: [...byItem.values()].reduce((a, b) => a + b, 0),
+      low: items.map((i) => ({ name: i.name, unit: i.unit, stock: byItem.get(i.id) ?? 0, target: i.target_stock })).filter((i) => i.stock < i.target * 0.25).sort((a, b) => a.stock / a.target - b.stock / b.target).slice(0, 4),
+    };
+  },
 });
 
 export default {

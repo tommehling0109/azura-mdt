@@ -1,4 +1,7 @@
 import { ledgerEntries, ledgerSummary } from '../core/ledger.js';
+import { registerWidget } from './dashboard.js';
+
+registerWidget({ id: 'finance-flow', title: 'Geldfluss', size: 'small', permission: 'finance.view', data: () => ledgerSummary() });
 
 /**
  * Finanz-Grundlage: lesender Zugriff auf das Geldbewegungs-Journal (siehe core/ledger.js).

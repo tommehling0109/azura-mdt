@@ -738,6 +738,19 @@ try {
   assert.equal((await admin.call('POST', `/api/market/deals/${buy1}/accept`)).status, 200);
   r = await admin.call('GET', '/api/finance/ledger?direction=out'); assert.equal(r.entries.length, outBefore + 1); assert.equal(r.entries[0].amount, 1200); assert.equal(r.entries[0].status, 'expected'); ok('Ankäufe werden als erwartete Ausgabe vorgemerkt');
 
+
+  // ══ Dashboard-Widgets ══
+  const lay0 = (await admin.call('GET', '/api/dashboard/layout')).widgets; await admin.call('PUT', '/api/dashboard/layout', { widgets: lay0.map((w) => ({ id: w.id, enabled: true })) });
+  r = await admin.call('GET', '/api/dashboard'); const wids = r.widgets.map((w) => w.id);
+  for (const id of ['welcome', 'quick-links', 'vehicles-overview', 'warehouse-overview', 'finance-flow']) assert.ok(wids.includes(id), `Widget fehlt: ${id}`);
+  const whWidget = r.widgets.find((w) => w.id === 'warehouse-overview').data; assert.ok(whWidget.count >= 1 && Array.isArray(whWidget.warehouses));
+  assert.ok(Array.isArray(r.widgets.find((w) => w.id === 'vehicles-overview').data.conditions)); assert.equal(typeof r.widgets.find((w) => w.id === 'finance-flow').data.balanceExpected, 'number');
+  r = await third.call('GET', '/api/dashboard'); assert.equal(r.widgets.some((w) => ['finance-flow', 'warehouse-overview', 'vehicles-overview'].includes(w.id)), false); ok('Neue Dashboard-Widgets (Lager, Fuhrpark, Geldfluss, Schnellzugriff) – nur mit passendem Recht sichtbar');
+  const layoutBefore = (await admin.call('GET', '/api/dashboard/layout')).widgets;
+  r = await admin.call('PUT', '/api/dashboard/layout', { widgets: layoutBefore.map((w) => ({ id: w.id, enabled: false })) }); assert.equal(r.status, 200);
+  r = await admin.call('GET', '/api/dashboard'); assert.deepEqual(r.widgets, []);
+  r = await admin.call('PUT', '/api/dashboard/layout', { widgets: layoutBefore.map((w) => ({ id: w.id, enabled: true })) }); assert.equal((await admin.call('GET', '/api/dashboard')).widgets.length > 3, true); ok('Alle Widgets aus-/einschalten funktioniert (leeres Dashboard ist gültig)');
+
   // ── Branding: eigenes Logo / Hintergrund ──
   const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
   assert.equal((await mod.call('POST', '/api/admin/branding/logo', { data: PNG })).status, 403);

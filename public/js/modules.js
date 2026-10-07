@@ -53,8 +53,8 @@ export const PARTNER_NAV = [
   {
     section: 'Apps',
     items: [
-      { id: 'market', label: 'Börse', subtitle: 'Angebote, Gesuche und Geschäfte', icon: 'tag', win: { w: 1000, h: 660 }, view: () => import('./views/partner/market.js') },
-      { id: 'chat', label: 'Chat', subtitle: 'Nachrichten mit dem Team', icon: 'chat', win: { w: 960, h: 620 }, view: () => import('./views/partner/chat.js') },
+      { id: 'market', label: 'Börse', subtitle: 'Angebote, Gesuche und Geschäfte', icon: 'tag', win: { w: 1000, h: 660 }, view: () => import('./views/partner/market.js'), badge: 'marketNew' },
+      { id: 'chat', label: 'Chat', subtitle: 'Nachrichten mit dem Team', icon: 'chat', win: { w: 960, h: 620 }, view: () => import('./views/partner/chat.js'), badge: 'chatUnread' },
     ],
   },
 ];

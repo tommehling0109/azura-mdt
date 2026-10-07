@@ -2,11 +2,15 @@ import { h, mount, timeAgo, fmtDate } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import { button, busy, card, field, input, select, tabs, formError, openModal, toast, skeletons, empty, note, badge } from '../../ui/kit.js';
 import { api } from '../../api.js';
+import { partnerScope, dealChanges, markDealSeen, wantedNew } from '../../seen.js';
 import { money, dealBadge, catBadge, turnBadge, dirBadge, openDealModal, priceDialog } from '../market-shared.js';
 
 /** Börse aus Sicht des externen Partners: Gesuche einsehen, Angebote einstellen, eigene Geschäfte verfolgen. */
 export default async function render(container, ctx) {
   let tab = 'wanted';
+  const scope = partnerScope();
+  let changes = new Map();
+  const freshWanted = new Set(); // in dieser Sitzung neu hinzugekommene Gesuche (Markierung bleibt bis zum Neuladen)
   let catalog = { items: [], categories: [] };
   const tabHost = h('div', { style: { marginBottom: '16px' } });
   const host = h('div');
@@ -20,10 +24,12 @@ export default async function render(container, ctx) {
       [catalog, { deals }, { wanted }] = await Promise.all([api.get('/api/p/market/catalog'), api.get('/api/p/market/deals'), api.get('/api/p/market/wanted')]);
     } catch (e) { return mount(host, empty('Fehler beim Laden', e.message, 'alert')); }
     if (!ctx.isCurrent()) return;
+    changes = dealChanges(scope, deals);
+    for (const id of wantedNew(scope, wanted)) freshWanted.add(id);
     const attention = deals.filter((d) => d.turn === 'partner' && ['submitted', 'negotiating'].includes(d.status)).length;
     mount(tabHost, tabs([
-      { id: 'wanted', label: 'Gesucht', count: wanted.length || undefined },
-      { id: 'deals', label: 'Meine Geschäfte', count: attention || deals.length || undefined },
+      { id: 'wanted', label: 'Gesucht', count: freshWanted.size || wanted.length || undefined },
+      { id: 'deals', label: changes.size ? `Meine Geschäfte · ${changes.size} neu` : 'Meine Geschäfte', count: changes.size || attention || deals.length || undefined },
     ], tab, show));
     mount(host, tab === 'wanted' ? wantedView(wanted) : dealsView(deals));
   }
@@ -31,8 +37,8 @@ export default async function render(container, ctx) {
   function wantedView(list) {
     if (!list.length) return card(null, empty('Aktuell suchen wir nichts', 'Du kannst trotzdem jederzeit selbst ein Angebot einstellen.', 'search'));
     return h('div', { class: 'stack' }, note('Das suchen wir aktuell. Hast du etwas davon? Melde dich mit einem Klick – wir antworten dir hier.', 'info'),
-      h('div', { class: 'market-grid' }, list.map((w) => h('article', { class: 'card wanted-card', style: { '--rc': w.item.category?.color ?? 'var(--accent)' } },
-        h('div', { class: 'row' }, catBadge(w.item.category), h('span', { class: 'grow' }), w.expiresAt && h('span', { class: 'muted', style: { fontSize: '12px' } }, `bis ${fmtDate(w.expiresAt)}`)),
+      h('div', { class: 'market-grid' }, list.map((w) => h('article', { class: `card wanted-card ${freshWanted.has(w.id) ? 'fresh' : ''}`, style: { '--rc': w.item.category?.color ?? 'var(--accent)' } },
+        h('div', { class: 'row' }, freshWanted.has(w.id) && h('span', { class: 'fresh-badge' }, 'Neu'), catBadge(w.item.category), h('span', { class: 'grow' }), w.expiresAt && h('span', { class: 'muted', style: { fontSize: '12px' } }, `bis ${fmtDate(w.expiresAt)}`)),
         h('h3', null, w.item.name),
         h('div', { class: 'wc-price' }, `${money(w.unitPrice)} `, h('span', { class: 'muted', style: { fontSize: '13px', fontWeight: 500 } }, `/ ${w.item.unit}`)),
         h('div', null, `Gesucht: `, h('b', null, `${w.quantity.toLocaleString('de-DE')} ${w.item.unit}`)),
@@ -50,14 +56,16 @@ export default async function render(container, ctx) {
 
   function dealsView(list) {
     if (!list.length) return card(null, empty('Noch keine Geschäfte', 'Stelle ein Angebot ein oder melde dich auf ein Gesuch.', 'tag'));
-    return h('div', null, list.map((d) => {
+    const sorted = [...list].sort((a, b) => (changes.has(b.id) - changes.has(a.id)));
+    return h('div', null, sorted.map((d) => {
       const mine = d.turn === 'partner' && ['submitted', 'negotiating'].includes(d.status);
-      const el = h('article', { class: `card hoverable deal-card ${mine ? 'attention' : ''}`, tabindex: 0 },
-        h('div', { class: 'dc-main' }, h('div', { class: 'dc-title' }, h('span', { class: 'member-no' }, d.number), ' ', d.item.name, ' ', catBadge(d.item.category)),
+      const ch = changes.get(d.id);
+      const el = h('article', { class: `card hoverable deal-card ${mine ? 'attention' : ''} ${ch ? `fresh fresh-${ch.kind}` : ''}`, tabindex: 0 },
+        h('div', { class: 'dc-main' }, ch && h('div', { class: 'fresh-line' }, h('span', { class: 'fresh-badge' }, ch.label)), h('div', { class: 'dc-title' }, h('span', { class: 'member-no' }, d.number), ' ', d.item.name, ' ', catBadge(d.item.category)),
           h('div', { class: 'dc-sub' }, `${d.quantity.toLocaleString('de-DE')} ${d.item.unit} × ${money(d.unitPrice)} · ${timeAgo(d.updatedAt)}`),
           h('div', { class: 'chips', style: { marginTop: '8px' } }, d.direction === 'sell' && h('span', { class: 'badge no-dot b-info' }, 'Angebot vom Team'), dealBadge(d), turnBadge(d, 'partner'))),
         h('div', { class: 'dc-price' }, money(d.total)), icon('chevronR'));
-      const open = () => openDealModal({ side: 'partner', base: '/api/p/market', id: d.id, onChange: () => show('deals') });
+      const open = () => { markDealSeen(scope, d); changes.delete(d.id); el.classList.remove('fresh', 'fresh-new', 'fresh-status', 'fresh-update'); el.querySelector('.fresh-line')?.remove(); ctx.refreshCounters?.(); openDealModal({ side: 'partner', base: '/api/p/market', id: d.id, onChange: async () => { try { const cur = (await api.get('/api/p/market/deals')).deals.find((x) => x.id === d.id); if (cur) markDealSeen(scope, cur); } catch { /* egal */ } show('deals'); } }); };
       el.addEventListener('click', open);
       el.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
       return el;

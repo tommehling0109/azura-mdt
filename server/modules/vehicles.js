@@ -7,6 +7,7 @@ import { allocateNumber } from '../core/numbers.js';
 import { labelForUser } from '../core/identity.js';
 import { registerLookup, lookupEntries, isActiveEntry } from '../core/lookups.js';
 import { decodeImage, IMAGE_MIME } from '../core/images.js';
+import { registerWidget } from './dashboard.js';
 
 /**
  * Fahrzeugverwaltung. Rechte sind fein getrennt: ansehen (nur lesen), Standort sehen, anlegen, bearbeiten, löschen, zuweisen.
@@ -26,6 +27,21 @@ registerLookup({
 registerLookup({
   key: 'vehicles.category', module: 'Fahrzeuge', label: 'Fahrzeugklassen', description: 'Z. B. PKW, Transporter, Motorrad, Boot, Hubschrauber – frei erweiterbar.',
   usage: (id) => get('SELECT COUNT(*) c FROM vehicles WHERE category_id = ?', id).c,
+});
+
+registerWidget({
+  id: 'vehicles-overview', title: 'Fuhrpark', size: 'medium', permission: 'vehicles.view',
+  data: (ctx) => {
+    const counts = Object.fromEntries(all('SELECT condition_key k, COUNT(*) c FROM vehicles WHERE is_active = 1 GROUP BY condition_key').map((x) => [x.k, x.c]));
+    const today = new Date().toISOString().slice(0, 10);
+    return {
+      total: get('SELECT COUNT(*) c FROM vehicles WHERE is_active = 1').c,
+      conditions: lookupEntries('vehicles.condition').map((e) => ({ key: e.key, label: e.label, color: e.color, count: counts[e.key] ?? 0 })),
+      lowFuel: get('SELECT COUNT(*) c FROM vehicles WHERE is_active = 1 AND fuel_level IS NOT NULL AND fuel_level < 20').c,
+      inspectionOverdue: get('SELECT COUNT(*) c FROM vehicles WHERE is_active = 1 AND inspection_due IS NOT NULL AND inspection_due < ?', today).c,
+      mine: get('SELECT COUNT(*) c FROM vehicles WHERE is_active = 1 AND assigned_user_id = ?', ctx.user.id).c,
+    };
+  },
 });
 
 const FUELS = ['diesel', 'petrol', 'electric'];

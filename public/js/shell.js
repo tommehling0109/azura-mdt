@@ -1,3 +1,5 @@
+import { everySecond, timeParts, dateLong } from './clock.js';
+import { partnerScope, unseenCount } from './seen.js';
 import { h, mount, timeAgo } from './ui/dom.js';
 import { icon } from './ui/icons.js';
 import { avatar, skeletons, empty, toast, button, toggle } from './ui/kit.js';
@@ -44,12 +46,9 @@ function closeAllWindows() {
 /** Bildschirme ohne Desktop (Anmeldung, Einrichtung, Wartend). */
 export function showLock(content) {
   closeAllWindows();
-  const clock = h('div', { class: 'lock-clock' });
-  liveUpdate(clock, () => {
-    const d = new Date();
-    mount(clock, h('div', { class: 'lc-time' }, d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })),
-      h('div', { class: 'lc-date' }, d.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })));
-  });
+  const lcTime = h('div', { class: 'lc-time' }), lcDate = h('div', { class: 'lc-date' });
+  const clock = h('div', { class: 'lock-clock' }, lcTime, lcDate);
+  everySecond(clock, () => { const t = timeParts(); lcTime.textContent = `${t.hm}:${t.s}`; lcDate.textContent = dateLong(); });
   mount(screen(), h('div', { class: 'wallpaper' }), h('div', { class: 'lock' }, content), clock);
 }
 
@@ -69,10 +68,19 @@ export async function openTarget(target) {
   }
 }
 
-const counters = { pendingUsers: 0, marketAwaiting: 0, chatUnread: 0 };
+const counters = { pendingUsers: 0, marketAwaiting: 0, chatUnread: 0, marketNew: 0 };
+let baseTitle = null;
 let partnerMode = false;
 async function refreshCounters() {
-  if (partnerMode) return;
+  if (partnerMode) {
+    try { counters.marketNew = unseenCount(partnerScope(), (await api.get('/api/p/market/deals')).deals); } catch { /* App nicht freigeschaltet */ }
+    try { counters.chatUnread = (await api.get('/api/p/chat/unread')).unread ?? 0; } catch { /* App nicht freigeschaltet */ }
+    // Tab-Titel: ungesehene Änderungen auf einen Blick
+    baseTitle ??= document.title.replace(/^\(\d+\)\s*/, '');
+    const n = counters.marketNew + counters.chatUnread;
+    document.title = n > 0 ? `(${n}) ${baseTitle}` : baseTitle;
+    return;
+  }
   if (can('users.approve') || can('users.view')) {
     try { counters.pendingUsers = (await api.get('/api/users?status=pending')).counts.pending ?? 0; } catch { /* ignorieren */ }
   }
@@ -105,15 +113,12 @@ export function showApp(onLogout, opts = {}) {
   const startMenu = h('div', { class: 'start-menu', hidden: true });
   const startBtn = h('button', { class: 'panel-btn start-btn', type: 'button', title: 'Menü', 'aria-label': 'App-Menü', 'aria-haspopup': 'true' }, h('div', { class: 'logo-phoenix' }));
   const clock = h('span', { class: 'panel-clock' });
-  liveUpdate(clock, () => { clock.textContent = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }); }, 5_000);
+  everySecond(clock, () => { const t = timeParts(); clock.textContent = `${t.hm}:${t.s}`; });
 
   const widget = h('div', { class: 'desk-widget', 'aria-hidden': 'true' });
-  liveUpdate(widget, () => {
-    const d = new Date();
-    mount(widget, h('div', { class: 'dw-time' }, d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })),
-      h('div', { class: 'dw-date' }, d.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })),
-      h('div', { class: 'dw-name' }, state.config['system.name'] || 'MDT'));
-  }, 10_000);
+  const dwHm = h('span', null), dwS = h('span', { class: 'dw-sec' }), dwDate = h('div', { class: 'dw-date' }), dwName = h('div', { class: 'dw-name' });
+  mount(widget, h('div', { class: 'dw-time' }, dwHm, dwS), dwDate, dwName);
+  everySecond(widget, () => { const t = timeParts(); dwHm.textContent = t.hm; dwS.textContent = `:${t.s}`; dwDate.textContent = dateLong(); dwName.textContent = state.config['system.name'] || 'MDT'; });
 
   // ── Live-Status + Benachrichtigungen (Glocke) ──
   const pulse = h('span', { class: 'pulse' });
@@ -332,7 +337,7 @@ export function showApp(onLogout, opts = {}) {
     titlebar.addEventListener('pointerdown', (e) => startDrag(w, e));
     titlebar.addEventListener('dblclick', (e) => { if (!e.target.closest('.win-btn') && !compact()) toggleMax(id); });
 
-    w.el = h('section', { class: 'win', role: 'dialog', 'aria-label': item.label,
+    w.el = h('section', { class: 'win', role: 'dialog', 'aria-label': item.label, onscroll: (e) => { e.currentTarget.scrollTop = 0; e.currentTarget.scrollLeft = 0; },
       style: { width: `${width}px`, height: `${height}px`, left: `${clamp((a.width > 1000 ? 120 : 40) + n * 30, 0, Math.max(0, a.width - width))}px`, top: `${clamp(24 + n * 30, 0, Math.max(0, a.height - height))}px` } },
     titlebar, h('div', { class: 'win-bar' }, subtitle, actions), content);
     for (const dir of ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']) {
@@ -383,7 +388,7 @@ export function showApp(onLogout, opts = {}) {
   // ── Echtzeit: eine Verbindung für Panel und Partner-Portal ──
   connect(opts.partner ? 'partner' : 'staff');
   initNotifier({ kind: opts.partner ? 'partner' : 'staff', id: opts.partner ? state.user.displayName : state.user.id, open: openTarget });
-  if (!opts.partner) subscribe(['users', 'market', 'chat'], async () => { await refreshCounters(); renderIcons(); }); // Zähler/Abzeichen live
+  subscribe(opts.partner ? ['market', 'chat'] : ['users', 'market', 'chat'], async () => { await refreshCounters(); renderIcons(); }); // Zähler/Abzeichen live
   subscribe(['system', 'dashboard'], async () => { applyConfig((await api.get('/api/bootstrap')).config); }); // Farben/Logo/Namen live für alle
   if (opts.partner) subscribe(['partners'], () => api.get('/api/p/me')); // Zugang geändert/deaktiviert → sofort abgemeldet (401-Handler)
   // Sperrbildschirm (Timeout kommt aus der Konfiguration; Entsperren per Passwort bzw. Code)

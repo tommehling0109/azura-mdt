@@ -27,7 +27,7 @@
 .custom-logo .logo-phoenix { aspect-ratio: 1 / 1; background-size: contain; background-position: center; }
 
 .desktop { position: absolute; inset: 0; display: grid; grid-template-rows: var(--panel-h) minmax(0, 1fr) var(--dock-h); }
-.desktop-area { position: relative; overflow: hidden; z-index: 1; }
+.desktop-area { position: relative; overflow: hidden; overflow: clip; z-index: 1; }
 
 /* Obere Leiste */
 .panel {
@@ -102,7 +102,7 @@
 /* ── Fenster ──────────────────────────────────────────── */
 .win {
   position: absolute; display: flex; flex-direction: column; min-width: 0; max-width: 100%; max-height: 100%;
-  border-radius: var(--r-lg); overflow: hidden; background: var(--bg-1);
+  border-radius: var(--r-lg); overflow: hidden; overflow: clip; background: var(--bg-1);
   border: 1px solid var(--line-strong); box-shadow: 0 14px 40px -12px rgba(0, 0, 0, 0.75);
   animation: win-in 0.2s var(--ease);
 }
@@ -236,3 +236,7 @@
 .ls-link { background: none; border: 0; padding: 0; color: var(--text-2); cursor: pointer; font: inherit; text-decoration: underline; text-underline-offset: 3px; } .ls-link:hover { color: var(--text); }
 .ls-input.shake { animation: shake 0.35s; } @keyframes shake { 20%, 60% { transform: translateX(-7px); } 40%, 80% { transform: translateX(7px); } }
 @media (max-width: 480px) { .ls-form { flex-direction: column; } .ls-btn { width: 100%; } }
+
+/* Live-Uhr: Sekunden dezent hinter den Minuten */
+.dw-time .dw-sec { font-size: 0.34em; font-weight: 300; opacity: 0.6; margin-left: 4px; }
+.lock-clock .lc-time, .ls-time, .panel-clock { font-variant-numeric: tabular-nums; }
