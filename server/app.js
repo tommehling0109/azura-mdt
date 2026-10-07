@@ -35,9 +35,10 @@ import ticketsModule from './modules/tickets.js';
 import lookupsModule from './modules/lookups.js';
 import partnersModule from './modules/partners.js';
 import marketModule from './modules/market.js';
+import hackModule from './modules/hack.js';
 
 /** Modulliste – spätere Phasen hängen hier weitere Module an (vehicles, storage, purchasing, chat, …). */
-const MODULES = [systemModule, authModule, usersModule, rolesModule, orgModule, auditModule, dashboardModule, lookupsModule, partnersModule, marketModule, chatModule, vehiclesModule, mapModule, warehouseModule, financeModule, tabModule, creditModule, profileModule, statsModule, personnelModule, ticketsModule, realtimeModule];
+const MODULES = [systemModule, authModule, usersModule, rolesModule, orgModule, auditModule, dashboardModule, lookupsModule, partnersModule, marketModule, chatModule, vehiclesModule, mapModule, warehouseModule, financeModule, tabModule, creditModule, profileModule, statsModule, personnelModule, ticketsModule, hackModule, realtimeModule];
 
 /** Hinter nginx o. ä.: TRUST_PROXY=1 ⇒ Client-IP und Protokoll aus X-Forwarded-* übernehmen (sonst ignorieren – nicht fälschbar). */
 const TRUST_PROXY = process.env.TRUST_PROXY === '1';
@@ -140,7 +141,7 @@ export function buildApp() {
   const V = encodeURIComponent(APP_VERSION);
   const JS_IMPORT = [/(\bfrom\s*)(['"])(\.{1,2}\/[^'"?]+?\.js)\2/g, /(\bimport\s*\(\s*)(['"])(\.{1,2}\/[^'"?]+?\.js)\2/g, /(\bimport\s+)(['"])(\.{1,2}\/[^'"?]+?\.js)\2/g];
   const versionJs = (src) => JS_IMPORT.reduce((s, re) => s.replace(re, (_m, a, q, p) => `${a}${q}${p}?v=${V}${q}`), src);
-  const versionHtml = (src) => src.replace(/(\b(?:src|href)=")(\/(?:js|css)\/[^"?]+)"/g, (_m, a, p) => `${a}${p}?v=${V}"`);
+  const versionHtml = (src) => src.replace(/(\b(?:src|href)=")(\/(?:js|css|hack)\/[^"?]+)"/g, (_m, a, p) => `${a}${p}?v=${V}"`);
   const versioned = new Map(); // Datei → { mtime, text }
   async function readVersioned(file, ext) {
     const mtime = (await stat(file)).mtimeMs, hit = versioned.get(file);
@@ -155,6 +156,7 @@ export function buildApp() {
     if (url.pathname === '/branding/logo') return serveBranding(res, 'logo');
     if (url.pathname === '/branding/wallpaper') return serveBranding(res, 'wallpaper');
     let rel = normalize(decodeURIComponent(url.pathname)).replace(/^[/\\]+/, '');
+    if (/^\/x\/[^/]+\/?$/.test(url.pathname)) rel = 'hack/index.html'; // Exekutive-Link: eigene, neutrale Seite ohne Systemkennzeichnung
     if (!rel || rel.endsWith(sep)) rel = join(rel, 'index.html');
     let file = join(PUBLIC_DIR, rel);
     if (!file.startsWith(PUBLIC_DIR)) { res.writeHead(403); return res.end(); }

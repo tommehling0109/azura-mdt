@@ -671,4 +671,15 @@ export const SCHEMA_MIGRATIONS = [
   ALTER TABLE ticket_comments ADD COLUMN partner_id INTEGER REFERENCES partners(id) ON DELETE SET NULL;
   CREATE INDEX idx_tickets_partner ON tickets(partner_id);
   `,
+  // 16: Zugriffsversuche ueber den Exekutive-Link (Sperrzeit + Protokoll)
+  `
+  CREATE TABLE hack_runs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL,
+    ended_at   TEXT,
+    success    INTEGER NOT NULL DEFAULT 0,
+    stage      INTEGER NOT NULL DEFAULT 0,
+    ip         TEXT
+  );
+  `,
 ];

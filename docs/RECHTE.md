@@ -11,7 +11,7 @@
 - Namen von Mitgliedern sieht man nur bei sich selbst, als Superadmin und bei Mitgliedern **unterhalb** der eigenen Hierarchie (übergeordneter Rang / Vorgesetzten-Kette); sonst nur die Personalnummer.
 - Statistik: `stats.view` öffnet die App, jeder Abschnitt erscheint zusätzlich nur mit dem Ansichtsrecht des jeweiligen Bereichs.
 
-## Rechte (68)
+## Rechte (69)
 
 ### audit
 
@@ -49,6 +49,12 @@
 | `finance.export` | Finanzen: Journal als CSV exportieren |
 | `finance.manual` | Finanzen: manuelle Buchungen anlegen, verbuchen und stornieren |
 | `finance.view` | Finanzen: Geldbewegungen (Journal) und Auswertungen ansehen |
+
+### hack
+
+| Recht | Bedeutung |
+|---|---|
+| `hack.manage` | Exekutive-Zugang: Link ansehen/erneuern, Einstellungen und Zugriffsprotokoll |
 
 ### lookups
 
@@ -225,6 +231,12 @@
 | POST | `/api/finance/entries/:id/settle` | `finance.manual` |
 | POST | `/api/finance/entries/:id/cancel` | `finance.manual` |
 | DELETE | `/api/finance/entries/:id` | `finance.delete` |
+| GET | `/api/hack/admin` | `hack.manage` |
+| POST | `/api/hack/admin/regenerate` | `hack.manage` |
+| POST | `/api/hack/admin/reset-cooldown` | `hack.manage` |
+| GET | `/api/h/:token/status` | *öffentlich* |
+| POST | `/api/h/:token/start` | *öffentlich* |
+| POST | `/api/h/:token/answer` | *öffentlich* |
 | GET | `/api/lookups` | `lookups.view` \| `market.view` |
 | POST | `/api/lookups/:list` | `lookups.manage` |
 | PATCH | `/api/lookups/:list/:id` | `lookups.manage` |
@@ -282,6 +294,7 @@
 | GET | `/api/events` | *angemeldet (eigene Daten)* |
 | GET | `/api/notifications` | *angemeldet (eigene Daten)* |
 | POST | `/api/notifications/read` | *angemeldet (eigene Daten)* |
+| POST | `/api/notifications/delete` | *angemeldet (eigene Daten)* |
 | GET | `/api/roles` | `roles.view` \| `users.view` |
 | POST | `/api/roles` | `roles.manage` |
 | PATCH | `/api/roles/:id` | `roles.manage` |
@@ -390,6 +403,15 @@
 | GET | `/api/p/events` | externer Zugang |
 | GET | `/api/p/notifications` | externer Zugang |
 | POST | `/api/p/notifications/read` | externer Zugang |
+| POST | `/api/p/notifications/delete` | externer Zugang |
 | GET | `/api/c/:token` | persönlicher Firmen-Link |
 | GET | `/api/c/:token/events` | persönlicher Firmen-Link |
 | POST | `/api/c/:token/statements` | persönlicher Firmen-Link |
+| GET | `/api/p/tickets/options` | externer Zugang |
+| GET | `/api/p/tickets` | externer Zugang |
+| POST | `/api/p/tickets` | externer Zugang |
+| GET | `/api/p/tickets/:id` | externer Zugang |
+| GET | `/api/p/tickets/:id/screenshot` | externer Zugang |
+| GET | `/api/p/tickets/:id/comments/:cid/screenshot` | externer Zugang |
+| POST | `/api/p/tickets/:id/comments` | externer Zugang |
+| PATCH | `/api/p/tickets/:id` | externer Zugang |
