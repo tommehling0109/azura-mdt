@@ -6,6 +6,9 @@ ENV NODE_ENV=production \
     PORT=3847 \
     MDT_DATA_DIR=/data
 
+ARG GIT_SHA=unknown
+ENV APP_COMMIT=$GIT_SHA
+
 WORKDIR /app
 COPY package.json ./
 COPY server ./server

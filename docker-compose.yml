@@ -1,4 +1,6 @@
 # Azura MDT – Portainer-/Docker-Stack (plug and play)
+# WICHTIG: "docker compose up" baut ein vorhandenes Image NICHT neu. Nach jedem Update mit Neubau starten: "docker compose up -d --build" (Portainer: Stack → "Update the stack" mit aktiviertem "Re-pull image and redeploy" bzw. Build).
+# Einfacher und zuverlässiger: deploy/portainer/stack-ghcr.yml (fertiges Image, pull_policy: always). Der installierte Stand steht unten rechts im MDT als "Build <Commit>".
 #
 # Portainer: Stacks → Add stack → "Repository" (diese Datei wird automatisch gebaut)
 #            (Portainer baut das Image dann direkt aus dem Repository). Alternative ohne Build: deploy/portainer/stack-ghcr.yml.
@@ -6,7 +8,10 @@
 services:
   mdt:
     image: azura-mdt:local
-    build: .
+    build:
+      context: .
+      args:
+        GIT_SHA: "${GIT_SHA:-unknown}"
     container_name: azura-mdt
     restart: unless-stopped
     init: true

@@ -1,5 +1,5 @@
 import { all, get, run, tx, now, db, DB_PATH } from '../core/db.js';
-import { APP_VERSION } from '../core/version.js';
+import { APP_VERSION, APP_COMMIT } from '../core/version.js';
 import { mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { HttpError, bad, str, conflict, notFound, forbidden } from '../core/http.js';
@@ -72,8 +72,8 @@ export default {
   ],
   routes(r) {
     // Öffentlich: Konfiguration für Login/Setup-Bildschirm
-    r.get('/api/bootstrap', { auth: false }, () => ({ setupRequired: setupRequired(), config: publicConfig(), version: APP_VERSION }));
-    r.get('/api/version', { auth: false }, () => ({ version: APP_VERSION }));
+    r.get('/api/bootstrap', { auth: false }, () => ({ setupRequired: setupRequired(), config: publicConfig(), version: APP_VERSION, commit: APP_COMMIT }));
+    r.get('/api/version', { auth: false }, () => ({ version: APP_VERSION, commit: APP_COMMIT }));
 
     // Erst-Einrichtung: legt Administrator-Rolle + ersten Benutzer an. Nur solange kein Benutzer existiert.
     r.post('/api/setup', { auth: false }, (ctx) => {

@@ -45,6 +45,8 @@ function route(user) {
 async function boot() {
   try {
     const b = await api.get('/api/bootstrap');
+    document.getElementById('build-tag')?.remove();
+    document.body.append(h('div', { id: 'build-tag', class: 'build-tag', title: 'Installierter Programmstand (Git-Commit)' }, `Build ${b.commit ?? '?'}`));
     syncVersion(b.version); watchVersion(b.version); // veralteten lokalen Zustand nach Updates verwerfen / laufende Seite erneuern
     return b;
   } catch (e) {
