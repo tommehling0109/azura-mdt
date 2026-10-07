@@ -42,11 +42,23 @@ function route(user) {
   return logout();
 }
 
+/** Diagnose (Klick auf „Build …“): zeigt Programmstand und die Rechte des angemeldeten Kontos – hilft, wenn Funktionen „fehlen“. */
+const KEY_PERMS = ['users.create', 'users.personnel_view', 'users.personnel_edit', 'partners.manage', 'partners.documents', 'partners.delete', 'tickets.manage', 'finance.view', 'stats.view'];
+async function showDiagnose(b) {
+  const u = state.user;
+  const rows = [['Build (Commit)', b.commit ?? 'unbekannt'], ['Programmversion', b.version ?? '–'], ['Angemeldet', u ? (u.memberNumber ?? u.displayName) : 'nein'],
+    ['Superadmin', u ? (u.isSuperadmin ? 'ja' : 'nein') : '–'], ['Administrator-Rolle', u ? (u.isAdmin ? 'ja' : 'nein') : '–'], ['Rechte gesamt', u ? String(u.permissions?.length ?? 0) : '–'],
+    ...KEY_PERMS.map((k) => [k, u ? (u.permissions?.includes(k) ? 'ja' : 'FEHLT') : '–'])];
+  const { openModal, button } = await import('./ui/kit.js');
+  const m = openModal({ title: 'Diagnose', body: h('div', null, h('p', { class: 'muted' }, 'Wenn Funktionen fehlen: Steht bei einem Recht „FEHLT“, muss es deinem Konto (Rolle oder Direkte Rechte) zugewiesen werden.'),
+    h('dl', { class: 'details-dl' }, rows.flatMap(([k, v]) => [h('dt', null, k), h('dd', { class: 'mono' }, v)]))), footer: [button('Schließen', { onClick: () => m.close() })] });
+}
+
 async function boot() {
   try {
     const b = await api.get('/api/bootstrap');
     document.getElementById('build-tag')?.remove();
-    document.body.append(h('div', { id: 'build-tag', class: 'build-tag', title: 'Installierter Programmstand (Git-Commit)' }, `Build ${b.commit ?? '?'}`));
+    document.body.append(h('div', { id: 'build-tag', class: 'build-tag', title: 'Installierter Programmstand – klicken für Diagnose', onclick: () => showDiagnose(b) }, `Build ${b.commit ?? '?'}`));
     syncVersion(b.version); watchVersion(b.version); // veralteten lokalen Zustand nach Updates verwerfen / laufende Seite erneuern
     return b;
   } catch (e) {

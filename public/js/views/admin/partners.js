@@ -50,7 +50,7 @@ export const SUPPLIER_DOCS = [['id', 'Ausweis', true], ['license', 'Führerschei
  *  - Ankäufer: Name oder Bezeichnung, Ansprechpartner, Tel (optional)
  * Der Server prüft zusätzlich.
  */
-function profileForm(p, { docs }) {
+function profileForm(p, { docs, hint = '' }) {
   const a = { ...(p ?? {}) };
   const type = select(TYPE_OPTIONS, a.type ?? '');
   const name = input({ value: a.type === 'buyer' ? (a.name ?? '') : '', maxLength: 60, placeholder: 'z. B. Händler Müller GmbH', autocomplete: 'off' });
@@ -71,6 +71,7 @@ function profileForm(p, { docs }) {
         h('div', { class: 'form-row' }, field('Street / Straße *', street), field('Postal Code *', postal)),
         h('div', { class: 'form-row' }, field('Telefonnummer *', phone), field('Kontonummer *', account)),
         field('UMail *', h('div', { class: 'input-group' }, umail, h('span', { class: 'addon' }, '@umail.com')), { help: 'RP-interne Mail – die Endung ist fest.' }),
+        !docs && hint && note(hint, 'alert'),
         docs && h('div', null, SUPPLIER_DOCS.map(([k, label, must]) => field(must ? `${label} *` : `${label} (optional)`, pickers[k].el, k === 'id' ? { help: 'PDF, PNG, JPG oder WebP, max. 5 MB.' } : {}))));
     } else if (type.value === 'buyer') {
       mount(rows,
@@ -134,7 +135,7 @@ export default async function render(container, ctx) {
   function create() {
     const err = h('div');
     const noteEl = input({ maxLength: 300, placeholder: 'Interne Notiz (optional)' });
-    const prof = profileForm(null, { docs: canDocs });
+    const prof = profileForm(null, { docs: canDocs, hint: 'Ausweis, Führerschein, Waffenschein und Führungszeugnis kannst du nur hochladen, wenn dir das Recht „partners.documents“ zugewiesen ist. Ohne dieses Recht lässt sich kein Lieferant anlegen (die Dokumente sind Pflicht).' });
     const code = input({ maxLength: 12, placeholder: 'leer lassen = zufälliger 6-stelliger Code', autocomplete: 'off' });
     const boxes = appBoxes(data.apps.map((a) => a.id), false);
     const m = openModal({

@@ -164,14 +164,16 @@ export default async function render(container, ctx) {
       h('div', { class: 'form-row' }, field('Rang', rankSel), field('Abteilung', deptSel)),
       supSel && field('Vorgesetzter', supSel, { help: 'Direkter Vorgesetzter dieses Mitglieds.' }),
       !user && field('Passwort', pw),
-      personNew && h('div', null, h('div', { class: 'sep' }), h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Persönliche Angaben (Personalakte)'), personNew.el, PERS_DOCS.map(([k, label]) => field(label, docPickers[k].el))),
+      !user && h('div', null, h('div', { class: 'sep' }), h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Persönliche Angaben (Personalakte)'),
+        personNew ? [personNew.el, PERS_DOCS.map(([k, label]) => field(label, docPickers[k].el))]
+          : note('Vorname, Nachname, Straße, Postal Code, Telefonnummer, UMail, Kontonummer und die Dokumente (Ausweis, Führerschein, Waffenschein, Führungszeugnis) kannst du nur erfassen, wenn dir das Recht „users.personnel_edit“ zugewiesen ist (Rollen & Rechte → Rolle bearbeiten, oder beim Benutzer unter „Direkte Rechte“).', 'alert')),
       !user && h('div', { class: 'help' }, 'Der Benutzer wird sofort aktiv geschaltet und erhält automatisch die nächste Mitgliedsnummer.'),
       user && h('dl', { class: 'details-dl' },
         h('dt', null, 'Erstellt'), h('dd', null, fmtDateTime(user.createdAt)),
         h('dt', null, 'Letzte Anmeldung'), h('dd', null, user.lastLoginAt ? fmtDateTime(user.lastLoginAt) : 'nie'),
         user.statusReason && [h('dt', null, 'Begründung'), h('dd', null, user.statusReason)]));
 
-    const showPersonnel = !!user && (user.isSelf || can('users.personnel_view'));
+    const showPersonnel = !!user; // Tab immer sichtbar; ohne Recht erklärt er, welches Recht fehlt
     const personnelBody = h('div');
     const panes = { general, roles: roleBody, perms: permBody, eff: effBody, personnel: personnelBody };
     const body = h('div');
