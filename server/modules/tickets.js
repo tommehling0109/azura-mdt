@@ -28,11 +28,12 @@ function saveShot(kind, id, data) {
   return ext;
 }
 
+const partnerNo = (id) => get('SELECT partner_number n FROM partners WHERE id = ?', id)?.n ?? 'Externer Zugang';
 const dto = (t, viewer) => ({
   id: t.id, number: t.ticket_number, title: t.title, description: t.description, category: t.category, categoryLabel: CATEGORY[t.category], priority: t.priority, priorityLabel: PRIORITY[t.priority],
   status: t.status, statusLabel: STATUS[t.status][0], statusColor: STATUS[t.status][1], app: t.app, hasScreenshot: !!t.shot_ext,
-  reporter: t.user_id ? labelForUser(t.user_id, viewer.id) : 'Gelöschtes Mitglied', mine: t.user_id === viewer.id,
-  assignee: t.assignee_id ? { id: t.assignee_id, label: labelForUser(t.assignee_id, viewer.id) } : null,
+  reporter: t.partner_id ? partnerNo(t.partner_id) : t.user_id ? labelForUser(t.user_id, viewer.id) : 'Gelöschtes Mitglied', mine: viewer.isPartner ? t.partner_id === viewer.partnerId : t.user_id === viewer.id,
+  assignee: t.assignee_id && !viewer.isPartner ? { id: t.assignee_id, label: labelForUser(t.assignee_id, viewer.id) } : null,
   createdAt: t.created_at, updatedAt: t.updated_at, closedAt: t.closed_at,
   commentCount: get('SELECT COUNT(*) c FROM ticket_comments WHERE ticket_id = ?', t.id).c,
 });
@@ -99,7 +100,7 @@ export default {
     r.get('/api/tickets/:id', (ctx) => {
       const t = load(ctx);
       const comments = all('SELECT * FROM ticket_comments WHERE ticket_id = ? ORDER BY id', t.id).map((c) => ({
-        id: c.id, body: c.body, hasScreenshot: !!c.shot_ext, createdAt: c.created_at, author: c.user_id ? labelForUser(c.user_id, ctx.user.id) : 'Gelöschtes Mitglied', mine: c.user_id === ctx.user.id, staff: c.user_id !== t.user_id,
+        id: c.id, body: c.body, hasScreenshot: !!c.shot_ext, createdAt: c.created_at, author: c.partner_id ? partnerNo(c.partner_id) : c.user_id ? labelForUser(c.user_id, ctx.user.id) : 'Gelöschtes Mitglied', mine: c.user_id === ctx.user.id, staff: !!c.user_id && c.user_id !== t.user_id,
       }));
       return { ticket: dto(t, ctx.user), comments, canManage: ctx.user.perms.has('tickets.manage'), canDelete: ctx.user.perms.has('tickets.delete') };
     });
@@ -130,8 +131,8 @@ export default {
         return id;
       });
       const toReporter = t.user_id && t.user_id !== ctx.user.id;
-      const recipients = toReporter ? [{ type: 'user', id: t.user_id }] : staffWith('tickets.manage', ctx.user.id);
-      notify(recipients, { key: `ticket:${t.id}:c${cid}`, title: `${t.ticket_number}: neue Antwort`, body: body.slice(0, 140), target: { app: 'tickets', ticketId: t.id } });
+      const recipients = t.partner_id ? [{ type: 'partner', id: t.partner_id }] : toReporter ? [{ type: 'user', id: t.user_id }] : staffWith('tickets.manage', ctx.user.id);
+      notify(recipients, { key: `ticket:${t.id}:c${cid}`, title: `${t.ticket_number}: neue Antwort`, body: body.slice(0, 140), target: t.partner_id ? { partnerTicket: t.id } : { app: 'tickets', ticketId: t.id } });
       audit(ctx, { action: 'ticket.comment', module: 'tickets', targetType: 'ticket', targetId: t.id, targetLabel: `${t.ticket_number} · ${t.title}` });
       return { ok: true, id: cid };
     });
@@ -155,9 +156,87 @@ export default {
       const cols = Object.keys(sets);
       if (cols.length) run(`UPDATE tickets SET ${cols.map((c) => `${c} = ?`).join(', ')}, updated_at = ? WHERE id = ?`, ...cols.map((c) => sets[c]), now(), t.id);
       const n = get('SELECT * FROM tickets WHERE id = ?', t.id);
-      if (sets.status && t.user_id && t.user_id !== ctx.user.id) notify([{ type: 'user', id: t.user_id }], { key: `ticket:${t.id}:s:${now()}`, title: `${t.ticket_number}: ${STATUS[n.status][0]}`, body: n.title, target: { app: 'tickets', ticketId: t.id } });
+      if (sets.status && t.partner_id) notify([{ type: 'partner', id: t.partner_id }], { key: `ticket:${t.id}:s:${now()}`, title: `${t.ticket_number}: ${STATUS[n.status][0]}`, body: n.title, target: { partnerTicket: t.id } });
+      else if (sets.status && t.user_id && t.user_id !== ctx.user.id) notify([{ type: 'user', id: t.user_id }], { key: `ticket:${t.id}:s:${now()}`, title: `${t.ticket_number}: ${STATUS[n.status][0]}`, body: n.title, target: { app: 'tickets', ticketId: t.id } });
       audit(ctx, { action: 'ticket.updated', module: 'tickets', targetType: 'ticket', targetId: t.id, targetLabel: `${t.ticket_number} · ${t.title}`, before: { status: t.status, priority: t.priority }, after: { status: n.status, priority: n.priority } });
       return { ticket: dto(n, ctx.user) };
+    });
+
+    // ── Externe Zugaenge: eigene Tickets melden, verfolgen und beantworten (Melder = Partnernummer) ──
+    const P = { auth: 'partner' }, PB = { auth: 'partner', bodyLimit: 6 * 1024 * 1024 };
+    const pv = (ctx) => ({ id: -1, isPartner: true, partnerId: ctx.partner.id });
+    const loadP = (ctx) => {
+      const t = get('SELECT * FROM tickets WHERE id = ? AND partner_id = ?', Number(ctx.params.id), ctx.partner.id);
+      if (!t) throw notFound('Ticket nicht gefunden.');
+      return t;
+    };
+    r.get('/api/p/tickets/options', P, () => ({
+      canManage: false, canDelete: false, statuses: Object.entries(STATUS).map(([key, [label, color]]) => ({ key, label, color })),
+      categories: Object.entries(CATEGORY).map(([key, label]) => ({ key, label })), priorities: Object.entries(PRIORITY).map(([key, label]) => ({ key, label })), assignees: [],
+    }));
+    r.get('/api/p/tickets', P, (ctx) => ({ tickets: all("SELECT * FROM tickets WHERE partner_id = ? ORDER BY (status IN ('open','in_progress')) DESC, updated_at DESC LIMIT 200", ctx.partner.id).map((t) => dto(t, pv(ctx))) }));
+    r.post('/api/p/tickets', PB, (ctx) => {
+      const b = ctx.body;
+      const title = str(b.title, 'Titel', { min: 3, max: 120 });
+      const description = str(b.description, 'Beschreibung', { min: 5, max: 4000 });
+      const category = CATEGORY[b.category] ? b.category : 'bug';
+      const app = str(b.app, 'App', { max: 40, required: false });
+      const t = now();
+      const id = tx(() => {
+        const res = run('INSERT INTO tickets (ticket_number,partner_id,title,description,category,app,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)',
+          allocateNumber('ticket', 'tickets.number_prefix', 'tickets.number_start'), ctx.partner.id, title, description, category, app, t, t);
+        const tid = Number(res.lastInsertRowid);
+        if (b.screenshot) run('UPDATE tickets SET shot_ext = ? WHERE id = ?', saveShot('t', tid, b.screenshot), tid);
+        return tid;
+      });
+      const tk = get('SELECT * FROM tickets WHERE id = ?', id);
+      notify(staffWith('tickets.manage'), { key: `ticket:${id}:new`, title: `Neues Ticket ${tk.ticket_number}`, body: `${CATEGORY[category]} · ${title} · von ${ctx.partner.number}`, target: { app: 'tickets', ticketId: id } });
+      audit(ctx, { action: 'ticket.created', module: 'tickets', targetType: 'ticket', targetId: id, targetLabel: `${tk.ticket_number} · ${title}`, after: { category, partner: ctx.partner.number } });
+      ctx.status = 201;
+      return { ticket: dto(tk, pv(ctx)) };
+    });
+    r.get('/api/p/tickets/:id', P, (ctx) => {
+      const t = loadP(ctx);
+      const comments = all('SELECT * FROM ticket_comments WHERE ticket_id = ? ORDER BY id', t.id).map((c) => ({
+        id: c.id, body: c.body, hasScreenshot: !!c.shot_ext, createdAt: c.created_at, author: c.partner_id ? ctx.partner.number : c.user_id ? labelForUser(c.user_id, null) : 'Team', mine: c.partner_id === ctx.partner.id, staff: !!c.user_id,
+      }));
+      return { ticket: dto(t, pv(ctx)), comments, canManage: false, canDelete: false };
+    });
+    r.get('/api/p/tickets/:id/screenshot', P, (ctx) => {
+      const t = loadP(ctx);
+      const f = t.shot_ext && file('t', t.id, t.shot_ext);
+      if (!f || !existsSync(f)) throw notFound('Kein Screenshot.');
+      ctx.raw = { contentType: IMAGE_MIME[t.shot_ext], body: readFileSync(f), inline: true, cache: 'private, max-age=3600' };
+    });
+    r.get('/api/p/tickets/:id/comments/:cid/screenshot', P, (ctx) => {
+      const t = loadP(ctx);
+      const c = get('SELECT * FROM ticket_comments WHERE id = ? AND ticket_id = ?', Number(ctx.params.cid), t.id);
+      const f = c?.shot_ext && file('c', c.id, c.shot_ext);
+      if (!f || !existsSync(f)) throw notFound('Kein Screenshot.');
+      ctx.raw = { contentType: IMAGE_MIME[c.shot_ext], body: readFileSync(f), inline: true, cache: 'private, max-age=3600' };
+    });
+    r.post('/api/p/tickets/:id/comments', PB, (ctx) => {
+      const t = loadP(ctx);
+      if (t.status === 'closed') throw bad('Dieses Ticket ist geschlossen.');
+      const body = str(ctx.body.body, 'Nachricht', { min: 1, max: 4000 });
+      const cid = tx(() => {
+        const res = run('INSERT INTO ticket_comments (ticket_id,partner_id,body,created_at) VALUES (?,?,?,?)', t.id, ctx.partner.id, body, now());
+        const id = Number(res.lastInsertRowid);
+        if (ctx.body.screenshot) run('UPDATE ticket_comments SET shot_ext = ? WHERE id = ?', saveShot('c', id, ctx.body.screenshot), id);
+        run('UPDATE tickets SET updated_at = ? WHERE id = ?', now(), t.id);
+        return id;
+      });
+      notify(staffWith('tickets.manage'), { key: `ticket:${t.id}:c${cid}`, title: `${t.ticket_number}: neue Antwort`, body: body.slice(0, 140), target: { app: 'tickets', ticketId: t.id } });
+      audit(ctx, { action: 'ticket.comment', module: 'tickets', targetType: 'ticket', targetId: t.id, targetLabel: `${t.ticket_number} · ${t.title}` });
+      return { ok: true, id: cid };
+    });
+    r.patch('/api/p/tickets/:id', P, (ctx) => {
+      const t = loadP(ctx);
+      const s = ctx.body.status;
+      if (!['closed', 'open'].includes(s)) throw forbidden('Als Melder kannst du dein Ticket nur schließen oder wieder öffnen.');
+      run('UPDATE tickets SET status = ?, closed_at = ?, updated_at = ? WHERE id = ?', s, s === 'closed' ? now() : null, now(), t.id);
+      audit(ctx, { action: 'ticket.updated', module: 'tickets', targetType: 'ticket', targetId: t.id, targetLabel: `${t.ticket_number} · ${t.title}`, before: { status: t.status }, after: { status: s } });
+      return { ticket: dto(get('SELECT * FROM tickets WHERE id = ?', t.id), pv(ctx)) };
     });
 
     r.delete('/api/tickets/:id', { perm: 'tickets.delete' }, (ctx) => {

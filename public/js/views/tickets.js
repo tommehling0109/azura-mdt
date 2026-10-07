@@ -38,19 +38,19 @@ function shotPicker() {
 }
 
 /** Neues Ticket melden – auch von überall (Kopfzeile) aufrufbar. */
-export async function openReportDialog({ app = '', onDone } = {}) {
-  let opts; try { opts = await api.get('/api/tickets/options'); } catch (e) { return toast(e.message, 'err'); }
+export async function openReportDialog({ app = '', onDone, base = '/api/tickets' } = {}) {
+  let opts; try { opts = await api.get(`${base}/options`); } catch (e) { return toast(e.message, 'err'); }
   const err = h('div');
   const title = input({ maxLength: 120, placeholder: 'Kurz beschreiben, was nicht funktioniert' });
   const cat = select(opts.categories.map((c) => ({ value: c.key, label: c.label })), 'bug');
   const desc = h('textarea', { class: 'textarea', rows: 6, maxLength: 4000, placeholder: 'Was hast du gemacht? Was ist passiert? Was hast du erwartet?' });
   const shot = shotPicker();
-  const m = openModal({ title: 'Fehler melden / Ticket eröffnen', body: h('div', null, err, note('Dein Ticket sehen das Team und du – gemeldet wird unter deiner Personalnummer. Du findest es auch im Chat unter „Meine Tickets“.', 'info'), h('div', { style: { height: '10px' } }),
+  const m = openModal({ title: 'Fehler melden / Ticket eröffnen', body: h('div', null, err, note(base === '/api/tickets' ? 'Dein Ticket sehen das Team und du – gemeldet wird unter deiner Personalnummer. Du findest es auch im Chat unter „Meine Tickets“.' : 'Dein Ticket sehen das Team und du – gemeldet wird unter deiner Partnernummer. Antworten findest du unter „Meine Tickets“ (Symbol oben rechts).', 'info'), h('div', { style: { height: '10px' } }),
     field('Art', cat), field('Titel', title), field('Beschreibung', desc), field('Screenshot (optional)', shot.el)),
   footer: [button('Abbrechen', { onClick: () => m.close() }), button('Ticket senden', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
     err.replaceChildren();
     try {
-      const { ticket } = await api.post('/api/tickets', { title: title.value, description: desc.value, category: cat.value, app: app || (document.querySelector('.win.active .wt')?.textContent ?? ''), screenshot: shot.data() ?? undefined });
+      const { ticket } = await api.post(base, { title: title.value, description: desc.value, category: cat.value, app: app || (document.querySelector('.win.active .wt')?.textContent ?? ''), screenshot: shot.data() ?? undefined });
       m.close(); toast(`Ticket ${ticket.number} wurde erstellt.`); onDone?.(ticket);
     } catch (ex) { err.replaceChildren(formError(ex.message)); }
   }) })] });
@@ -58,18 +58,18 @@ export async function openReportDialog({ app = '', onDone } = {}) {
 }
 
 /** Ticket-Detail (Verlauf, Antworten, Status). Wird in der Ticket-App und im Chat verwendet. */
-export async function openTicketModal({ id, onChange }) {
+export async function openTicketModal({ id, onChange, base = '/api/tickets' }) {
   const body = h('div', null, skeletons(3, 70)); let off;
   const m = openModal({ title: 'Ticket', wide: true, body, footer: null, onClose: () => off?.() });
   const footer = h('div', { class: 'modal-foot' }); m.el.append(footer);
-  let opts; try { opts = await api.get('/api/tickets/options'); } catch { opts = { statuses: [], priorities: [], assignees: [] }; }
+  let opts; try { opts = await api.get(`${base}/options`); } catch { opts = { statuses: [], priorities: [], assignees: [] }; }
   const msg = h('textarea', { class: 'textarea', rows: 3, maxLength: 4000, placeholder: 'Antwort schreiben …' });
   const shot = shotPicker(); m.el.addEventListener('paste', shot.paste);
   async function reload() {
-    let d; try { d = await api.get(`/api/tickets/${id}`); } catch (e) { mount(body, note(e.message, 'alert')); mount(footer, h('span', { class: 'grow' }), button('Schließen', { onClick: () => m.close() })); return; }
+    let d; try { d = await api.get(`${base}/${id}`); } catch (e) { mount(body, note(e.message, 'alert')); mount(footer, h('span', { class: 'grow' }), button('Schließen', { onClick: () => m.close() })); return; }
     const t = d.ticket;
     m.el.querySelector('.modal-head h3').textContent = `${t.number} · ${t.title}`;
-    const patch = async (p) => { try { await api.patch(`/api/tickets/${id}`, p); await reload(); onChange?.(); } catch (e) { toast(e.message, 'err'); } };
+    const patch = async (p) => { try { await api.patch(`${base}/${id}`, p); await reload(); onChange?.(); } catch (e) { toast(e.message, 'err'); } };
     const ctl = d.canManage ? h('div', { class: 'row', style: { margin: '10px 0', flexWrap: 'wrap' } },
       (() => { const s = select(opts.statuses.map((x) => ({ value: x.key, label: x.label })), t.status, { style: { width: '150px' } }); s.addEventListener('change', () => patch({ status: s.value })); return s; })(),
       (() => { const s = select(opts.priorities.map((x) => ({ value: x.key, label: `Priorität: ${x.label}` })), t.priority, { style: { width: '170px' } }); s.addEventListener('change', () => patch({ priority: s.value })); return s; })(),
@@ -79,16 +79,16 @@ export async function openTicketModal({ id, onChange }) {
       img && h('a', { href: img, target: '_blank', rel: 'noopener' }, h('img', { class: 'tk-shot', src: img, alt: 'Screenshot', loading: 'lazy' })));
     mount(body, h('div', { class: 'chips', style: { marginBottom: '6px' } }, statusBadge(t), badge(t.categoryLabel, 'b-info', false), h('span', { class: `badge ${PRIO[t.priority]}` }, t.priorityLabel), t.app && badge(t.app, 'b-mute', false), t.assignee && badge(`Zuständig: ${t.assignee.label}`, 'b-ok', false)),
       ctl,
-      bubble(`${t.reporter}${t.mine ? '' : ' (Melder)'}`, t.description, t.createdAt, 'first', t.hasScreenshot ? `/api/tickets/${id}/screenshot` : null),
-      d.comments.map((c) => bubble(c.mine ? 'Du' : `${c.author}${c.staff ? ' · Team' : ''}`, c.body, c.createdAt, c.mine ? 'mine' : 'other', c.hasScreenshot ? `/api/tickets/${id}/comments/${c.id}/screenshot` : null)),
+      bubble(`${t.reporter}${t.mine ? '' : ' (Melder)'}`, t.description, t.createdAt, 'first', t.hasScreenshot ? `${base}/${id}/screenshot` : null),
+      d.comments.map((c) => bubble(c.mine ? 'Du' : `${c.author}${c.staff ? ' · Team' : ''}`, c.body, c.createdAt, c.mine ? 'mine' : 'other', c.hasScreenshot ? `${base}/${id}/comments/${c.id}/screenshot` : null)),
       t.status === 'closed' && !d.canManage ? note('Dieses Ticket ist geschlossen. Öffne es wieder, wenn du antworten möchtest.', 'info')
         : h('div', { class: 'composer', style: { marginTop: '12px' } }, msg, shot.el, h('div', { class: 'row', style: { marginTop: '8px' } }, button('Antworten', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
           if (!msg.value.trim()) return;
-          try { await api.post(`/api/tickets/${id}/comments`, { body: msg.value, screenshot: shot.data() ?? undefined }); msg.value = ''; shot.clear(); await reload(); onChange?.(); } catch (ex) { toast(ex.message, 'err'); }
+          try { await api.post(`${base}/${id}/comments`, { body: msg.value, screenshot: shot.data() ?? undefined }); msg.value = ''; shot.clear(); await reload(); onChange?.(); } catch (ex) { toast(ex.message, 'err'); }
         }) }))));
     mount(footer, d.canDelete && button('Löschen', { variant: 'danger', icon: 'trash', onClick: async () => {
       if (!await confirmDialog({ title: 'Ticket endgültig löschen?', message: `${t.number} wird samt Antworten und Screenshots gelöscht.`, confirmLabel: 'Endgültig löschen' })) return;
-      try { await api.del(`/api/tickets/${id}`); m.close(); toast('Ticket gelöscht.'); onChange?.(); } catch (e) { toast(e.message, 'err'); }
+      try { await api.del(`${base}/${id}`); m.close(); toast('Ticket gelöscht.'); onChange?.(); } catch (e) { toast(e.message, 'err'); }
     } }), h('span', { class: 'grow' }), button('Schließen', { onClick: () => m.close() }));
   }
   await reload();
@@ -129,4 +129,23 @@ export default async function render(container, ctx) {
   await show(tab);
   openFromTarget();
   return () => window.removeEventListener('mdt:tickets-open', openFromTarget);
+}
+
+/** Externer Zugang: eigene Tickets ansehen, neues melden, Antworten lesen und beantworten. open = Ticket-ID, die direkt geöffnet wird. */
+export async function openPartnerTickets({ open } = {}) {
+  const BASE = '/api/p/tickets';
+  if (open) return openTicketModal({ id: open, base: BASE });
+  const body = h('div', null, skeletons(3, 60)); let off;
+  const m = openModal({ title: 'Meine Tickets', wide: true, body, footer: [button('Schließen', { onClick: () => m.close() })], onClose: () => off?.() });
+  async function load() {
+    let rows; try { rows = (await api.get(BASE)).tickets; } catch (e) { return mount(body, empty('Fehler beim Laden', e.message, 'alert')); }
+    mount(body, h('div', { class: 'toolbar' }, button('Neues Ticket', { variant: 'primary', icon: 'plus', onClick: () => openReportDialog({ base: BASE, onDone: load }) })),
+      table([
+        { label: 'Nr.', style: { width: '1%' }, render: (x) => h('span', { class: 'member-no' }, x.number) },
+        { label: 'Titel', render: (x) => h('div', null, h('b', null, x.title), h('div', { class: 'muted', style: { fontSize: '11.5px' } }, `${x.categoryLabel}${x.app ? ' · ' + x.app : ''}`)) },
+        { label: 'Status', render: statusBadge }, { label: 'Antworten', render: (x) => x.commentCount }, { label: 'Aktualisiert', render: (x) => h('span', { class: 'muted', title: fmtDateTime(x.updatedAt) }, timeAgo(x.updatedAt)) },
+      ], rows, { onRowClick: (x) => openTicketModal({ id: x.id, base: BASE, onChange: load }), empty: empty('Noch keine Tickets', 'Mit „Neues Ticket“ meldest du einen Fehler – gern mit Screenshot.', 'flag') }));
+  }
+  off = subscribe(['tickets'], () => load(), { wait: 250 });
+  await load();
 }

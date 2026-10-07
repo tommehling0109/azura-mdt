@@ -46,6 +46,13 @@ export function markRead(type, id, ids) {
   publish({ type: 'notification', topic: 'notification', kind: 'read', userId: type === 'user' ? id : null, partnerId: type === 'partner' ? id : null });
 }
 
+/** Eigene Benachrichtigungen löschen (ids = Auswahl, null = alle). */
+export function removeNotifications(type, id, ids) {
+  if (Array.isArray(ids)) { for (const nid of ids.filter(Number.isInteger)) run('DELETE FROM notifications WHERE id = ? AND recipient_type = ? AND recipient_id = ?', nid, type, id); }
+  else run('DELETE FROM notifications WHERE recipient_type = ? AND recipient_id = ?', type, id);
+  publish({ type: 'notification', topic: 'notification', kind: 'read', userId: type === 'user' ? id : null, partnerId: type === 'partner' ? id : null });
+}
+
 /** Alle aktiven Mitarbeiter, die ein Recht besitzen (ohne optional auszuschließenden Benutzer). */
 export function staffWith(perm, exceptUserId = null) {
   return all(`SELECT id FROM users WHERE status = 'active'`)

@@ -54,6 +54,9 @@ export function publishChange({ module, action, targetType, targetId }) {
   } else if (module === 'credit') {
     const pid = targetType === 'loan' && targetId != null ? get('SELECT partner_id FROM credit_loans WHERE id = ?', Number(targetId))?.partner_id : null;
     partnerScope = pid ? `id:${pid}` : null;
+  } else if (module === 'tickets') {
+    const pid = targetId != null ? get('SELECT partner_id FROM tickets WHERE id = ?', Number(targetId))?.partner_id : null;
+    partnerScope = pid ? `id:${pid}` : null; // Tickets von externen Zugängen: nur der Melder wird live aktualisiert
   } else if (['lookups', 'system', 'dashboard'].includes(module)) partnerScope = 'all'; // Beschriftungen, Farben, Logo …
   else if (module === 'partners' && targetType === 'partner' && targetId) partnerScope = `id:${targetId}`; // Zugangsänderung betrifft den Partner selbst
   const staffPerm = STAFF_PERM[module] ?? null;

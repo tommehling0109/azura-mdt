@@ -64,6 +64,7 @@ export async function chatApp(container, ctx, o = {}) {
   }
   const allChats = () => [...channels, ...dms];
   async function openDm(p) {
+    if (!p.partner && !PARTNER && p.id === state.user.id) throw new Error('Du kannst dir nicht selbst schreiben.');
     const { channel } = await api.post(A('/dms'), p.partner ? { partnerId: p.id } : { userId: p.id });
     if (!dms.some((d) => d.id === channel.id)) dms.unshift({ ...channel, keep: true });
     current = channel.id; replyTo = editing = null; setBanner(); sessionStorage.setItem(CHANNEL_KEY, String(current));
@@ -71,7 +72,7 @@ export async function chatApp(container, ctx, o = {}) {
   }
   async function newDm() {
     let people = [];
-    try { const r = await api.get(A('/people')); people = [...(r.partners ?? []).map((x) => ({ ...x, group: 'Externe Partner' })), ...r.people.map((x) => ({ ...x, group: PARTNER ? 'Ansprechpartner im Team' : 'Mitglieder' }))]; } catch (e) { return toast(e.message, 'err'); }
+    try { const r = await api.get(A('/people')); people = [...(r.partners ?? []).map((x) => ({ ...x, group: 'Externe Partner' })), ...r.people.filter((x) => PARTNER || x.id !== state.user.id).map((x) => ({ ...x, group: PARTNER ? 'Ansprechpartner im Team' : 'Mitglieder' }))]; } catch (e) { return toast(e.message, 'err'); }
     const q = input({ placeholder: 'Nummer suchen …' });
     const list = h('div', { class: 'people-list' });
     const draw = () => {
@@ -99,8 +100,9 @@ export async function chatApp(container, ctx, o = {}) {
     };
     mount(side, h('div', { class: 'chat-side-title' }, 'Kanäle'),
       channels.map((c) => row(c, false)),
-      h('div', { class: 'chat-side-title dm-title' }, 'Privatnachrichten', canSend && button('', { size: 'sm', variant: 'ghost', icon: 'plus', title: 'Neue Privatnachricht', onClick: newDm })),
-      dms.length ? dms.map((c) => row(c, true)) : h('div', { class: 'muted', style: { padding: '4px 14px 8px', fontSize: '12px' } }, 'Noch keine Unterhaltungen.'),
+      h('div', { class: 'chat-side-title dm-title' }, 'Privatnachrichten'),
+      canSend && h('div', { class: 'chat-newdm' }, button('Neue Privatnachricht', { size: 'sm', variant: 'primary', icon: 'plus', title: 'Kontakt auswählen und eine Privatnachricht starten', onClick: newDm })),
+      dms.length ? dms.map((c) => row(c, true)) : h('div', { class: 'muted', style: { padding: '4px 14px 8px', fontSize: '12px' } }, canSend ? 'Noch keine Unterhaltungen – starte oben mit „Neue Privatnachricht“.' : 'Noch keine Unterhaltungen.'),
       !PARTNER && h('div', { class: 'chat-side-title dm-title' }, 'Meine Tickets', button('', { size: 'sm', variant: 'ghost', icon: 'plus', title: 'Fehler melden', onClick: () => import('./tickets.js').then((m) => m.openReportDialog({ app: 'Chat', onDone: loadTickets })) })),
       !PARTNER && (myTickets.length ? myTickets.slice(0, 8).map((t) => h('button', { class: 'chat-chan', type: 'button', style: { '--c': t.statusColor }, title: t.title,
         onclick: () => import('./tickets.js').then((m) => m.openTicketModal({ id: t.id, onChange: loadTickets })) }, h('span', { class: 'dot' }), h('span', { class: 'cn' }, `${t.number} · ${t.title}`), h('span', { class: 'muted', style: { fontSize: '11px' } }, t.statusLabel)))
@@ -110,7 +112,7 @@ export async function chatApp(container, ctx, o = {}) {
 
   // ── Nachrichten ──
   async function loadMessages({ initial = false } = {}) {
-    if (!current) { mount(scroller, empty('Kein Kanal', 'Es ist noch kein Kanal für dich freigegeben.', 'chat')); mount(head); return; }
+    if (!current) { mount(scroller, h('div', { class: 'chat-start' }, empty('Noch keine Unterhaltung', canSend ? 'Es ist noch kein Kanal für dich freigegeben. Starte eine Privatnachricht: Kontakt auswählen, dann schreiben.' : 'Es ist noch kein Kanal für dich freigegeben.', 'chat'), canSend && button('Neue Privatnachricht', { variant: 'primary', icon: 'plus', onClick: newDm }))); mount(head); return; }
     const stick = initial || nearBottom();
     const prevH = scroller.scrollHeight, prevTop = scroller.scrollTop;
     try { data = await api.get(A(`/channels/${current}/messages`)); } catch (e) { mount(scroller, empty('Nicht verfügbar', e.message, 'lock')); return; }
@@ -188,7 +190,8 @@ export async function chatApp(container, ctx, o = {}) {
 
   async function send() {
     const body = ta.value.trim();
-    if (!body || !current) return;
+    if (!current) return toast('Bitte zuerst einen Kontakt oder Kanal auswählen – mit „Neue Privatnachricht“ startest du einen Chat.', 'warn');
+    if (!body) return;
     try {
       if (editing) await api.patch(A(`/messages/${editing.id}`), { body });
       else await api.post(A(`/channels/${current}/messages`), { body, replyTo: replyTo?.id });

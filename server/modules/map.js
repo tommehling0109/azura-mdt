@@ -66,7 +66,7 @@ export default {
     ['map.edit', 'Karte: Waypoints setzen, bearbeiten und löschen'],
   ],
   config: [
-    { key: 'map.base', group: 'Karte', label: 'Kartengrundlage', help: 'Bild = die mitgelieferte Postal-Karte (Standard, Postleitzahlen sind aufgedruckt und stimmen mit den Postal-Daten überein). Kacheln = Satellitenkarte aus Kacheln (URL unten).', type: 'select', default: 'image', options: [{ value: 'image', label: 'Bild (Postal-Karte)' }, { value: 'tiles', label: 'Kacheln (Satellit)' }] },
+    { key: 'map.base', group: 'Karte', label: 'Kartengrundlage', help: 'Kacheln = Satellitenkarte aus Kacheln (Standard) mit eingeblendeten Postleitzahlen. Bild = die mitgelieferte Postal-Karte (Nummern aufgedruckt).', type: 'select', default: 'tiles', options: [{ value: 'image', label: 'Bild (Postal-Karte)' }, { value: 'tiles', label: 'Kacheln (Satellit)' }] },
     { key: 'map.image_url', group: 'Karte', label: 'Kartenbild (URL)', help: 'Standard: /img/map.webp (mitgeliefert). Ein eigenes Bild muss zur Kalibrierung unten passen.', type: 'string', default: '/img/map.webp', max: 300 },
     { key: 'map.image_width', group: 'Karte', label: 'Kartenbild: Breite (px)', type: 'number', default: 1333, min: 1, max: 100000 },
     { key: 'map.image_height', group: 'Karte', label: 'Kartenbild: Höhe (px)', type: 'number', default: 2000, min: 1, max: 100000 },
@@ -79,7 +79,7 @@ export default {
     { key: 'map.calib_scale', group: 'Karte', label: 'Kalibrierung: Pixel pro Spieleinheit', help: 'Rechnet Spielkoordinaten in Kartenpixel der größten Zoomstufe um (Standard passt zur GTA-5-Karte).', type: 'number', default: 0.6465, min: 0.0001, max: 1000 },
     { key: 'map.calib_x', group: 'Karte', label: 'Kalibrierung: X-Versatz (px)', type: 'number', default: 3914.5, min: -1000000, max: 1000000 },
     { key: 'map.calib_y', group: 'Karte', label: 'Kalibrierung: Y-Versatz von oben (px)', type: 'number', default: 5566.5, min: -1000000, max: 1000000 },
-    { key: 'map.show_postals', group: 'Karte', label: 'Postleitzahlen zusätzlich als Beschriftung einblenden', help: 'Bei der Postal-Karte (Bild) sind die Nummern bereits aufgedruckt – dann besser aus.', type: 'bool', default: false },
+    { key: 'map.show_postals', group: 'Karte', label: 'Postleitzahlen standardmäßig anzeigen', help: 'Blendet die Postleitzahlen als Beschriftung über der Karte ein. Bei der Postal-Karte (Bild) sind sie bereits aufgedruckt – dann besser aus.', type: 'bool', default: true },
   ],
   routes(r) {
     r.get('/api/map/config', { perm: 'map.view' }, (ctx) => ({

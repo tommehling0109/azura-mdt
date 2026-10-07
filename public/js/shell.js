@@ -6,10 +6,11 @@ import { avatar, userAvatar, skeletons, empty, toast, button, toggle } from './u
 import { state, canAny, can, applyConfig } from './state.js';
 import { NAV, allItems } from './modules.js';
 import { openAccountDialog } from './views/account.js';
+import { openSettingsDialog } from './views/settings.js';
 import { api } from './api.js';
 import { connect, disconnect, subscribe, onStatus } from './realtime.js';
 import { initLock, clearLockState } from './lockscreen.js';
-import { initNotifier, getNotifications, onNotifChange, markRead, getPref, setPref } from './notifier.js';
+import { initNotifier, getNotifications, onNotifChange, markRead, removeNotifs, getPref, setPref } from './notifier.js';
 
 const screen = () => document.getElementById('screen');
 const compact = () => window.matchMedia('(max-width: 700px)').matches;
@@ -61,6 +62,7 @@ export async function openTarget(target) {
   window.focus?.();
   if (target.app === 'chat' && target.channelId) { try { sessionStorage.setItem('mdt:chat:channel', String(target.channelId)); } catch { /* egal */ } }
   if (target.app === 'tab' && target.statementId) { try { sessionStorage.setItem('mdt:tab:open', String(target.statementId)); } catch { /* egal */ } }
+  if (target.partnerTicket) { const m = await import('./views/tickets.js'); return m.openPartnerTickets({ open: target.partnerTicket }); }
   if (target.app === 'tickets' && target.ticketId) { try { sessionStorage.setItem('mdt:tickets:open', String(target.ticketId)); } catch { /* egal */ } }
   if (target.app === 'credit' && target.loanId) { try { sessionStorage.setItem('mdt:credit:open', String(target.loanId)); } catch { /* egal */ } }
   if (target.app) ui.open(target.app);
@@ -136,8 +138,9 @@ export function showApp(onLogout, opts = {}) {
   const liveDot = h('span', { class: 'panel-btn', title: 'Live verbunden' }, pulse);
   onStatus((v) => { pulse.classList.toggle('off', !v); liveDot.title = v ? 'Live verbunden – Änderungen erscheinen sofort' : 'Verbindung unterbrochen – verbinde automatisch neu …'; });
   let lockCtl = null;
-  const reportBtn = h('button', { class: 'panel-btn', type: 'button', title: 'Fehler melden / Ticket eröffnen', 'aria-label': 'Fehler melden', onclick: () => import('./views/tickets.js').then((m) => m.openReportDialog({ app: document.querySelector('.win.active .wt')?.textContent ?? '' })) }, icon('bug'));
+  const reportBtn = h('button', { class: 'panel-btn', type: 'button', title: opts.partner ? 'Fehler melden / Meine Tickets' : 'Fehler melden / Ticket eröffnen', 'aria-label': 'Fehler melden', onclick: () => import('./views/tickets.js').then((m) => (opts.partner ? m.openPartnerTickets() : m.openReportDialog({ app: document.querySelector('.win.active .wt')?.textContent ?? '' }))) }, icon('bug'));
   const lockBtn = h('button', { class: 'panel-btn', type: 'button', title: 'Bildschirm sperren', 'aria-label': 'Bildschirm sperren', onclick: () => lockCtl?.lock() }, icon('lockClosed'));
+  const settingsBtn = h('button', { class: 'panel-btn', type: 'button', title: 'Einstellungen (Ton, Lautstärke, Hinweise)', 'aria-label': 'Einstellungen', onclick: () => openSettingsDialog() }, icon('settings'));
   const bellBadge = h('span', { class: 'bell-badge', hidden: true });
   const bell = h('button', { class: 'panel-btn', type: 'button', title: 'Benachrichtigungen', 'aria-label': 'Benachrichtigungen', 'aria-haspopup': 'true' }, icon('bell'), bellBadge);
   const npanel = h('div', { class: 'notif-panel', hidden: true, role: 'dialog', 'aria-label': 'Benachrichtigungen' });
@@ -151,12 +154,13 @@ export function showApp(onLogout, opts = {}) {
     const popT = toggle('Hinweise als Pop-up im System', getPref('popup'), (v) => setPref('popup', v));
     mount(npanel,
       h('div', { class: 'np-head' }, h('h3', null, 'Benachrichtigungen', unread > 0 && h('span', { class: 'count hot', style: { marginLeft: '8px' } }, unread)),
-        button('Alle gelesen', { size: 'sm', variant: 'ghost', disabled: unread === 0, onClick: () => markRead(null) })),
+        h('span', { class: 'np-head-btns' }, button('Alle gelesen', { size: 'sm', variant: 'ghost', disabled: unread === 0, onClick: () => markRead(null) }), button('Alle löschen', { size: 'sm', variant: 'ghost', icon: 'trash', disabled: !list.length, onClick: () => removeNotifs() }))),
       h('div', { class: 'np-list' }, list.length ? list.map((n) => h('div', { class: `np-item ${n.read ? '' : 'unread'}`, role: 'button', tabindex: 0,
         onclick: () => { markRead([n.id]); closeNotif(); openTarget(n.target); } },
-      h('span', { class: 'np-dot' }), h('div', { style: { minWidth: 0 } }, h('div', { class: 'np-t' }, n.title), n.body && h('div', { class: 'np-b' }, n.body), h('div', { class: 'np-time' }, timeAgo(n.createdAt)))))
+      h('span', { class: 'np-dot' }), h('div', { style: { minWidth: 0, flex: 1 } }, h('div', { class: 'np-t' }, n.title), n.body && h('div', { class: 'np-b' }, n.body), h('div', { class: 'np-time' }, timeAgo(n.createdAt))),
+      h('button', { class: 'np-x', type: 'button', title: 'Benachrichtigung löschen', 'aria-label': 'Benachrichtigung löschen', onclick: (e) => { e.stopPropagation(); removeNotifs([n.id]); } }, icon('x'))))
         : h('div', { class: 'np-empty' }, 'Noch keine Benachrichtigungen.')),
-      h('div', { class: 'np-foot' }, popT, soundT));
+      h('div', { class: 'np-foot' }, popT, soundT, button('Weitere Einstellungen …', { size: 'sm', variant: 'ghost', icon: 'settings', onClick: () => { closeNotif(); openSettingsDialog(); } })));
   }
   bell.addEventListener('click', (e) => { e.stopPropagation(); if (!npanel.hidden) return closeNotif(); startMenu.hidden = true; startBtn.classList.remove('open'); npanel.hidden = false; bell.classList.add('open'); drawBell(); });
   document.addEventListener('pointerdown', (e) => { if (!npanel.hidden && !npanel.contains(e.target) && !bell.contains(e.target)) closeNotif(); });
@@ -167,7 +171,7 @@ export function showApp(onLogout, opts = {}) {
     h('div', { class: 'panel-left' }, startBtn),
     h('div', { class: 'panel-center' }, clock),
     h('div', { class: 'panel-right' },
-      liveDot, bell, !opts.partner && reportBtn, lockBtn,
+      liveDot, bell, reportBtn, settingsBtn, lockBtn,
       h('button', { class: 'panel-btn panel-user', type: 'button', title: opts.partner ? state.user.displayName : 'Konto & Sicherheit', onclick: opts.partner ? undefined : () => openAccountDialog() },
         opts.partner ? icon('users') : (panelAvatar = userAvatar(state.user, 'sm')), h('span', null, state.user.displayName)),
       h('button', { class: 'panel-btn', type: 'button', title: 'Abmelden', 'aria-label': 'Abmelden', onclick: () => { clearLockState(); lockCtl?.destroy(); onLogout(); } }, icon('logout'))));
@@ -250,6 +254,7 @@ export function showApp(onLogout, opts = {}) {
       ])),
       h('div', { class: 'start-foot' }, avatar(u.displayName),
         h('div', { class: 'uc-text' }, h('div', { class: 'uc-name' }, u.displayName), h('div', { class: 'uc-role' }, opts.footerRole ?? ([u.memberNumber, u.rank?.name].filter(Boolean).join(' · ') || u.roles.map((r) => r.name).join(', ') || 'Keine Rolle'))),
+        h('button', { class: 'btn btn-sm btn-ghost', type: 'button', title: 'Einstellungen', onclick: () => { closeStart(); openSettingsDialog(); } }, icon('bell')),
         !opts.partner && h('button', { class: 'btn btn-sm btn-ghost', type: 'button', title: 'Konto & Sicherheit', onclick: () => { closeStart(); openAccountDialog(); } }, icon('settings')),
         h('button', { class: 'btn btn-sm btn-ghost', type: 'button', title: 'Bildschirm sperren', onclick: () => { closeStart(); lockCtl?.lock(); } }, icon('lockClosed')),
         h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { closeStart(); clearLockState(); lockCtl?.destroy(); onLogout(); } }, icon('logout'), 'Abmelden')));

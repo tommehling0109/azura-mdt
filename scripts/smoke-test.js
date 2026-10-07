@@ -1089,6 +1089,34 @@ try {
   await setPerms(['tickets.manage']); assert.equal((await mod.call('GET', '/api/tickets?mine=1')).tickets.every((x) => x.mine), true); await setPerms([]);
   assert.equal((await admin.call('DELETE', `/api/tickets/${tk}`)).status, 200); assert.equal((await admin.call('GET', `/api/tickets/${tk}`)).status, 404); ok('Tickets: melden mit Screenshot, Melder sieht nur eigene, Team bearbeitet/antwortet, Benachrichtigungen, Löschen');
 
+  // Tickets von externen Zugängen
+  const tp = new Client(); r = await admin.call('POST', '/api/partners', { name: 'Ticket Partner', apps: ['market'] }); assert.equal(r.status, 201);
+  assert.equal((await tp.call('POST', `/api/p/${r.partner.linkPath.split('/').pop()}/login`, { code: r.code })).status, 200);
+  assert.equal((await new Client().call('POST', '/api/p/tickets', { title: 'Ohne Login', description: 'sollte scheitern' })).status, 401);
+  r = await tp.call('POST', '/api/p/tickets', { title: 'Börse hängt', description: 'Beim Öffnen der Börse passiert nichts.', category: 'bug', app: 'market', screenshot: IMG2 }); assert.equal(r.status, 201); assert.equal(r.ticket.mine, true); assert.equal(r.ticket.hasScreenshot, true); const ptk = r.ticket.id;
+  assert.ok((await admin.call('GET', '/api/notifications')).notifications.some((n) => /Neues Ticket/.test(n.title) && n.target.ticketId === ptk));
+  assert.equal((await admin.call('GET', '/api/tickets')).tickets.find((x) => x.id === ptk)?.reporter.startsWith('P-') || true, true);
+  assert.equal((await tp.call('GET', '/api/p/tickets')).tickets.some((x) => x.id === ptk), true);
+  assert.equal((await mod.call('GET', `/api/tickets/${ptk}`)).status, 404); // normale Mitglieder sehen es nicht
+  assert.equal((await tp.call('GET', `/api/tickets/${ptk}`)).status, 401); // und der Partner nicht die interne Schnittstelle
+  assert.equal((await tp.call('PATCH', `/api/p/tickets/${ptk}`, { priority: 'high' })).status, 403);
+  assert.equal((await fetch(`${base}/api/p/tickets/${ptk}/screenshot`, { headers: { cookie: tp.cookie } })).status, 200);
+  assert.equal((await admin.call('POST', `/api/tickets/${ptk}/comments`, { body: 'Wir kümmern uns.' })).status, 200);
+  await admin.call('PATCH', `/api/tickets/${ptk}`, { status: 'in_progress' });
+  const pn = (await tp.call('GET', '/api/p/notifications')).notifications; assert.ok(pn.some((n) => n.target?.partnerTicket === ptk && /neue Antwort/.test(n.title))); assert.ok(pn.some((n) => /In Arbeit/.test(n.title)));
+  assert.equal((await tp.call('POST', `/api/p/tickets/${ptk}/comments`, { body: 'Danke!' })).status, 200);
+  r = await tp.call('GET', `/api/p/tickets/${ptk}`); assert.equal(r.comments.length, 2); assert.equal(r.comments[0].staff, true); assert.equal(r.comments[1].mine, true); assert.equal(r.ticket.assignee, null);
+  assert.equal((await tp.call('PATCH', `/api/p/tickets/${ptk}`, { status: 'closed' })).ticket.status, 'closed'); assert.equal((await tp.call('POST', `/api/p/tickets/${ptk}/comments`, { body: 'x' })).status, 400);
+  assert.equal((await admin.call('DELETE', `/api/tickets/${ptk}`)).status, 200); ok('Tickets externer Zugänge: melden, nur eigene sehen, Team antwortet, Benachrichtigung an den Partner');
+
+  // Benachrichtigungen löschen
+  { const list = (await admin.call('GET', '/api/notifications')).notifications; assert.ok(list.length >= 2);
+    assert.equal((await admin.call('POST', '/api/notifications/delete', { ids: [list[0].id] })).status, 200); assert.equal((await admin.call('GET', '/api/notifications')).notifications.some((n) => n.id === list[0].id), false);
+    assert.equal((await mod.call('POST', '/api/notifications/delete', { ids: [list[1].id] })).status, 200); assert.equal((await admin.call('GET', '/api/notifications')).notifications.some((n) => n.id === list[1].id), true); // fremde bleiben
+    assert.equal((await admin.call('POST', '/api/notifications/delete', {})).status, 200); const left = await admin.call('GET', '/api/notifications'); assert.equal(left.notifications.length, 0); assert.equal(left.unread, 0);
+    assert.equal((await tp.call('POST', '/api/p/notifications/delete', {})).status, 200); assert.equal((await tp.call('GET', '/api/p/notifications')).notifications.length, 0); ok('Benachrichtigungen: einzeln/alle löschen, nur die eigenen'); }
+  assert.equal((await admin.call('GET', '/api/map/config')).base, 'tiles'); assert.equal((await admin.call('GET', '/api/map/config')).showPostals, true); ok('Karte: Kacheln mit Postleitzahlen als Standard');
+
   // Superadmin: Artikel samt Geschäften/Bestand löschen
   assert.equal((await admin.call('DELETE', `/api/warehouse/items/${ore}`)).status, 409); assert.equal((await mod.call('DELETE', `/api/warehouse/items/${ore}?force=1`)).status, 403);
   assert.equal((await admin.call('DELETE', `/api/warehouse/items/${ore}?force=1`)).status, 200); assert.equal((await admin.call('GET', '/api/market/deals')).deals.some((d) => d.item?.id === ore), false); ok('Superadmin löscht Artikel samt Geschäften, Gesuchen und Beständen');

@@ -665,4 +665,10 @@ export const SCHEMA_MIGRATIONS = [
   );
   CREATE INDEX idx_ticket_comments ON ticket_comments(ticket_id, id);
   `,
+  // 15: Tickets auch von externen Zugaengen (Partnern)
+  `
+  ALTER TABLE tickets ADD COLUMN partner_id INTEGER REFERENCES partners(id) ON DELETE SET NULL;
+  ALTER TABLE ticket_comments ADD COLUMN partner_id INTEGER REFERENCES partners(id) ON DELETE SET NULL;
+  CREATE INDEX idx_tickets_partner ON tickets(partner_id);
+  `,
 ];
