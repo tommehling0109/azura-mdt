@@ -10,9 +10,9 @@ const csvCell = (v) => {
 
 export default {
   name: 'audit',
-  permissions: [['audit.view', 'Audit-Log einsehen']],
+  permissions: [['audit.view', 'Audit-Log einsehen'], ['audit.export', 'Audit-Log als Datei exportieren']],
   routes(r) {
-    r.get('/api/audit/export', { perm: 'audit.view' }, (ctx) => {
+    r.get('/api/audit/export', { perm: 'audit.export' }, (ctx) => {
       const { rows } = queryAudit({ viewerId: ctx.user.id, limit: 5000, offset: 0, module: ctx.query.module, q: ctx.query.q, action: ctx.query.action, user: ctx.query.user, from: dateOnly(ctx.query.from), to: dateOnly(ctx.query.to) });
       const head = ['Zeitpunkt', 'Benutzer', 'Aktion', 'Modul', 'Datensatz-Typ', 'Datensatz', 'Vorher', 'Nachher', 'IP'];
       const lines = rows.map((r) => [r.ts, r.username, r.action, r.module, r.targetType, r.targetLabel, r.before, r.after, r.ip].map(csvCell).join(';'));

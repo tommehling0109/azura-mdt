@@ -92,15 +92,15 @@ Desktop-Look: obere Leiste (Logo/App-Menü, Uhr, Benutzer), schwebendes Dock mit
   Rechte: `warehouse.view`, `warehouse.view_access` (Zugangsinfo), `warehouse.stock` (buchen), `warehouse.manage` (Lager verwalten + Zugriffe), `warehouse.items` (Artikel), `warehouse.prices` (Preisspannen). Zusätzlich je Lager: „beschränkt“ + Rollen mit Stufe *Ansehen* oder *Verwalten*.
 - **Preisspanne → Börse:** Jeder Artikel hat optional Mindest-/Höchstpreis und einen Zielbestand. Stellt ein Partner ein Angebot ein (Artikel + Stückzahl), sieht er automatisch unseren **Preisvorschlag** (nie die Spanne) und kann ihn direkt annehmen oder einen eigenen Preis nennen. Beides wird vom Team manuell geprüft (annehmen / Gegenangebot / ablehnen). Die Regel steht unter Konfiguration → Lager: nach Bestand (je voller das Lager gegenüber dem Zielbestand, desto niedriger der Preis), Mittelwert, Mindest- oder Höchstpreis. Bei „Ware eingegangen“ kann die Lieferung direkt in ein Lager eingebucht werden.
 
-## Deckel-System (Firmenabrechnung)
+## Deckel-System (externe Firmen)
 
-App „Deckel“ (Bereich Finanzen). Firmen werden als Geschäftskunden angelegt (Ansprechpartner, Kontakt, **wöchentlich/monatlich**, gültig für *alle / bestimmte Mitarbeiter / Mitarbeitergruppe per Recht*, optionales Limit, Status) und bekommen automatisch einen **eigenen Portal-Link** `/deckel/firma/<Token>` (neu erzeugbar, alter Link ungültig).
+App „Deckel“ (Bereich Finanzen) – **nur für externe Firmen**. Wir geben keine Summen ein und gleichen nichts ab; es gibt deshalb **keine Buchungen und keine Differenz**. Eine Firma wird mit **Firmenname, Firmensitz** (z. B. „PC1234 Test Drive“) und **Kontonummer** (z. B. „LS28180705“, wird großgeschrieben) angelegt, hat ein **wöchentliches/monatliches** Intervall und bekommt automatisch einen **eigenen Portal-Link** `/deckel/firma/<Token>` (neu erzeugbar, alter Link ungültig).
 
-- **Buchungen:** Mitarbeiter schreiben auf Deckel – **Personalnummer ist Pflicht** und wird beim Tippen geprüft (angezeigt wird nur die Nummer, nie ein Name). Fremde Nummern nur mit `tab.book_others`. Jede Buchung bekommt Nummer, Zeitraum (07.10.2026 → *KW 41 / 2026* bzw. *Oktober 2026*), Ersteller, Uhrzeit und einen Finanzvorgang im Journal. **Nie gelöscht**: nur storniert/korrigiert (Korrektur = Storno + verknüpfte neue Buchung), alles im Audit-Log.
-- **Firmenportal:** Firma wählt Woche/Monat (nur Zeiträume ohne Abrechnung), trägt den fälligen Betrag ein (+ Kommentar), bekommt die Bestätigung und sieht ihre Historie. Sie sieht nie unsere Summen, Buchungen, Mitarbeiter oder andere Firmen. Standard: nur abgeschlossene Zeiträume (Konfiguration → Deckel).
-- **Abgleich:** unsere Buchungssumme vs. eingereicht, Differenz sofort sichtbar. Bei Abweichung lässt sich die Abrechnung nur mit ausdrücklicher Freigabe + Begründung bestätigen.
-- **Ablauf:** Eingereicht → In Prüfung → Bestätigt → Zahlung ausstehend → Bezahlt (oder Abgelehnt, dann kann die Firma erneut einreichen). Zahlung per **Überweisung** (Datum, Referenz) oder **Rechnung** (erhalten, Nummer, Betrag, Datum, PDF/Bild). Ab „Bestätigt“ sind Buchungen des Zeitraums gesperrt; bei „Bezahlt“ werden die Finanzvorgänge verbucht. Neue Abrechnungen lösen eine Benachrichtigung aus.
-- **Rechte:** `tab.book` (buchen, eigene sehen), `tab.book_others`, `tab.view`, `tab.cancel`, `tab.manage_companies`, `tab.statements` (Finanz). Dashboard-Widget „Deckel“ zeigt offene Deckel, ausstehende Abrechnungen, Zahlungen und Gesamt offen.
+- **Firmenportal:** Die Firma wählt Woche/Monat (nur Zeiträume ohne Abrechnung), trägt den fälligen Betrag ein (+ Kommentar), bekommt die Bestätigung und sieht ihre Historie live. Standard: nur abgeschlossene Zeiträume (Konfiguration → Deckel).
+- **Abrechnung beim Team:** Jede eingereichte Abrechnung zeigt **Firma, Firmensitz, Kontonummer und Betrag** (auch in der Benachrichtigung). Beim Bestätigen steht, wie viel auf welches Konto gezahlt wird; ein abweichender Betrag braucht eine Begründung.
+- **Ablauf:** Eingereicht → In Prüfung → Bestätigt → Zahlung ausstehend → Bezahlt (oder Abgelehnt, dann kann die Firma erneut einreichen). Zahlung per **Überweisung** (Datum, Referenz) oder **Rechnung** (erhalten, Nummer, Betrag, Datum, PDF/Bild). Jeder Schritt landet im Verlauf, im Audit-Log und als Finanzvorgang (Ausgabe auf das Konto der Firma) im Journal.
+- **Löschen:** Firmen und einzelne Abrechnungen lassen sich mit `tab.delete` (und als Superadmin) endgültig löschen – samt Verlauf, Rechnungsdatei und Finanz-Eintrag.
+- **Rechte:** `tab.view`, `tab.manage_companies` (Firmen anlegen/bearbeiten/Links), `tab.statements` (prüfen, bestätigen, Zahlung), `tab.delete`.
 
 ## Kreditsystem
 
@@ -118,6 +118,29 @@ App „Kredit“ (Finanzen) für Mitarbeiter und – als Partner-App – für ex
 
 - **Profilbild:** Jedes Mitglied lädt unter Konto & Sicherheit → *Profilbild* ein eigenes Bild hoch (wird quadratisch zugeschnitten, PNG/JPEG/WebP, Typ per Dateikopf geprüft, kein SVG). Es erscheint in der Kopfzeile, in der Benutzerverwaltung und im Chat – immer neben der Personalnummer, nie mit Namen. Mitglieder mit dem Recht `users.avatar_remove` (Admins immer) können fremde Bilder in der Benutzerverwaltung entfernen. Änderungen erscheinen bei allen sofort.
 - **Live überall:** Jede Änderung (Deckel, Kredit, Börse, Lager, Chat, Benutzer …) wird als Ereignis gemeldet und in allen offenen Fenstern ohne Neuladen aktualisiert – auch im **Firmenportal** (Statuswechsel erscheinen dort sofort, Eingaben im Formular bleiben erhalten) und im Partner-Portal. Ein automatischer Test prüft, dass jede schreibende Aktion ein Live-Ereignis auslöst und Firmen nie Ereignisse anderer Firmen erhalten.
+
+## Superadmin, Rechte & Hierarchie
+
+- **Superadmin:** Der erste Benutzer (Einrichtung) ist Superadmin. Er hat alle Rechte, darf **alles endgültig löschen** (Kredite in jedem Status, Börsen-Geschäfte/Angebote, Deckel-Abrechnungen und -Firmen, externe Zugänge samt aller Geschäfte/Kredite/Dokumente, Lager samt Bestand, Journal-Einträge …) und das Panel zurücksetzen. Weitere Superadmins vergibt nur ein Superadmin; einer bleibt immer erhalten. Löschen anderer geht ohne Superadmin nur mit den jeweiligen Rechten (`credit.delete`, `market.delete`, `tab.delete`, `partners.delete`, `finance.delete`).
+- **Namen nach Hierarchie:** Den echten Namen eines Mitglieds sieht man bei sich selbst, als Superadmin und bei allen, die in der Hierarchie **unter** einem stehen (übergeordneter Rang oder Vorgesetzten-Kette). Alle anderen sehen nur die Personalnummer.
+- **Genaue Rechte:** Jede Route verlangt ein eindeutiges Recht; Rechte lassen sich nur vergeben, wenn man sie selbst besitzt. Die vollständige, **aus dem Code erzeugte** Matrix aller Rechte und Routen steht in [docs/RECHTE.md](docs/RECHTE.md) (`node scripts/gen-rights.mjs` aktualisiert sie). Neu: `users.password_reset`, `audit.export`, `stats.view`, `finance.manual`/`finance.export`/`finance.delete`, `partners.documents`/`partners.delete`, `users.avatar_edit`.
+
+## Externe Zugänge: Stammdaten
+
+Beim Anlegen eines Zugangs: **Art** (Kunde/Partner oder **Lieferant**), Vorname, Nachname, Geburtsdatum, Postal Code, Straße, **UMail** (RP-interne Mail, die Endung `@umail.com` ist fest), **Telefonnummer** (wird schon beim Tippen ins Format `(555) 123-4567` gebracht), Kontonummer sowie **Ausweis** (Upload) und – wenn nötig – **Waffenschein** (Upload; PDF/PNG/JPEG/WebP, Typ per Dateikopf geprüft, max. 5 MB). Bei Kunden sind alle Angaben optional, bei **Lieferanten Pflicht** (inkl. Ausweis). Dokumente sieht und ändert nur, wer `partners.documents` hat. Löschen eines Zugangs mit Geschäften/Krediten: erst Hinweis, dann (mit `partners.delete`/Superadmin) samt aller Daten.
+
+## Finanzen & Statistik
+
+- **Finanzen:** Überblick (Saldo, verbuchte/erwartete Ein- und Ausgänge, Verlauf je Monat, Aufteilung nach Börse/Deckel/Kredit/manuell) und **Journal** mit Filtern (Status, Richtung, Art, Zeitraum, Suche), **manuellen Buchungen** (`finance.manual`), **CSV-Export** (`finance.export`) und Löschen einzelner Einträge (`finance.delete`; eingebundene Einträge nur Superadmin).
+- **Statistik:** Kennzahlen und Diagramme zu Finanzen, Börse, Kredit, Deckel, Lager, Fahrzeugen, Mitgliedern, Chat und Systemaktivität. `stats.view` öffnet die App; jeder Abschnitt erscheint nur mit dem Ansichtsrecht des Bereichs; es werden nur aggregierte Zahlen geliefert.
+
+## Panel zurücksetzen
+
+Konfiguration → *Gefahrenzone* (nur Superadmin): leert **alle Daten** und hochgeladenen Dateien, ohne dass etwas neu installiert oder gepullt werden muss – Programm, Schema, Datensicherungen und Kartenkacheln bleiben, danach erscheint wieder die Ersteinrichtung. Nur mit Bestätigungstext „ALLES LÖSCHEN“ **und** Passwort; vorher wird automatisch eine Datensicherung angelegt.
+
+## Oberfläche
+
+Desktop-Symbole (Konfiguration → *Desktop-Symbole anzeigen*) lassen sich frei verschieben (Position wird pro Benutzer im Browser gemerkt); das Dock hebt Symbole über die Leiste hinaus an; außerhalb der Karte ist der Hintergrund meerblau.
 
 ## Nächste Phasen
 

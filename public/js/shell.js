@@ -172,14 +172,52 @@ export function showApp(onLogout, opts = {}) {
   mount(screen(), h('div', { class: 'wallpaper' }), widget, desktop, startMenu, npanel);
   if (state.config['ui.desktop_icons']) area.append(iconsEl);
 
-  // ── Desktop-Icons ──
+  // ── Desktop-Icons (frei verschiebbar, Position wird pro Benutzer im Browser gemerkt) ──
+  const POS_KEY = `azura.iconpos.v1.${state.user?.id ?? 0}`;
+  const loadPos = () => { try { return JSON.parse(localStorage.getItem(POS_KEY)) || {}; } catch { return {}; } };
+  const savePos = (p) => { try { localStorage.setItem(POS_KEY, JSON.stringify(p)); } catch { /* egal */ } };
+  const GRID = { w: 96, h: 102, pad: 10 };
+  function defaultSlot(idx) {
+    const rows = Math.max(1, Math.floor((area.clientHeight - 24) / GRID.h) || 1);
+    return { x: GRID.pad + Math.floor(idx / rows) * GRID.w, y: 12 + (idx % rows) * GRID.h };
+  }
+  function placeIcon(b, id, idx, pos) {
+    const p = pos[id] ?? defaultSlot(idx);
+    b.style.left = `${p.x}px`; b.style.top = `${p.y}px`;
+  }
+  function enableDrag(b, id) {
+    b.addEventListener('pointerdown', (e) => {
+      if (compact() || e.button !== 0) return;
+      const sx = e.clientX, sy = e.clientY, ox = b.offsetLeft, oy = b.offsetTop; let moved = false;
+      const mv = (ev) => {
+        const dx = ev.clientX - sx, dy = ev.clientY - sy;
+        if (!moved && Math.hypot(dx, dy) < 6) return;
+        if (!moved) { moved = true; b.classList.add('dragging'); b.setPointerCapture?.(ev.pointerId); }
+        const maxX = iconsEl.clientWidth - b.offsetWidth, maxY = iconsEl.clientHeight - b.offsetHeight;
+        b.style.left = `${Math.max(0, Math.min(maxX, ox + dx))}px`; b.style.top = `${Math.max(0, Math.min(maxY, oy + dy))}px`;
+      };
+      const up = () => {
+        b.removeEventListener('pointermove', mv); b.removeEventListener('pointerup', up); b.removeEventListener('pointercancel', up);
+        if (!moved) return;
+        b.classList.remove('dragging'); b._dragged = true; setTimeout(() => { b._dragged = false; }, 0);
+        const snap = (v) => Math.round(v / 8) * 8;
+        const x = snap(b.offsetLeft), y = snap(b.offsetTop); b.style.left = `${x}px`; b.style.top = `${y}px`;
+        const pos = loadPos(); pos[id] = { x, y }; savePos(pos);
+      };
+      b.addEventListener('pointermove', mv); b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
+    });
+  }
   function renderIcons() {
-    mount(iconsEl, visibleSections().flatMap((s) => s.items).map((i) => {
+    iconsEl.classList.toggle('free', !compact());
+    const pos = loadPos();
+    mount(iconsEl, visibleSections().flatMap((s) => s.items).map((i, idx) => {
       const n = i.badge ? counters[i.badge] : 0;
       const b = h('button', { class: 'desk-icon', type: 'button', title: i.subtitle ?? i.label },
         h('div', { class: 'di-img' }, icon(i.icon), n > 0 && h('span', { class: 'badge-dot' }, n)), h('span', { class: 'di-label' }, i.label));
+      if (!compact()) { placeIcon(b, i.id, idx, pos); enableDrag(b, i.id); }
       b.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (b._dragged) return;
         if (compact() || e.detail !== 1) { open(i.id); return; }
         iconsEl.querySelectorAll('.sel').forEach((x) => x.classList.remove('sel'));
         b.classList.add('sel');
@@ -391,7 +429,7 @@ export function showApp(onLogout, opts = {}) {
   ui = { open };
   areaObserver = new ResizeObserver(() => wins.forEach(fit)); // Fenster passen sich an, wenn der Platz kleiner wird (Browser-Zoom, Größenänderung)
   areaObserver.observe(area);
-  renderIcons();
+  renderIcons(); requestAnimationFrame(() => renderIcons()); window.addEventListener("resize", () => renderIcons());
   renderTasks();
   refreshCounters().then(renderIcons);
   // ── Echtzeit: eine Verbindung für Panel und Partner-Portal ──

@@ -18,3 +18,16 @@ export function decodeImage(data, maxBytes, fail) {
   if (!ext) throw fail('Nur PNG-, JPEG- oder WebP-Bilder sind erlaubt.');
   return { buf, ext };
 }
+
+/** Dokumente (Ausweis, Waffenschein, Rechnung): PDF oder Bild – geprüft anhand der Dateikopfdaten. */
+export function decodeDocument(data, maxBytes, fail) {
+  if (typeof data !== 'string') throw fail('Keine Datei übergeben.');
+  const buf = Buffer.from(data.replace(/^data:[^,]*,/, ''), 'base64');
+  if (buf.length < 8) throw fail('Die Datei ist leer.');
+  if (buf.length > maxBytes) throw fail(`Die Datei ist zu groß (maximal ${(maxBytes / 1024 / 1024).toFixed(0)} MB).`);
+  if (buf.subarray(0, 5).toString() === '%PDF-') return { buf, ext: 'pdf' };
+  const img = sniffImage(buf);
+  if (img) return { buf, ext: img };
+  throw fail('Erlaubt sind PDF, PNG, JPEG und WebP.');
+}
+export const DOC_MIME = { ...IMAGE_MIME, pdf: 'application/pdf' };

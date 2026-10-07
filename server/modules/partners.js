@@ -1,5 +1,5 @@
 import { all, get, run, tx, now } from '../core/db.js';
-import { HttpError, bad, conflict, notFound, str, strList } from '../core/http.js';
+import { HttpError, bad, conflict, forbidden, notFound, str, strList } from '../core/http.js';
 import { hashPassword, verifyPassword, rateLimit } from '../core/auth.js';
 import { getConfig } from '../core/config.js';
 import { audit } from '../core/audit.js';
@@ -9,6 +9,11 @@ import {
 import { partnerApps, isPartnerApp } from '../core/partner-apps.js';
 import { setupRequired } from './system.js';
 import { allocateNumber } from '../core/numbers.js';
+import { decodeDocument, DOC_MIME } from '../core/images.js';
+import { purgePartner } from '../core/purge.js';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { DB_PATH } from '../core/db.js';
 
 const MAX_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
@@ -18,10 +23,64 @@ const linkPath = (token) => `/p/${token}`;
 const dto = (p, { withLink }) => ({
   id: p.id, number: p.partner_number, name: p.name, note: p.note, status: p.status, apps: parseApps(p),
   lastLoginAt: p.last_login_at, createdAt: p.created_at,
+  type: p.partner_type, typeLabel: TYPES[p.partner_type], firstName: p.first_name, lastName: p.last_name, birthDate: p.birth_date, postalCode: p.postal_code, street: p.street,
+  umail: p.umail_local ? `${p.umail_local}@umail.com` : '', umailLocal: p.umail_local, phone: p.phone, accountNumber: p.account_number, weaponRequired: !!p.weapon_required,
+  docs: { id: !!p.id_doc_ext, weapon: !!p.weapon_doc_ext },
   locked: !!(p.locked_until && p.locked_until > now()), lockedUntil: p.locked_until && p.locked_until > now() ? p.locked_until : null,
   dealCount: p.deal_count ?? 0,
   linkPath: withLink ? linkPath(p.link_token) : undefined,
 });
+/** Format-Regeln für die Stammdaten externer Zugänge */
+const docDir = () => join(dirname(DB_PATH), 'partner-docs');
+const docFile = (id, kind, ext) => join(docDir(), `${id}-${kind}.${ext}`);
+const TYPES = { customer: 'Kunde / Partner', supplier: 'Lieferant' };
+const formatPhone = (v) => { const d = String(v ?? '').replace(/\D/g, ''); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : String(v ?? '').trim(); };
+const PROFILE_FIELDS = ['first_name', 'last_name', 'birth_date', 'postal_code', 'street', 'umail_local', 'phone', 'account_number'];
+
+/** Prüft/normalisiert die Stammdaten; bei Lieferanten sind alle Felder (inkl. Ausweis) Pflicht. */
+function profileFromBody(b, cur = {}) {
+  const out = {};
+  const pick = (k, bk) => (b[bk] !== undefined ? b[bk] : undefined);
+  const set = (col, v) => { out[col] = v; };
+  const v = (bk, col) => (b[bk] !== undefined ? b[bk] : cur[col]);
+  if (b.firstName !== undefined) set('first_name', str(b.firstName, 'Vorname', { max: 40, required: false }));
+  if (b.lastName !== undefined) set('last_name', str(b.lastName, 'Nachname', { max: 40, required: false }));
+  if (b.birthDate !== undefined) {
+    const d = b.birthDate === null || b.birthDate === '' ? null : String(b.birthDate);
+    if (d && (!/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(new Date(d).getTime()) || d < '1900-01-01' || d > now().slice(0, 10))) throw bad('Geburtsdatum: gültiges Datum erforderlich (TT.MM.JJJJ).');
+    set('birth_date', d);
+  }
+  if (b.postalCode !== undefined) { const p = String(b.postalCode ?? '').trim(); if (p && !/^[A-Za-z0-9 -]{1,12}$/.test(p)) throw bad('Postal Code: nur Buchstaben, Ziffern und Bindestrich.'); set('postal_code', p); }
+  if (b.street !== undefined) set('street', str(b.street, 'Straße', { max: 80, required: false }));
+  if (b.umail !== undefined) {
+    const l = String(b.umail ?? '').trim().toLowerCase().replace(/@umail\.com$/, '');
+    if (l && !/^[a-z0-9._-]{2,40}$/.test(l)) throw bad('UMail: nur Buchstaben, Ziffern, Punkt, Bindestrich und Unterstrich (die Endung @umail.com ist fest).');
+    set('umail_local', l);
+  }
+  if (b.phone !== undefined) { const ph = formatPhone(b.phone); if (ph && !/^\(\d{3}\) \d{3}-\d{4}$/.test(ph)) throw bad('Telefonnummer: Format (555) 123-4567.'); set('phone', ph); }
+  if (b.accountNumber !== undefined) { const a = String(b.accountNumber ?? '').trim().toUpperCase(); if (a && !/^[A-Z0-9-]{3,20}$/.test(a)) throw bad('Kontonummer: 3–20 Zeichen (Buchstaben/Ziffern), z. B. LS28180705.'); set('account_number', a); }
+  if (b.type !== undefined) { if (!TYPES[b.type]) throw bad('Art: Kunde/Partner oder Lieferant.'); set('partner_type', b.type); }
+  if (b.weaponRequired !== undefined) set('weapon_required', b.weaponRequired ? 1 : 0);
+  void pick; void v;
+  return out;
+}
+function requireComplete(merged, hasId, hasWeapon) {
+  const miss = [];
+  if (merged.partner_type === 'supplier') {
+    for (const [col, label] of [['first_name', 'Vorname'], ['last_name', 'Nachname'], ['birth_date', 'Geburtsdatum'], ['postal_code', 'Postal Code'], ['street', 'Straße'], ['umail_local', 'UMail'], ['phone', 'Telefonnummer'], ['account_number', 'Kontonummer']]) if (!merged[col]) miss.push(label);
+    if (!hasId) miss.push('Ausweis (Upload)');
+  }
+  if (merged.weapon_required && !hasWeapon) miss.push('Waffenschein (Upload)');
+  if (miss.length) throw bad(`${merged.partner_type === 'supplier' ? 'Bei Lieferanten sind' : 'Für diesen Zugang sind'} folgende Angaben Pflicht: ${miss.join(', ')}.`);
+}
+function saveDoc(id, kind, data) {
+  const { buf, ext } = decodeDocument(data, 6 * 1024 * 1024, bad);
+  mkdirSync(docDir(), { recursive: true });
+  for (const e of ['pdf', 'png', 'jpg', 'webp']) if (e !== ext) try { unlinkSync(docFile(id, kind, e)); } catch { /* egal */ }
+  writeFileSync(docFile(id, kind, ext), buf);
+  return ext;
+}
+
 const LIST_SQL = 'SELECT p.*, (SELECT COUNT(*) FROM market_deals d WHERE d.partner_id = p.id) deal_count FROM partners p';
 const cleanApps = (v) => {
   const apps = strList(v, 'Apps');
@@ -35,7 +94,9 @@ export default {
   name: 'partners',
   permissions: [
     ['partners.view', 'Externe Zugänge ansehen'],
-    ['partners.manage', 'Externe Zugänge erstellen, Links und Codes verwalten'],
+    ['partners.manage', 'Externe Zugänge erstellen, bearbeiten, Links und Codes verwalten'],
+    ['partners.documents', 'Externe Zugänge: Ausweis/Waffenschein ansehen und hochladen'],
+    ['partners.delete', 'Externe Zugänge samt aller Geschäfte, Kredite und Daten endgültig löschen'],
   ],
   config: [
     { key: 'partners.number_prefix', group: 'Zugang', label: 'Präfix der Partner-Nummer', help: 'Im Partner-Portal erscheint nur diese Nummer, nie der Name (z. B. AZ-P-100001).', type: 'string', default: 'AZ-P-', max: 12 },
@@ -54,9 +115,13 @@ export default {
       return { partners: all(`${LIST_SQL} ORDER BY p.created_at DESC`).map((p) => dto(p, { withLink: canLink })), apps: partnerApps() };
     });
 
-    r.post('/api/partners', { perm: 'partners.manage' }, (ctx) => {
+    r.post('/api/partners', { perm: 'partners.manage', bodyLimit: 14 * 1024 * 1024 }, (ctx) => {
       const b = ctx.body;
-      const name = str(b.name, 'Name', { min: 2, max: 60 });
+      const prof = profileFromBody(b);
+      const name = [prof.first_name, prof.last_name].filter(Boolean).join(' ') || str(b.name, 'Name', { min: 2, max: 60 });
+      const merged = { partner_type: 'customer', ...prof };
+      if ((b.idDoc || b.weaponDoc) && !ctx.user.perms.has('partners.documents')) throw forbidden('Für Dokument-Uploads fehlt dir das Recht „partners.documents“.');
+      requireComplete(merged, !!b.idDoc, !!b.weaponDoc);
       const note = str(b.note, 'Notiz', { max: 300, required: false });
       const apps = cleanApps(b.apps);
       let code = randomCode();
@@ -69,7 +134,12 @@ export default {
       const id = tx(() => {
         const res = run('INSERT INTO partners (partner_number,name,note,link_token,code_hash,status,apps,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
           allocateNumber('partner_number', 'partners.number_prefix', 'partners.number_start'), name, note, token, hashPassword(code), 'active', JSON.stringify(apps), ctx.user.id, t, t);
-        return Number(res.lastInsertRowid);
+        const pid = Number(res.lastInsertRowid);
+        const cols = Object.keys(prof);
+        if (cols.length) run(`UPDATE partners SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`, ...cols.map((c) => prof[c]), pid);
+        if (b.idDoc) run('UPDATE partners SET id_doc_ext = ? WHERE id = ?', saveDoc(pid, 'id', b.idDoc), pid);
+        if (b.weaponDoc) run('UPDATE partners SET weapon_doc_ext = ? WHERE id = ?', saveDoc(pid, 'weapon', b.weaponDoc), pid);
+        return pid;
       });
       audit(ctx, { action: 'partner.created', module: 'partners', targetType: 'partner', targetId: id, targetLabel: name, after: { name, apps } });
       ctx.status = 201;
@@ -82,7 +152,12 @@ export default {
       if (!cur) throw notFound('Zugang nicht gefunden.');
       const b = ctx.body;
       const before = dto(cur, { withLink: false });
+      const prof = profileFromBody(b, cur);
+      requireComplete({ ...cur, ...prof }, !!cur.id_doc_ext, !!cur.weapon_doc_ext);
       tx(() => {
+        const pc = Object.keys(prof);
+        if (pc.length) run(`UPDATE partners SET ${pc.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`, ...pc.map((c) => prof[c]), id);
+        if (prof.first_name !== undefined || prof.last_name !== undefined) { const f = prof.first_name ?? cur.first_name, l = prof.last_name ?? cur.last_name; if (f || l) run('UPDATE partners SET name = ? WHERE id = ?', [f, l].filter(Boolean).join(' '), id); }
         if (b.name !== undefined) run('UPDATE partners SET name = ? WHERE id = ?', str(b.name, 'Name', { min: 2, max: 60 }), id);
         if (b.note !== undefined) run('UPDATE partners SET note = ? WHERE id = ?', str(b.note, 'Notiz', { max: 300, required: false }), id);
         if (b.apps !== undefined) run('UPDATE partners SET apps = ? WHERE id = ?', JSON.stringify(cleanApps(b.apps)), id);
@@ -127,13 +202,37 @@ export default {
       return { linkPath: linkPath(token) };
     });
 
+    // Dokumente (Ausweis / Waffenschein)
+    const DOC_KINDS = { id: 'id_doc_ext', weapon: 'weapon_doc_ext' };
+    r.post('/api/partners/:id/docs/:kind', { perm: 'partners.documents', bodyLimit: 8 * 1024 * 1024 }, (ctx) => {
+      const id = Number(ctx.params.id), col = DOC_KINDS[ctx.params.kind];
+      if (!col) throw notFound('Unbekanntes Dokument.');
+      const cur = get('SELECT name FROM partners WHERE id = ?', id);
+      if (!cur) throw notFound('Zugang nicht gefunden.');
+      run(`UPDATE partners SET ${col} = ?, updated_at = ? WHERE id = ?`, saveDoc(id, ctx.params.kind, ctx.body.data), now(), id);
+      audit(ctx, { action: 'partner.document_uploaded', module: 'partners', targetType: 'partner', targetId: id, targetLabel: `${cur.name} · ${ctx.params.kind === 'id' ? 'Ausweis' : 'Waffenschein'}` });
+      return { partner: dto(get(`${LIST_SQL} WHERE p.id = ?`, id), { withLink: true }) };
+    });
+    r.get('/api/partners/:id/docs/:kind', { perm: 'partners.documents' }, (ctx) => {
+      const id = Number(ctx.params.id), col = DOC_KINDS[ctx.params.kind];
+      const p = col && get(`SELECT ${col} e FROM partners WHERE id = ?`, id);
+      const file = p?.e && docFile(id, ctx.params.kind, p.e);
+      if (!file || !existsSync(file)) throw notFound('Dokument nicht vorhanden.');
+      ctx.raw = { contentType: DOC_MIME[p.e], body: readFileSync(file), inline: true, cache: 'no-store' };
+    });
+
     r.delete('/api/partners/:id', { perm: 'partners.manage' }, (ctx) => {
       const id = Number(ctx.params.id);
       const cur = get(`${LIST_SQL} WHERE p.id = ?`, id);
       if (!cur) throw notFound('Zugang nicht gefunden.');
-      if (cur.deal_count > 0) throw conflict(`Zu diesem Zugang gibt es ${cur.deal_count} Geschäft(e). Deaktiviere ihn stattdessen, damit der Verlauf erhalten bleibt.`);
-      run('DELETE FROM partners WHERE id = ?', id);
-      audit(ctx, { action: 'partner.deleted', module: 'partners', targetType: 'partner', targetId: id, targetLabel: cur.name });
+      const loans = get('SELECT COUNT(*) c FROM credit_loans WHERE partner_id = ?', id).c;
+      if (cur.deal_count > 0 || loans > 0) {
+        const parts = [cur.deal_count > 0 && `${cur.deal_count} Börsen-Geschäft(e)`, loans > 0 && `${loans} Kredit(e)`].filter(Boolean).join(' und ');
+        if (ctx.query.force !== '1') throw conflict(`Zu diesem Zugang gibt es ${parts}. Deaktiviere ihn, damit der Verlauf erhalten bleibt – oder lösche ihn samt aller Daten (nur mit dem Recht „partners.delete“).`);
+        if (!ctx.user.perms.has('partners.delete')) throw forbidden('Zum Löschen samt aller Daten fehlt dir das Recht „partners.delete“.');
+      }
+      tx(() => purgePartner(id));
+      audit(ctx, { action: 'partner.deleted', module: 'partners', targetType: 'partner', targetId: id, targetLabel: cur.name, before: { deals: cur.deal_count, loans } });
       return { ok: true };
     });
 

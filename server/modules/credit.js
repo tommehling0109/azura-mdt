@@ -9,6 +9,7 @@ import { notify, staffWith } from '../core/notifications.js';
 import { creditPayout, creditExpectInstallment, creditSettleInstallment, creditCancelInstallments } from '../core/ledger.js';
 import { calcLoan, splitInstallments, dueDates, rateText, RATE_PERIODS } from '../core/credit-calc.js';
 import { registerWidget } from './dashboard.js';
+import { purgeLoan } from '../core/purge.js';
 
 /**
  * Kreditsystem (wie bei einer Bank): Externe Partner-Zugänge mit der App „Kredit“ beantragen Summe, Laufzeit (Anzahl Raten) und
@@ -293,6 +294,7 @@ export default {
     ['credit.manage', 'Kredit: Anfragen annehmen, Gegenvorschläge machen, Zinsen festlegen, auszahlen'],
     ['credit.payments', 'Kredit: Ratenzahlungen erfassen, Ausfälle melden'],
     ['credit.limits', 'Kredit: Kreditrahmen der Kreditnehmer festlegen'],
+    ['credit.delete', 'Kredit: Kredite endgültig löschen (jeder Status)'],
   ],
   config: [
     { key: 'credit.number_prefix', group: 'Kredit', label: 'Präfix der Kreditnummer', type: 'string', default: 'AZ-K-', max: 12 },
@@ -349,6 +351,14 @@ export default {
       const l = loadLoan(id);
       audit(ctx, { action: `credit.${action}`, module: 'credit', targetType: 'loan', targetId: id, targetLabel: `${l.loan_number} · ${l.partner_number}`, before: { status: before.status, principal: fmtC(before.principal_cents) }, after: { status: l.status, principal: fmtC(l.principal_cents) } });
       return { loan: loanDto(l, { detail: true }), events: eventsOf(id, false, ctx.user.id) };
+    });
+    r.delete('/api/credit/loans/:id', { perm: 'credit.delete' }, (ctx) => {
+      const id = Number(ctx.params.id);
+      const l = loadLoan(id);
+      if (!l) throw notFound('Kredit nicht gefunden.');
+      audit(ctx, { action: 'credit.deleted', module: 'credit', targetType: 'loan', targetId: id, targetLabel: `${l.loan_number} · ${l.partner_number}`, before: { status: l.status, principal: fmtC(l.principal_cents) } }); // vor dem Löschen, damit der Kreditnehmer live informiert wird
+      tx(() => purgeLoan(id));
+      return { ok: true };
     });
     r.get('/api/credit/borrowers', { perm: 'credit.view' }, () => ({
       borrowers: all("SELECT id, partner_number, name, status, apps, credit_limit_cents FROM partners ORDER BY partner_number").filter((p) => { try { return JSON.parse(p.apps).includes('credit'); } catch { return false; } }).map((p) => ({

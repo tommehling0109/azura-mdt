@@ -6,6 +6,7 @@ import {
 } from '../../ui/kit.js';
 import { api } from '../../api.js';
 import { can, state } from '../../state.js';
+import { prepareAvatar } from '../account.js';
 
 let permCatalog = null;
 const loadCatalog = async () => (permCatalog ??= (await api.get('/api/permissions')).permissions);
@@ -35,7 +36,7 @@ export default async function render(container, ctx) {
     ctx.refreshCounters?.();
     mount(listHost, table([
       { label: 'Nr.', style: { width: '1%' }, render: (u) => memberNo(u.memberNumber) },
-      { label: 'Benutzer', render: (u) => h('div', { class: 'cell-user' }, userAvatar(u), h('div', null, h('div', { class: 'nm' }, u.displayName), h('div', { class: 'sub' }, u.username ? '@' + u.username : (u.isSelf ? 'Du' : 'Name geschützt')))) },
+      { label: 'Benutzer', render: (u) => h('div', { class: 'cell-user' }, userAvatar(u), h('div', null, h('div', { class: 'nm' }, u.displayName, u.isSuperadmin && h('span', { class: 'badge no-dot b-warn', style: { marginLeft: '6px' } }, 'Superadmin')), h('div', { class: 'sub' }, u.username ? '@' + u.username : (u.isSelf ? 'Du' : 'Name geschützt')))) },
       { label: 'Rang / Abteilung', render: (u) => (u.rank || u.department ? h('div', { class: 'chips' }, rankBadge(u.rank), deptBadge(u.department)) : h('span', { class: 'muted' }, '–')) },
       { label: 'Status', render: (u) => statusBadge(u.status) },
       { label: 'Rollen', render: (u) => (u.roles.length ? h('div', { class: 'chips' }, u.roles.map(roleChip)) : h('span', { class: 'muted' }, '–')) },
@@ -111,20 +112,32 @@ export default async function render(container, ctx) {
     const roleBody = h('div', null, roles.length ? roleBoxes.map(([, c]) => c) : note('Noch keine Rollen vorhanden.'));
     const permBody = h('div', null, note('Direkte Rechte gelten zusätzlich zu den Rollen. Nutze sie sparsam – Rollen sind übersichtlicher.'), h('div', { style: { height: '12px' } }),
       Object.entries(groups).map(([m, boxes]) => h('div', { class: 'perm-group' }, h('h4', null, m), h('div', { class: 'perm-grid' }, boxes))));
-    const effBody = h('div', null, user?.isAdmin && note('Administrator – dieser Benutzer besitzt automatisch alle Rechte.', 'shield'), h('div', { class: 'chips', style: { marginTop: '10px' } },
+    const effBody = h('div', null, user?.isSuperadmin ? note('Superadmin – uneingeschränkter Zugriff, inklusive endgültigem Löschen aller Daten.', 'shield') : user?.isAdmin && note('Administrator – dieser Benutzer besitzt automatisch alle Rechte.', 'shield'), h('div', { class: 'chips', style: { marginTop: '10px' } },
       (user?.effectivePermissions ?? []).map((k) => h('span', { class: 'badge no-dot b-info mono' }, k))));
 
+    const avatarFile = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', hidden: true });
+    avatarFile.addEventListener('change', async () => {
+      const fl = avatarFile.files[0]; if (!fl) return;
+      try { const data = await prepareAvatar(fl); await api.post(`/api/users/${user.id}/avatar`, { data }); toast('Profilbild gespeichert.'); m.close(); load(true); }
+      catch (e) { toast(e.message || 'Das Bild konnte nicht verarbeitet werden.', 'err'); }
+      avatarFile.value = '';
+    });
+    const superBox = user && state.user.isSuperadmin ? checkbox(h('span', null, 'Superadmin'), user.isSuperadmin, { desc: 'Uneingeschränkter Zugriff, darf alles endgültig löschen und das Panel zurücksetzen. Mindestens ein Superadmin muss bleiben.' }) : null;
     const general = h('div', null, err,
       user && h('div', { class: 'member-card' }, userAvatar(user, 'lg'),
         h('div', { class: 'grow' }, h('div', { class: 'mc-name' }, user.displayName), h('div', { class: 'mc-sub' }, user.username ? `@${user.username}` : (user.memberNumber ? 'Personalnummer' : '')),
           h('div', { class: 'mc-meta' }, statusBadge(user.status), rankBadge(user.rank), deptBadge(user.department))),
         memberNo(user.memberNumber, true)),
-      user?.avatarUrl && can('users.avatar_remove') && h('div', { style: { margin: '0 0 14px' } }, button('Profilbild entfernen', { size: 'sm', variant: 'danger', icon: 'trash', onClick: async () => {
-        if (!await confirmDialog({ title: 'Profilbild entfernen?', message: 'Das Profilbild dieses Mitglieds wird gelöscht. Es kann ein neues hochladen.', confirmLabel: 'Entfernen' })) return;
-        try { await api.del(`/api/users/${user.id}/avatar`); toast('Profilbild entfernt.'); } catch (e) { toast(e.message, 'err'); }
-      } })),
+      user && !user.isSelf && (can('users.avatar_edit') || (user.avatarUrl && can('users.avatar_remove'))) && h('div', { class: 'row', style: { margin: '0 0 14px' } }, avatarFile,
+        can('users.avatar_edit') && button(user.avatarUrl ? 'Profilbild ändern' : 'Profilbild hochladen', { size: 'sm', icon: 'download', onClick: () => avatarFile.click() }),
+        user.avatarUrl && can('users.avatar_remove') && button('Profilbild entfernen', { size: 'sm', variant: 'danger', icon: 'trash', onClick: async () => {
+          if (!await confirmDialog({ title: 'Profilbild entfernen?', message: 'Das Profilbild dieses Mitglieds wird gelöscht. Es kann ein neues hochladen.', confirmLabel: 'Entfernen' })) return;
+          try { await api.del(`/api/users/${user.id}/avatar`); toast('Profilbild entfernt.'); m.close(); load(true); } catch (e) { toast(e.message, 'err'); }
+        } })),
       (!user || user.isSelf) ? h('div', { class: 'form-row' }, field('Anzeigename', dn), field('Benutzername', un))
-        : note('Namen anderer Mitglieder werden aus Datenschutzgründen nicht angezeigt – die Identifikation läuft ausschließlich über die Personalnummer.', 'shield'),
+        : user.nameVisible ? note(`Du siehst den Namen, weil dieses Mitglied in der Hierarchie unter dir steht (oder du Superadmin bist): ${user.displayName}${user.username ? ' (@' + user.username + ')' : ''}.`, 'shield')
+          : note('Namen von Mitgliedern auf gleicher oder höherer Ebene werden aus Datenschutzgründen nicht angezeigt – die Identifikation läuft über die Personalnummer.', 'shield'),
+      superBox,
       h('div', { class: 'form-row' }, field('Rang', rankSel), field('Abteilung', deptSel)),
       supSel && field('Vorgesetzter', supSel, { help: 'Direkter Vorgesetzter dieses Mitglieds.' }),
       !user && field('Passwort', pw),
@@ -147,7 +160,7 @@ export default async function render(container, ctx) {
       if (!r) return;
       try { await api.del(`/api/users/${user.id}`); m.close(); toast('Benutzer gelöscht.'); load(); } catch (e) { toast(e.message, 'err'); }
     } }));
-    if (user && can('users.edit')) footer.push(button('Passwort setzen', { icon: 'key', onClick: () => passwordDialog(user) }));
+    if (user && can('users.password_reset')) footer.push(button('Passwort setzen', { icon: 'key', onClick: () => passwordDialog(user) }));
     footer.push(h('span', { class: 'grow' }));
     footer.push(button('Schließen', { onClick: () => m.close() }));
     if (!user || can('users.edit')) footer.push(button(user ? 'Speichern' : 'Anlegen', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, save) }));
@@ -163,6 +176,7 @@ export default async function render(container, ctx) {
             rankId: idOrNull(rankSel), departmentId: idOrNull(deptSel), supervisorId: supSel ? idOrNull(supSel) : undefined,
             roleIds: roleBoxes.filter(([, c]) => c.input.checked).map(([r]) => r.id),
             permissions: permBoxes.filter(([, c]) => c.input.checked).map(([p]) => p.key),
+            isSuperadmin: superBox ? superBox.input.checked : undefined,
           });
         }
         m.close(); toast(user ? 'Änderungen gespeichert.' : 'Benutzer angelegt.'); load();

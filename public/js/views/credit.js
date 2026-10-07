@@ -2,6 +2,7 @@ import { h, mount, fmtDate, fmtDateTime, debounce, timeAgo } from '../ui/dom.js'
 import { icon } from '../ui/icons.js';
 import { button, busy, card, field, input, select, table, tabs, formError, openModal, confirmDialog, toast, skeletons, empty, note, badge } from '../ui/kit.js';
 import { api } from '../api.js';
+import { can } from '../state.js';
 import { parseMoney } from './tab.js';
 import { calcLoan } from '../credit-calc.js';
 import { fmtC, FREQ, loanBadge, termsBox, scheduleTable, timeline, dueIn } from './credit-shared.js';
@@ -119,6 +120,10 @@ export default async function render(container, ctx) {
       if (opts.canManage && ['requested', 'negotiating'].includes(l.status) && !myTurn) bar.push(button('Ablehnen', { variant: 'danger', icon: 'x', onClick: () => confirmDialog({ title: 'Anfrage ablehnen?', message: 'Der Kreditnehmer sieht die Ablehnung.', confirmLabel: 'Ablehnen', withReason: true }).then((r) => r && act('reject', { text: r.reason })) }));
       if (opts.canManage && l.status === 'accepted') bar.push(button('Auszahlung bestätigen', { variant: 'primary', icon: 'dollar', onClick: () => disburseDialog(l, reload) }), button('Stornieren', { variant: 'danger', icon: 'x', onClick: () => confirmDialog({ title: 'Kredit stornieren?', message: 'Es wurde noch nichts ausgezahlt.', confirmLabel: 'Stornieren', withReason: true }).then((r) => r && act('cancel', { text: r.reason })) }));
       if (opts.canPayments && l.status === 'active') bar.push(button('Ausfall melden', { variant: 'danger', icon: 'alert', onClick: () => confirmDialog({ title: 'Kredit als ausgefallen markieren?', message: 'Offene Raten werden nicht mehr erwartet (im Finanz-Journal storniert).', confirmLabel: 'Ausfall melden', withReason: true }).then((r) => r && act('default', { text: r.reason })) }));
+      if (can('credit.delete')) bar.push(button('Löschen', { variant: 'danger', icon: 'trash', onClick: async () => {
+        if (!await confirmDialog({ title: 'Kredit endgültig löschen?', message: `${l.number} (${l.partner.number}) wird samt Tilgungsplan, Verlauf und Finanz-Einträgen gelöscht – in jedem Status. Das lässt sich nicht rückgängig machen.`, confirmLabel: 'Endgültig löschen' })) return;
+        try { await api.del(`/api/credit/loans/${id}`); m.close(); toast('Kredit gelöscht.'); show(tab, true); } catch (ex) { toast(ex.message, 'err'); }
+      } }));
       mount(footer, bar, h('span', { class: 'grow' }), button('Schließen', { onClick: () => m.close() }));
     }
     await reload(); off = ctx.live(['credit', 'partners'], reload, { wait: 150 });

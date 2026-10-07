@@ -253,7 +253,7 @@ export default {
       const id = Number(ctx.params.id);
       const cur = get('SELECT * FROM warehouses WHERE id = ?', id);
       if (!cur) throw notFound('Lager nicht gefunden.');
-      if (get('SELECT COALESCE(SUM(quantity),0) q FROM warehouse_stock WHERE warehouse_id = ?', id).q > 0) throw conflict('Das Lager ist nicht leer. Lagere den Bestand aus oder um – oder setze das Lager auf inaktiv.');
+      if (get('SELECT COALESCE(SUM(quantity),0) q FROM warehouse_stock WHERE warehouse_id = ?', id).q > 0 && !(ctx.query.force === '1' && ctx.user.isSuperadmin)) throw conflict('Das Lager ist nicht leer. Lagere den Bestand aus oder um – oder setze das Lager auf inaktiv. (Superadmins können es samt Inhalt löschen.)');
       run('DELETE FROM warehouse_stock WHERE warehouse_id = ?', id);
       run('DELETE FROM warehouses WHERE id = ?', id);
       audit(ctx, { action: 'warehouse.deleted', module: 'warehouse', targetType: 'warehouse', targetId: id, targetLabel: `${cur.warehouse_number} · ${cur.name}` });

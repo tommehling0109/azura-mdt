@@ -19,7 +19,7 @@ const changed = (userId, kind) => publish({ topic: 'profile', kind, entityType: 
 
 export default {
   name: 'profile',
-  permissions: [['users.avatar_remove', 'Profilbilder anderer Mitglieder entfernen']],
+  permissions: [['users.avatar_edit', 'Profilbilder anderer Mitglieder hochladen/ändern'], ['users.avatar_remove', 'Profilbilder anderer Mitglieder entfernen']],
   routes(r) {
     r.get('/api/avatars/:id', (ctx) => {
       const u = get("SELECT id, avatar_ext, avatar_version FROM users WHERE id = ? AND status = 'active'", Number(ctx.params.id));
@@ -47,6 +47,19 @@ export default {
       audit(ctx, { action: 'account.avatar_removed', module: 'users', targetType: 'user', targetId: ctx.user.id });
       changed(ctx.user.id, 'avatar_removed');
       return { ok: true };
+    });
+    r.post('/api/users/:id/avatar', { perm: 'users.avatar_edit', bodyLimit: 3 * 1024 * 1024 }, (ctx) => {
+      const id = Number(ctx.params.id);
+      const u = get('SELECT id, avatar_ext FROM users WHERE id = ?', id);
+      if (!u) throw notFound('Benutzer nicht gefunden.');
+      const { buf, ext } = decodeImage(ctx.body.data, 2 * 1024 * 1024, bad);
+      mkdirSync(dir(), { recursive: true });
+      if (u.avatar_ext && u.avatar_ext !== ext) dropFile(id, u.avatar_ext);
+      writeFileSync(fileOf(id, ext), buf);
+      run('UPDATE users SET avatar_ext = ?, avatar_version = avatar_version + 1 WHERE id = ?', ext, id);
+      audit(ctx, { action: 'user.avatar_set', module: 'users', targetType: 'user', targetId: id });
+      changed(id, 'avatar_set');
+      return { avatarUrl: `/api/avatars/${id}?v=${get('SELECT avatar_version v FROM users WHERE id = ?', id).v}` };
     });
     r.delete('/api/users/:id/avatar', { perm: 'users.avatar_remove' }, (ctx) => {
       const id = Number(ctx.params.id);

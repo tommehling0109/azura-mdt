@@ -142,6 +142,10 @@ export function openDealModal({ side, base, id, onChange }) {
       if (!FINAL.includes(d.status) && d.status !== 'submitted' && d.status !== 'negotiating') bar.push(button('Stornieren', { variant: 'danger', icon: 'x', onClick: () => confirmDialog({ title: 'Geschäft stornieren?', message: 'Das Geschäft wird beendet.', confirmLabel: 'Stornieren', withReason: true }).then((r) => r && act('cancel', { text: r.reason }).catch((ex) => toast(ex.message, 'err'))) }));
       if (!d.assignee || d.assignee.id !== state.user.id) bar.push(button('Mir zuweisen', { size: 'sm', variant: 'ghost', icon: 'userCheck', onClick: guard(() => act('assign', { userId: state.user.id })) }));
     }
+    if (side === 'staff' && can('market.delete')) bar.push(button('Löschen', { variant: 'danger', icon: 'trash', onClick: async () => {
+      if (!await confirmDialog({ title: 'Geschäft endgültig löschen?', message: 'Das Geschäft wird samt Verlauf und Finanz-Eintrag gelöscht – in jedem Status. Ware, die noch nicht übergeben war, geht zurück ins Lager. Das lässt sich nicht rückgängig machen.', confirmLabel: 'Endgültig löschen' })) return;
+      try { await api.del(`${base}/deals/${id}`); m.close(); toast('Geschäft gelöscht.'); onChange?.(); } catch (ex) { toast(ex.message, 'err'); }
+    } }));
     mount(footer, bar, h('span', { class: 'grow' }), button('Schließen', { onClick: () => m.close() }));
   }
 

@@ -7,7 +7,7 @@ const shortAgent = (ua = '') => (/Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua)
 
 /** Konto & Sicherheit: Passwort ändern, eigene Sitzungen einsehen, überall abmelden. */
 /** Bild mittig quadratisch zuschneiden und auf 256 px verkleinern (klein, schnell, einheitlich). */
-async function prepareAvatar(file) {
+export async function prepareAvatar(file) {
   const bmp = await createImageBitmap(file);
   const s = Math.min(bmp.width, bmp.height), c = document.createElement('canvas');
   c.width = c.height = 256;
@@ -21,7 +21,7 @@ export function openAccountDialog() {
   const m = openModal({ title: 'Konto & Sicherheit', body: h('div', null, h('div', { class: 'member-card' }, userAvatar(u, 'lg'),
     h('div', { class: 'grow' }, h('div', { class: 'mc-name' }, u.displayName), h('div', { class: 'mc-sub' }, `@${u.username}`)),
     u.memberNumber && h('span', { class: 'member-no big' }, u.memberNumber)),
-  h('div', { style: { marginBottom: '16px' } }, tabs([{ id: 'photo', label: 'Profilbild' }, { id: 'pw', label: 'Passwort' }, { id: 'sessions', label: 'Sitzungen' }], 'pw', (t) => (t === 'photo' ? photo() : t === 'pw' ? pw() : sessions()))), body),
+  h('div', { style: { marginBottom: '16px' } }, tabs([{ id: 'photo', label: 'Profilbild' }, { id: 'pw', label: 'Passwort' }, { id: 'sessions', label: 'Sitzungen' }], 'photo', (t) => (t === 'photo' ? photo() : t === 'pw' ? pw() : sessions()))), body),
   footer: [button('Schließen', { onClick: () => m.close() })] });
 
   function photo() {
@@ -66,5 +66,5 @@ export function openAccountDialog() {
         }) }));
     } catch (e) { mount(body, formError(e.message)); }
   }
-  pw();
+  photo();
 }

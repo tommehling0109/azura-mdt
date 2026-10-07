@@ -297,7 +297,7 @@ try {
   const csv = await fetch(`${base}/api/audit/export?module=market`, { headers: { cookie: admin.cookie } });
   const csvText = await csv.text();
   assert.equal(csv.headers.get('content-type').startsWith('text/csv'), true); assert.ok(csvText.includes('Zeitpunkt') && csvText.includes('market.deal_')); ok('Audit-Log: Filter nach Benutzer/Zeitraum und CSV-Export');
-  assert.equal((await fetch(`${base}/api/audit/export`, { headers: { cookie: mod.cookie } })).status, 200); // mod hat audit.view
+  assert.equal((await fetch(`${base}/api/audit/export`, { headers: { cookie: mod.cookie } })).status, 403); // audit.view allein reicht nicht – Export braucht audit.export
   r = await admin.call('POST', '/api/admin/backups'); assert.equal(r.status, 201);
   assert.equal(r.backups.length >= 1, true); assert.equal((await mod.call('POST', '/api/admin/backups')).status, 403); ok('Datenbank-Backup erstellen (nur mit Recht)');
   r = await mod.call('GET', '/api/auth/sessions'); assert.equal(r.sessions.some((s) => s.current), true);
@@ -426,8 +426,8 @@ try {
   assert.ok(others.length > 3);
   for (const u of others) { assert.match(u.displayName, /^(AZ-\d+|XY-\d+|Antrag #\d+)$/); if (u.status !== 'pending') assert.equal(u.username, null); }
   assert.equal(JSON.stringify(r).includes('Test Admin') || JSON.stringify(r).includes('"Admin"'), false); ok('Mitglieder sehen fremde Namen nie – nur Personalnummern (eigener Name sichtbar)');
-  r = await admin.call('GET', `/api/users/${neuer.id}`); assert.match(r.user.displayName, /^AZ-\d+$/); assert.equal(r.user.username, null);
-  assert.equal((await admin.call('PATCH', `/api/users/${neuer.id}`, { displayName: 'Anders' })).status, 403); ok('Auch Administratoren sehen/ändern fremde Namen nicht');
+  r = await admin.call('GET', `/api/users/${neuer.id}`); assert.equal(r.user.displayName, 'Neuer'); assert.equal(r.user.username, 'neuer'); assert.equal(r.user.nameVisible, true);
+  assert.equal((await admin.call('PATCH', `/api/users/${neuer.id}`, { displayName: 'Anders' })).status, 403); ok('Superadmin sieht Namen (Hierarchie); Namen anderer ändert trotzdem niemand');
   r = await admin.call('GET', '/api/audit?limit=200');
   const auditJson = JSON.stringify(r.rows);
   for (const uname of ['admin', 'neuer', 'dritter', 'vierter', 'fuenfter', 'sechster', 'Test Admin']) assert.equal(auditJson.includes(`"${uname}"`), false, `Audit enthält Namen: ${uname}`);
@@ -753,105 +753,70 @@ try {
   r = await admin.call('PUT', '/api/dashboard/layout', { widgets: layoutBefore.map((w) => ({ id: w.id, enabled: true })) }); assert.equal((await admin.call('GET', '/api/dashboard')).widgets.length > 3, true); ok('Alle Widgets aus-/einschalten funktioniert (leeres Dashboard ist gültig)');
 
 
-  // ══ Deckel-System (Firmenabrechnung) ══
+  // ══ Deckel-System (externe Firmen) ══
   await admin.call('PUT', '/api/config', { values: { 'tab.allow_current_period': true } });
   assert.equal(tabPeriodKey(new Date(2026, 9, 7), 'weekly'), '2026-W41'); assert.equal(tabPeriodInfo('2026-W41').label, 'KW 41 / 2026'); assert.equal(tabPeriodInfo('2026-10').label, 'Oktober 2026'); ok('Zeiträume: 07.10.2026 → KW 41 / 2026 bzw. Oktober 2026');
-  assert.equal((await mod.call('POST', '/api/tab/companies', { name: 'X', interval: 'weekly' })).status, 403);
-  r = await admin.call('POST', '/api/tab/companies', { name: 'Muster GmbH', contactName: 'Frau Muster', contactInfo: 'muster@example.org', interval: 'weekly' });
-  assert.equal(r.status, 201); assert.match(r.company.number, /^[A-Z]+-F-\d+$/); assert.match(r.company.linkPath, /^\/deckel\/firma\/[A-Za-z0-9_-]{30,}$/); const coA = r.company.id; let tokA = r.company.linkPath.split('/').pop();
-  r = await admin.call('POST', '/api/tab/companies', { name: 'Beispiel AG', interval: 'monthly', scope: 'selected', memberIds: [1] }); const coB = r.company.id; const tokB = r.company.linkPath.split('/').pop();
-  r = await admin.call('POST', '/api/tab/companies', { name: 'Limit KG', interval: 'monthly', creditLimitCents: 10000 }); assert.equal(r.status, 201, JSON.stringify(r)); const coL = r.company.id;
-  assert.equal((await admin.call('POST', '/api/tab/companies', { name: 'muster gmbh', interval: 'weekly' })).status, 409);
-  assert.equal((await admin.call('POST', '/api/tab/companies', { name: 'Falsch', interval: 'täglich' })).status, 400);
-  assert.equal((await admin.call('POST', '/api/tab/companies', { name: 'Perm Co', interval: 'weekly', scope: 'perm', scopePerm: 'gibt.es.nicht' })).status, 400); ok('Firmen anlegen: individueller Portal-Link, Intervall, Geltungsbereich, Validierung');
-  // Buchungen
-  await setPerms(['tab.book']);
-  const tabCurWeek = tabPeriodKey(new Date(), 'weekly');
-  assert.equal((await mod.call('POST', '/api/tab/entries', { companyId: coA, amountCents: 2550, description: 'Mittagessen' })).status, 400); // ohne Personalnummer
-  assert.equal((await mod.call('POST', '/api/tab/entries', { companyId: coA, memberNumber: 'ZZ-99999', amountCents: 2550, description: 'Mittagessen' })).status, 400);
-  assert.equal((await mod.call('POST', '/api/tab/entries', { companyId: coA, memberNumber: 'AZ-220', amountCents: 2550, description: 'Mittagessen' })).status, 403); // fremde Nummer ohne Recht
-  assert.equal((await mod.call('POST', '/api/tab/entries', { companyId: coA, memberNumber: 'AZ-221', amountCents: 0, description: 'Mittagessen' })).status, 400); ok('Ohne gültige Personalnummer keine Deckelbuchung; fremde Nummer nur mit Sonderrecht');
-  r = await mod.call('POST', '/api/tab/entries', { companyId: coA, memberNumber: 'AZ-221', amountCents: 2550, description: 'Mittagessen' });
-  assert.equal(r.status, 201); assert.equal(r.entry.memberNumber, 'AZ-221'); assert.equal(r.entry.period.key, tabCurWeek); assert.equal(r.entry.amountCents, 2550); assert.match(r.entry.number, /^[A-Z]+-D-\d+$/); const e1 = r.entry.id;
-  r = await mod.call('GET', '/api/tab/member?number=az-221&companyId=' + coA); assert.equal(r.found, true); assert.equal(r.number, 'AZ-221'); assert.equal(JSON.stringify(r).includes('Neuer'), false); ok('Buchung erfasst, automatisch dem Zeitraum (Woche) zugeordnet; Personalnummer wird erkannt – ohne Namen');
-  assert.equal((await mod.call('POST', '/api/tab/entries', { companyId: coB, memberNumber: 'AZ-221', amountCents: 1000, description: 'Kaffee' })).status, 403); ok('Gültigkeit „bestimmte Mitarbeiter“ wird durchgesetzt');
-  assert.equal((await admin.call('POST', '/api/tab/entries', { companyId: coB, memberNumber: 'AZ-220', amountCents: 1000, description: 'Kaffee' })).status, 201);
-  r = await admin.call('POST', '/api/tab/entries', { companyId: coA, memberNumber: 'AZ-221', amountCents: 8490, description: 'Abendessen (Kasse)' }); assert.equal(r.status, 201); const e2 = r.entry.id; ok('Mit tab.book_others darf eine Kasse für andere Mitglieder buchen');
-  // Limit
-  const limE = await admin.call('POST', '/api/tab/entries', { companyId: coL, memberNumber: 'AZ-220', amountCents: 6000, description: 'Posten A' }); assert.equal(limE.status, 201, JSON.stringify(limE));
-  assert.equal((await admin.call('POST', '/api/tab/entries', { companyId: coL, memberNumber: 'AZ-220', amountCents: 6000, description: 'Posten B' })).status, 409); assert.equal((await admin.call('POST', `/api/tab/entries/${limE.entry.id}/cancel`, { reason: 'Falsch gebucht' })).entry.status, 'cancelled'); assert.equal((await admin.call('POST', '/api/tab/entries', { companyId: coL, memberNumber: 'AZ-220', amountCents: 6000, description: 'Posten C' })).status, 201); ok('Firmenlimit verhindert Überschreitung (nach Storno wieder frei)');
-  // Sichtbarkeit / Storno / Korrektur
-  r = await mod.call('GET', '/api/tab/entries'); assert.ok(r.entries.every((e) => e.mine)); assert.equal(r.entries.length, 2);
-  assert.equal((await mod.call('POST', `/api/tab/entries/${e1}/cancel`, { reason: 'Test' })).status, 403);
-  assert.equal((await admin.call('POST', `/api/tab/entries/${e1}/cancel`, { reason: '' })).status, 400);
-  r = await admin.call('POST', `/api/tab/entries/${e2}/correct`, { amountCents: 8590, reason: 'Tippfehler' }); assert.equal(r.status, 201); assert.equal(r.entry.correctsId, e2); const e2b = r.entry.id;
-  r = await admin.call('GET', '/api/tab/entries?company=' + coA); assert.equal(r.entries.find((e) => e.id === e2).status, 'cancelled'); assert.equal(r.totalCents, 2550 + 8590);
-  assert.equal((await admin.call('POST', `/api/tab/entries/${e2}/cancel`, { reason: 'nochmal' })).status, 409); ok('Nichts wird gelöscht: Storno und Korrektur (neue verknüpfte Buchung), nur mit tab.cancel');
-  r = await admin.call('GET', '/api/finance/ledger?q=Muster'); const tabLe = r.entries.filter((e) => e.entryType === 'tab'); assert.equal(tabLe.length, 3); assert.equal(tabLe.filter((e) => e.status === 'cancelled').length, 1); assert.equal(tabLe.find((e) => e.status === 'expected').company.name, 'Muster GmbH'); ok('Jede Buchung ist eindeutig einem Finanzvorgang zugeordnet (Storno schlägt durch)');
-  // Portal
+  assert.equal((await mod.call('POST', '/api/tab/companies', { name: 'X', seat: 'PC1', accountNumber: 'LS123', interval: 'weekly' })).status, 403);
+  assert.equal((await admin.call('POST', '/api/tab/companies', { name: 'Ohne Konto', seat: 'PC1234 Test Drive', interval: 'weekly' })).status, 400);
+  assert.equal((await admin.call('POST', '/api/tab/companies', { name: 'Ohne Sitz', accountNumber: 'LS28180705', interval: 'weekly' })).status, 400);
+  assert.equal((await admin.call('POST', '/api/tab/companies', { name: 'Falsches Konto', seat: 'PC1234 Test Drive', accountNumber: 'ab', interval: 'weekly' })).status, 400);
+  r = await admin.call('POST', '/api/tab/companies', { name: 'Muster GmbH', seat: 'PC1234 Test Drive', accountNumber: 'ls28180705', contactName: 'Frau Muster', interval: 'weekly' });
+  assert.equal(r.status, 201); assert.match(r.company.number, /^[A-Z]+-F-\d+$/); assert.equal(r.company.accountNumber, 'LS28180705'); assert.equal(r.company.seat, 'PC1234 Test Drive'); assert.match(r.company.linkPath, /^\/deckel\/firma\/[A-Za-z0-9_-]{30,}$/); const coA = r.company.id; let tokA = r.company.linkPath.split('/').pop();
+  r = await admin.call('POST', '/api/tab/companies', { name: 'Beispiel AG', seat: 'PC5678 Beispielweg', accountNumber: 'LS11112222', interval: 'monthly' }); const coB = r.company.id; const tokB = r.company.linkPath.split('/').pop();
+  assert.equal((await admin.call('POST', '/api/tab/companies', { name: 'muster gmbh', seat: 'PC1 Test', accountNumber: 'LS99999999', interval: 'weekly' })).status, 409);
+  assert.equal((await admin.call('POST', '/api/tab/companies', { name: 'Falsch', seat: 'PC1 Test', accountNumber: 'LS99999999', interval: 'täglich' })).status, 400); ok('Firma anlegen: Firmenname, Firmensitz und Kontonummer sind Pflicht; individueller Portal-Link');
+  const portal = new Client(); const tabCurWeek = tabPeriodKey(new Date(), 'weekly'); const tabCurMonth = tabPeriodKey(new Date(), 'monthly');
   assert.equal((await new Client().call('GET', '/api/c/gibtsnicht-gibtsnicht-gibtsnicht')).status, 404);
-  const portal = new Client();
-  r = await portal.call('GET', `/api/c/${tokA}`); assert.equal(r.company.name, 'Muster GmbH'); assert.ok(r.periods.some((p) => p.key === tabCurWeek)); assert.equal(JSON.stringify(r).includes('Beispiel'), false); assert.deepEqual(r.statements, []);
-  assert.equal(JSON.stringify(r).includes('2550'), false); ok('Firmenportal: nur der eigene Link funktioniert; die Firma sieht weder fremde Daten noch unsere Buchungssummen');
+  r = await portal.call('GET', `/api/c/${tokA}`); assert.equal(r.company.name, 'Muster GmbH'); assert.ok(r.periods.some((p) => p.key === tabCurWeek)); assert.deepEqual(r.statements, []); assert.equal(JSON.stringify(r).includes('Beispiel'), false); assert.equal(JSON.stringify(r).includes('LS28180705'), false); ok('Firmenportal: nur der eigene Link funktioniert; keine fremden oder internen Daten');
   assert.equal((await portal.call('POST', `/api/c/${tokA}/statements`, { periodKey: '1999-W01', amountCents: 100 })).status, 400);
   assert.equal((await portal.call('POST', `/api/c/${tokA}/statements`, { periodKey: tabCurWeek, amountCents: -5 })).status, 400);
-  const ourTotal = 2550 + 8590;
-  r = await portal.call('POST', `/api/c/${tokA}/statements`, { periodKey: tabCurWeek, amountCents: ourTotal, comment: 'Wie besprochen' }); assert.equal(r.status, 201); assert.match(r.message, /erfolgreich übermittelt/); assert.ok(!r.periods.some((p) => p.key === tabCurWeek));
-  assert.equal((await portal.call('POST', `/api/c/${tokA}/statements`, { periodKey: tabCurWeek, amountCents: ourTotal })).status, 400); ok('Abrechnung einreichen: Bestätigung, Zeitraum danach nicht mehr wählbar, keine Doppeleinreichung');
-  r = await admin.call('GET', '/api/notifications'); const tabNn = r.notifications.find((n) => n.title === 'Neue Deckel-Abrechnung'); assert.ok(tabNn); assert.match(tabNn.body, /Muster GmbH/); assert.equal(tabNn.target.app, 'tab'); ok('Neue Abrechnung löst eine Benachrichtigung aus (Firma, Zeitraum, Betrag)');
-  r = await admin.call('GET', '/api/tab/statements'); const tabSt1 = r.statements.find((s) => s.company.id === coA); assert.equal(tabSt1.status, 'submitted'); assert.equal(tabSt1.matches, true); assert.equal(tabSt1.diffCents, 0); assert.equal(tabSt1.ourCents, ourTotal);
-  r = await admin.call('GET', `/api/tab/statements/${tabSt1.id}`); assert.equal(r.entries.length, 3); assert.deepEqual(r.byMember.map((m) => [m.memberNumber, m.totalCents]), [['AZ-221', ourTotal]]); assert.ok(r.log.length >= 1); ok('Abgleich: unsere Summe = eingereicht, Differenz 0; Einzelbuchungen und Summen je Personalnummer');
-  assert.equal((await mod.call('POST', `/api/tab/statements/${tabSt1.id}/review`)).status, 403);
+  r = await portal.call('POST', `/api/c/${tokA}/statements`, { periodKey: tabCurWeek, amountCents: 128450, comment: 'Wie besprochen' }); assert.equal(r.status, 201); assert.match(r.message, /erfolgreich übermittelt/); assert.ok(!r.periods.some((p) => p.key === tabCurWeek));
+  assert.equal((await portal.call('POST', `/api/c/${tokA}/statements`, { periodKey: tabCurWeek, amountCents: 100 })).status, 400); ok('Abrechnung einreichen: Bestätigung, Zeitraum danach nicht mehr wählbar');
+  r = await admin.call('GET', '/api/notifications'); const tabNn = r.notifications.find((n) => n.title === 'Neue Deckel-Abrechnung'); assert.ok(tabNn); assert.match(tabNn.body, /Muster GmbH/); assert.match(tabNn.body, /LS28180705/); assert.equal(tabNn.target.app, 'tab'); ok('Neue Abrechnung löst eine Benachrichtigung aus (Firma, Zeitraum, Betrag, Konto)');
+  r = await admin.call('GET', '/api/tab/statements'); const tabSt1 = r.statements.find((s) => s.company.id === coA); assert.equal(tabSt1.status, 'submitted'); assert.equal(tabSt1.submittedCents, 128450); assert.equal(tabSt1.company.accountNumber, 'LS28180705'); assert.equal(tabSt1.company.seat, 'PC1234 Test Drive'); assert.equal(tabSt1.ourCents, undefined); assert.equal(tabSt1.diffCents, undefined); ok('Keine Summen auf unserer Seite, kein Abgleich, keine Differenz – Konto und Betrag der Firma stehen in der Abrechnung');
+  assert.equal((await mod.call('POST', `/api/tab/statements/${tabSt1.id}/review`)).status, 403); assert.equal((await mod.call('GET', '/api/tab/statements')).status, 403);
   assert.equal((await admin.call('POST', `/api/tab/statements/${tabSt1.id}/pay`)).status, 409);
   assert.equal((await admin.call('POST', `/api/tab/statements/${tabSt1.id}/review`)).statement.status, 'review');
-  r = await admin.call('POST', `/api/tab/statements/${tabSt1.id}/confirm`, {}); assert.equal(r.statement.status, 'confirmed'); assert.equal(r.statement.approvedCents, ourTotal);
-  assert.equal((await admin.call('POST', '/api/tab/entries', { companyId: coA, memberNumber: 'AZ-220', amountCents: 100, description: 'zu spät' })).status, 409);
-  assert.equal((await admin.call('POST', `/api/tab/entries/${e1}/cancel`, { reason: 'zu spät' })).status, 409); ok('Nach Bestätigung ist der Zeitraum für Buchungen und Stornos gesperrt');
-  // Zahlung per Überweisung
+  assert.equal((await admin.call('POST', `/api/tab/statements/${tabSt1.id}/confirm`, { approvedCents: 100000 })).status, 400); // abweichender Betrag braucht Begründung
+  r = await admin.call('POST', `/api/tab/statements/${tabSt1.id}/confirm`, {}); assert.equal(r.statement.status, 'confirmed'); assert.equal(r.statement.approvedCents, 128450);
+  r = await admin.call('GET', `/api/tab/statements/${tabSt1.id}`); assert.match(r.log.map((l) => l.text).join('|'), /1\.284,50.*LS28180705/); ok('Bestätigung zeigt: wie viel auf welches Konto');
+  r = await admin.call('GET', '/api/finance/ledger?q=Muster'); const tabLe = r.entries.filter((e) => e.entryType === 'tab'); assert.equal(tabLe.length, 1); assert.equal(tabLe[0].direction, 'out'); assert.equal(tabLe[0].amount, 1284.5); assert.equal(tabLe[0].status, 'expected'); assert.match(tabLe[0].note, /LS28180705/);
   assert.equal((await admin.call('POST', `/api/tab/statements/${tabSt1.id}/prepare`, { method: 'bar' })).status, 400);
   assert.equal((await admin.call('POST', `/api/tab/statements/${tabSt1.id}/prepare`, { method: 'transfer' })).statement.status, 'payment_pending');
   r = await admin.call('POST', `/api/tab/statements/${tabSt1.id}/pay`, { paidAt: '2026-10-08', reference: 'TX-4711' }); assert.equal(r.statement.status, 'paid'); assert.equal(r.statement.payReference, 'TX-4711');
-  r = await admin.call('GET', '/api/finance/ledger?q=Muster'); assert.equal(r.entries.filter((e) => e.entryType === 'tab' && e.status === 'settled').length, 2); ok('Zahlung per Überweisung dokumentiert → Abrechnung bezahlt, Finanzvorgänge verbucht');
-  // Abweichung + Rechnung (Firma B, Monat)
-  const tabCurMonth = tabPeriodKey(new Date(), 'monthly');
-  r = await portal.call('GET', `/api/c/${tokB}`); assert.equal(r.company.name, 'Beispiel AG');
-  r = await portal.call('POST', `/api/c/${tokB}/statements`, { periodKey: tabCurMonth, amountCents: 900 }); assert.equal(r.status, 201); // wir haben 1000
-  r = await admin.call('GET', '/api/tab/statements?company=' + coB); const tabSt2 = r.statements[0]; assert.equal(tabSt2.matches, false); assert.equal(tabSt2.diffCents, -100); assert.equal(tabSt2.ourCents, 1000);
-  assert.equal((await admin.call('POST', `/api/tab/statements/${tabSt2.id}/confirm`, {})).status, 409);
-  assert.equal((await admin.call('POST', `/api/tab/statements/${tabSt2.id}/confirm`, { acceptDifference: true })).status, 400);
-  r = await admin.call('POST', `/api/tab/statements/${tabSt2.id}/confirm`, { acceptDifference: true, note: 'Firma hat Kaffee vergessen', approvedCents: 1000 }); assert.equal(r.statement.status, 'confirmed'); assert.equal(r.statement.approvedCents, 1000); ok('Abweichung (-1,00): nicht automatisch bestätigt – nur mit ausdrücklicher Freigabe und Begründung');
-  await admin.call('POST', `/api/tab/statements/${tabSt2.id}/prepare`, { method: 'invoice' });
+  r = await admin.call('GET', '/api/finance/ledger?q=Muster'); assert.equal(r.entries.filter((e) => e.entryType === 'tab' && e.status === 'settled').length, 1); ok('Überweisung dokumentiert → bezahlt, Finanzvorgang verbucht');
+  r = await portal.call('POST', `/api/c/${tokB}/statements`, { periodKey: tabCurMonth, amountCents: 90000 }); assert.equal(r.status, 201); const tabSt2 = (await admin.call('GET', '/api/tab/statements?company=' + coB)).statements[0];
+  await admin.call('POST', `/api/tab/statements/${tabSt2.id}/confirm`, {}); await admin.call('POST', `/api/tab/statements/${tabSt2.id}/prepare`, { method: 'invoice' });
   assert.equal((await admin.call('POST', `/api/tab/statements/${tabSt2.id}/pay`, {})).status, 409);
-  await admin.call('POST', `/api/tab/statements/${tabSt2.id}/invoice`, { received: true, number: 'RE-77', amountCents: 1100, date: '2026-10-09' });
+  await admin.call('POST', `/api/tab/statements/${tabSt2.id}/invoice`, { received: true, number: 'RE-77', amountCents: 95000, date: '2026-10-09' });
   assert.equal((await admin.call('POST', `/api/tab/statements/${tabSt2.id}/pay`, {})).status, 409);
   const PDFB64 = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF').toString('base64');
-  { const rr = await admin.call('POST', `/api/tab/statements/${tabSt2.id}/invoice-file`, { data: 'data:application/pdf;base64,' + PDFB64 }); assert.equal(rr.status, 200, JSON.stringify(rr)); }
+  assert.equal((await admin.call('POST', `/api/tab/statements/${tabSt2.id}/invoice-file`, { data: 'data:application/pdf;base64,' + PDFB64 })).status, 200);
   assert.equal((await admin.call('POST', `/api/tab/statements/${tabSt2.id}/invoice-file`, { data: 'data:text/html;base64,' + Buffer.from('<script>alert(1)</script>').toString('base64') })).status, 400);
   const tabDl = await fetch(`${base}/api/tab/statements/${tabSt2.id}/invoice-file`, { headers: { cookie: admin.cookie } }); assert.equal(tabDl.status, 200); assert.equal(tabDl.headers.get('content-type'), 'application/pdf');
-  await admin.call('POST', `/api/tab/statements/${tabSt2.id}/invoice`, { amountCents: 1000 });
-  assert.equal((await admin.call('POST', `/api/tab/statements/${tabSt2.id}/pay`, {})).statement.status, 'paid'); ok('Zahlung per Firmenrechnung: Rechnungsnummer/-betrag/-datum/-datei (nur PDF/Bild), Betrag muss zum freigegebenen passen');
-  // Ablehnung + erneutes Einreichen
-  r = await admin.call('POST', '/api/tab/companies', { name: 'Reject GmbH', interval: 'monthly' }); const coR = r.company.id; const tokR = r.company.linkPath.split('/').pop();
-  await admin.call('POST', '/api/tab/entries', { companyId: coR, memberNumber: 'AZ-220', amountCents: 5000, description: 'Posten X' });
+  await admin.call('POST', `/api/tab/statements/${tabSt2.id}/invoice`, { amountCents: 90000 });
+  assert.equal((await admin.call('POST', `/api/tab/statements/${tabSt2.id}/pay`, {})).statement.status, 'paid'); ok('Zahlung per Firmenrechnung: Nummer/Betrag/Datum/Datei, Betrag muss passen');
+  r = await admin.call('POST', '/api/tab/companies', { name: 'Reject GmbH', seat: 'PC9 Nord', accountNumber: 'LS55556666', interval: 'monthly' }); const coR = r.company.id; const tokR = r.company.linkPath.split('/').pop();
   await portal.call('POST', `/api/c/${tokR}/statements`, { periodKey: tabCurMonth, amountCents: 7777 });
   const tabSt3 = (await admin.call('GET', '/api/tab/statements?company=' + coR)).statements[0];
   assert.equal((await admin.call('POST', `/api/tab/statements/${tabSt3.id}/reject`, { reason: '' })).status, 400);
   assert.equal((await admin.call('POST', `/api/tab/statements/${tabSt3.id}/reject`, { reason: 'Betrag falsch' })).statement.status, 'rejected');
   r = await portal.call('GET', `/api/c/${tokR}`); assert.ok(r.periods.some((p) => p.key === tabCurMonth)); assert.equal(r.statements[0].rejectReason, 'Betrag falsch');
-  assert.equal((await portal.call('POST', `/api/c/${tokR}/statements`, { periodKey: tabCurMonth, amountCents: 5000 })).status, 201); ok('Abgelehnte Abrechnung: Firma sieht den Grund und kann den Zeitraum erneut einreichen');
-  // Sicherheit
-  r = await portal.call('GET', `/api/c/${tokA}`); assert.equal(r.statements.length, 1); assert.equal(JSON.stringify(r).includes('Beispiel') || JSON.stringify(r).includes('Reject'), false);
+  assert.equal((await portal.call('POST', `/api/c/${tokR}/statements`, { periodKey: tabCurMonth, amountCents: 5000 })).status, 201); ok('Abgelehnte Abrechnung: Firma sieht den Grund und kann erneut einreichen');
   r = await admin.call('POST', `/api/tab/companies/${coA}/reset-link`); assert.notEqual(r.company.linkPath.split('/').pop(), tokA); assert.equal((await portal.call('GET', `/api/c/${tokA}`)).status, 404);
   tokA = r.company.linkPath.split('/').pop(); assert.equal((await portal.call('GET', `/api/c/${tokA}`)).status, 200);
-  await admin.call('PATCH', `/api/tab/companies/${coA}`, { status: 'disabled' }); assert.equal((await portal.call('GET', `/api/c/${tokA}`)).status, 404);
-  assert.equal((await admin.call('POST', '/api/tab/entries', { companyId: coA, memberNumber: 'AZ-220', amountCents: 100, description: 'Posten x' })).status, 403); ok('Neuer Link macht den alten ungültig; deaktivierte Firmen sind gesperrt; Firmen sehen nur das Eigene');
-  assert.equal((await admin.call('PATCH', `/api/tab/companies/${coB}`, { interval: 'weekly' })).status, 409); ok('Intervall lässt sich nach Buchungen nicht mehr ändern');
+  await admin.call('PATCH', `/api/tab/companies/${coA}`, { status: 'disabled' }); assert.equal((await portal.call('GET', `/api/c/${tokA}`)).status, 404); ok('Neuer Link macht den alten ungültig; deaktivierte Firmen sind gesperrt');
+  assert.equal((await admin.call('PATCH', `/api/tab/companies/${coB}`, { interval: 'weekly' })).status, 409); ok('Intervall lässt sich nach der ersten Abrechnung nicht mehr ändern');
   r = await admin.call('GET', '/api/tab/summary'); assert.ok(r.summary.paid >= 2); assert.ok(r.summary.submitted >= 1); assert.equal(typeof r.summary.openCents, 'number'); assert.ok(r.summary.recent.length >= 3);
-  r = await admin.call('GET', '/api/dashboard'); assert.ok(r.widgets.some((w) => w.id === 'tab-overview')); ok('Dashboard-Kennzahlen (offen, eingereicht, bezahlt, offener Gesamtbetrag)');
-  r = await admin.call('GET', `/api/tab/companies/${coA}`); assert.ok(r.statements.length === 1 && r.periods.length >= 1);
-  r = await admin.call('GET', '/api/audit?module=tab&limit=200'); const acts = new Set(r.rows.map((x) => x.action)); for (const a of ['tab.entry_created', 'tab.entry_cancelled', 'tab.entry_corrected', 'tab.company_created', 'tab.statement_submitted', 'tab.statement_confirm', 'tab.statement_pay']) assert.ok(acts.has(a), a); ok('Alle wichtigen Aktionen stehen im Audit-Log');
+  assert.ok((await admin.call('GET', '/api/dashboard')).widgets.some((w) => w.id === 'tab-overview')); ok('Dashboard-Kennzahlen (offen, eingereicht, bezahlt)');
+  // Löschen
+  assert.equal((await mod.call('DELETE', `/api/tab/statements/${tabSt3.id}`)).status, 403);
+  assert.equal((await admin.call('DELETE', `/api/tab/statements/${tabSt3.id}`)).status, 200);
+  assert.equal((await mod.call('DELETE', `/api/tab/companies/${coR}`)).status, 403);
+  assert.equal((await admin.call('DELETE', `/api/tab/companies/${coR}`)).status, 200);
+  assert.equal((await admin.call('GET', '/api/tab/statements')).statements.some((s) => s.company.id === coR), false); ok('Deckel-Abrechnungen und Firmen lassen sich (mit Recht / als Superadmin) endgültig löschen');
+  r = await admin.call('GET', '/api/audit?module=tab&limit=200'); const acts = new Set(r.rows.map((x) => x.action)); for (const x of ['tab.company_created', 'tab.statement_submitted', 'tab.statement_confirm', 'tab.statement_pay', 'tab.statement_deleted', 'tab.company_deleted']) assert.ok(acts.has(x), x); ok('Alle wichtigen Aktionen stehen im Audit-Log');
   await setPerms([]);
-
 
   // ══ Kreditsystem ══
   const { runCreditReminders } = await import('../server/modules/credit.js');
@@ -946,7 +911,7 @@ try {
   const avRes = await fetch(`${base}${avUrl}`, { headers: { cookie: admin.cookie } }); assert.equal(avRes.status, 200); assert.equal(avRes.headers.get('content-type'), 'image/png'); assert.match(avRes.headers.get('cache-control'), /immutable/);
   assert.equal((await fetch(`${base}${avUrl}`)).status, 401);
   assert.equal((await mod.call('GET', '/api/auth/me')).user.avatarUrl, avUrl);
-  r = await admin.call('GET', '/api/users'); assert.equal(r.users.find((u) => u.id === neuer.id).avatarUrl, avUrl); assert.equal(JSON.stringify(r).includes('Neuer'), false); ok('Profilbild erscheint in Konto, Benutzerliste (weiterhin ohne Namen) und ist nur angemeldet abrufbar');
+  r = await admin.call('GET', '/api/users'); assert.equal(r.users.find((u) => u.id === neuer.id).avatarUrl, avUrl); assert.equal(r.users.find((u) => u.id === neuer.id).nameVisible, true); ok('Profilbild erscheint in Konto und Benutzerliste (Superadmin sieht Namen) und ist nur angemeldet abrufbar');
   assert.equal((await mod.call('DELETE', `/api/users/${neuer.id}/avatar`)).status, 403); // kein Recht
   await setPerms(['users.avatar_remove']); assert.equal((await mod.call('DELETE', `/api/users/${1}/avatar`)).status, 403); // Admin hat gar keins
   assert.equal((await mod.call('DELETE', `/api/users/${neuer.id}/avatar`)).status, 200);
@@ -955,12 +920,11 @@ try {
   await mod.call('POST', '/api/account/avatar', { data: PNGAV }); assert.equal((await mod.call('DELETE', '/api/account/avatar')).status, 200); assert.equal((await mod.call('GET', '/api/auth/me')).user.avatarUrl, null); sProf.close(); ok('Eigenes Profilbild entfernen');
 
   // ══ Live-Synchronisation im Firmenportal ══
-  r = await admin.call('POST', '/api/tab/companies', { name: 'Live GmbH', interval: 'weekly' }); const liveTok = r.company.linkPath.split('/').pop(); const liveCo = r.company.id;
-  r = await admin.call('POST', '/api/tab/companies', { name: 'Andere GmbH', interval: 'weekly' }); const otherTok = r.company.linkPath.split('/').pop();
-  await admin.call('POST', '/api/tab/entries', { companyId: liveCo, memberNumber: 'AZ-220', amountCents: 1500, description: 'Live Test' });
+  r = await admin.call('POST', '/api/tab/companies', { name: 'Live GmbH', seat: 'PC1 Live', accountNumber: 'LS00001111', interval: 'weekly' }); const liveTok = r.company.linkPath.split('/').pop(); const liveCo = r.company.id;
+  r = await admin.call('POST', '/api/tab/companies', { name: 'Andere GmbH', seat: 'PC2 Andere', accountNumber: 'LS00002222', interval: 'weekly' }); const otherTok = r.company.linkPath.split('/').pop();
   const sCo = await openSse('', `/api/c/${liveTok}/events`), sOther = await openSse('', `/api/c/${otherTok}/events`);
   assert.equal(sCo.status, 200); assert.equal((await openSse('', '/api/c/ungueltig-ungueltig-ungueltig/events')).status, 404);
-  const curW = tabPeriodKey(new Date(), 'weekly');
+  const curW = tabCurWeek;
   await new Client().call('POST', `/api/c/${liveTok}/statements`, { periodKey: curW, amountCents: 1500 });
   assert.ok(await sCo.waitFor((e) => e.event === 'change' && e.data.topic === 'tab')); const n0 = sCo.events.filter((e) => e.event === 'change').length;
   const liveSt = (await admin.call('GET', '/api/tab/statements?company=' + liveCo)).statements[0];
@@ -984,6 +948,84 @@ try {
   assert.equal((await admin.call('DELETE', '/api/admin/branding/logo')).version, 0);
   assert.equal((await fetch(`${base}/branding/logo`)).status, 404); ok('Logo auf Standard zurücksetzen');
 
+  // ══ Superadmin, Hierarchie, Stammdaten externer Zugänge, Finanzen, Statistik ══
+  const adminId = users.find((u) => u.username === 'admin').id;
+  r = await admin.call('GET', '/api/auth/me'); assert.equal(r.user.isSuperadmin, true); assert.equal((await mod.call('GET', '/api/auth/me')).user.isSuperadmin, false);
+  assert.equal((await admin.call('PATCH', `/api/users/${adminId}`, { isSuperadmin: false })).status, 409); // der letzte Superadmin bleibt
+  await setPerms(['users.edit', 'users.view']); assert.equal((await mod.call('PATCH', `/api/users/${neuer.id}`, { isSuperadmin: true })).status, 403); assert.equal((await mod.call('POST', `/api/users/${adminId}/password`, { password: 'neuesPasswort123' })).status, 403); await setPerms([]);
+  assert.ok((await admin.call('GET', '/api/permissions')).permissions.some((p) => p.key === 'users.password_reset')); ok('Superadmin-Flag: nur Superadmins vergeben ihn, der letzte bleibt; Passwort-Reset hat ein eigenes Recht');
+
+  // Namen nach Hierarchie: Superadmin sieht alle Namen; sonst nur bei sich selbst und bei Untergebenen
+  await setPerms(['users.view']);
+  r = await mod.call('GET', '/api/users'); let ra = r.users.find((u) => u.id === adminId); assert.equal(ra.nameVisible, false); assert.notEqual(ra.displayName, 'Admin'); assert.equal(JSON.stringify(r).includes('"admin"'), false); assert.equal(r.users.find((u) => u.id === neuer.id).nameVisible, true);
+  const supOld = (await admin.call('GET', `/api/users/${neuer.id}`)).user.supervisor?.id ?? null; await admin.call('PATCH', `/api/users/${neuer.id}`, { supervisorId: null });
+  assert.equal((await admin.call('PATCH', `/api/users/${adminId}`, { supervisorId: neuer.id })).status, 200);
+  r = await mod.call('GET', '/api/users'); ra = r.users.find((u) => u.id === adminId); assert.equal(ra.nameVisible, true); assert.equal(ra.displayName, 'Admin');
+  assert.equal((await admin.call('PATCH', `/api/users/${adminId}`, { supervisorId: null })).status, 200); await admin.call('PATCH', `/api/users/${neuer.id}`, { supervisorId: supOld }); await setPerms([]); ok('Namen laufen über die Hierarchie (Vorgesetzte sehen Untergebene, Superadmin alle)');
+
+  // Profilbild anderer ändern: eigenes Recht
+  assert.equal((await mod.call('POST', `/api/users/${adminId}/avatar`, { data: PNGAV })).status, 403);
+  await setPerms(['users.avatar_edit']); r = await mod.call('POST', `/api/users/${adminId}/avatar`, { data: PNGAV }); assert.equal(r.status, 200); assert.match(r.avatarUrl, /^\/api\/avatars\/\d+\?v=\d+$/);
+  assert.equal((await mod.call('POST', `/api/users/${adminId}/avatar`, { data: 'AAAA' })).status, 400); await setPerms([]); ok('Profilbilder anderer ändern mit users.avatar_edit (nur echte Bilder)');
+
+  // Externe Zugänge: Stammdaten, Pflichtfelder bei Lieferanten, Dokumente
+  const sup = { type: 'supplier', firstName: 'Max', lastName: 'Muster', birthDate: '1990-05-17', postalCode: '1234', street: 'Test Drive 5', umail: 'Max.Muster@umail.com', phone: '5551234567', accountNumber: 'ls28180705', apps: ['market'] };
+  r = await admin.call('POST', '/api/partners', sup); assert.equal(r.status, 400); assert.match(r.error, /Ausweis/); // Ausweis fehlt
+  r = await admin.call('POST', '/api/partners', { ...sup, idDoc: 'data:image/png;base64,' + PNGAV, umail: 'x y' }); assert.equal(r.status, 400); assert.match(r.error, /UMail/);
+  r = await admin.call('POST', '/api/partners', { ...sup, idDoc: 'data:image/png;base64,' + PNGAV, phone: '123' }); assert.equal(r.status, 400); assert.match(r.error, /Telefon/);
+  r = await admin.call('POST', '/api/partners', { ...sup, idDoc: 'data:text/html;base64,' + Buffer.from('<b>x</b>').toString('base64') }); assert.equal(r.status, 400);
+  r = await admin.call('POST', '/api/partners', { ...sup, weaponRequired: true, idDoc: 'data:image/png;base64,' + PNGAV }); assert.equal(r.status, 400); assert.match(r.error, /Waffenschein/);
+  r = await admin.call('POST', '/api/partners', { ...sup, weaponRequired: true, idDoc: 'data:image/png;base64,' + PNGAV, weaponDoc: 'data:image/png;base64,' + PNGAV }); assert.equal(r.status, 201);
+  const supP = r.partner; assert.equal(supP.type, 'supplier'); assert.equal(supP.umail, 'max.muster@umail.com'); assert.equal(supP.phone, '(555) 123-4567'); assert.equal(supP.accountNumber, 'LS28180705'); assert.equal(supP.docs.id, true); assert.equal(supP.docs.weapon, true); assert.equal(supP.name, 'Max Muster');
+  const docRes = await fetch(`${base}/api/partners/${supP.id}/docs/id`, { headers: { cookie: admin.cookie } }); assert.equal(docRes.status, 200); assert.equal(docRes.headers.get('content-type'), 'image/png');
+  await mod.call('PATCH', `/api/users/${neuer.id}`, {}); assert.equal((await fetch(`${base}/api/partners/${supP.id}/docs/id`, { headers: { cookie: mod.cookie } })).status, 403);
+  r = await admin.call('POST', '/api/partners', { name: 'Kunde Ohne Daten', apps: ['market'] }); assert.equal(r.status, 201); assert.equal(r.partner.type, 'customer'); const custP = r.partner.id; // Kunden: alles optional
+  assert.equal((await admin.call('PATCH', `/api/partners/${custP}`, { type: 'supplier' })).status, 400); // würde unvollständig
+  assert.equal((await admin.call('PATCH', `/api/partners/${supP.id}`, { street: 'Neue Straße 9' })).partner.street, 'Neue Straße 9');
+  assert.equal((await admin.call('POST', `/api/partners/${supP.id}/docs/weapon`, { data: 'data:image/png;base64,' + PNGAV })).status, 200); ok('Externe Zugänge: Stammdaten, Lieferanten-Pflichtfelder, UMail/Telefon-Format, Ausweis/Waffenschein-Upload mit Rechtepflicht');
+
+  // Löschen (Superadmin: alles)
+  r = await admin.call('GET', '/api/credit/loans?partner=' + borId); assert.ok(r.loans.length >= 2); const delLoan = r.loans[0].id, delLoanNo = r.loans[0].number;
+  assert.equal((await mod.call('DELETE', `/api/credit/loans/${delLoan}`)).status, 403);
+  assert.equal((await admin.call('DELETE', `/api/credit/loans/${delLoan}`)).status, 200); assert.equal((await admin.call('GET', `/api/credit/loans/${delLoan}`)).status, 404);
+  assert.equal((await admin.call('GET', '/api/finance/ledger?q=Kredit')).entries.some((e) => e.note.includes(delLoanNo)), false);
+  r = await admin.call('GET', '/api/market/deals'); const delDeal = r.deals[0]?.id; assert.ok(delDeal);
+  assert.equal((await mod.call('DELETE', `/api/market/deals/${delDeal}`)).status, 403); assert.equal((await admin.call('DELETE', `/api/market/deals/${delDeal}`)).status, 200); assert.equal((await admin.call('GET', `/api/market/deals/${delDeal}`)).status, 404);
+  assert.equal((await mod.call('DELETE', `/api/partners/${borId}`)).status, 403);
+  assert.equal((await admin.call('DELETE', `/api/partners/${borId}`)).status, 409); // hat noch Kredite
+  assert.equal((await admin.call('DELETE', `/api/partners/${borId}?force=1`)).status, 200); // Superadmin: samt allem – kein „Interner Serverfehler“
+  assert.equal((await admin.call('GET', '/api/credit/loans?partner=' + borId)).loans.length, 0);
+  assert.equal((await admin.call('DELETE', `/api/partners/${supP.id}`)).status, 200); ok('Superadmin kann Kredite, Börsen-Geschäfte und externe Zugänge samt aller Daten löschen (ohne 500er)');
+
+  r = await admin.call('POST', '/api/warehouses', { name: 'Lösch-Lager', postal: '7085', capacity: 500 }); const whDel = r.warehouse.id; await admin.call('POST', `/api/warehouses/${whDel}/stock`, { itemId: ore, action: 'in', quantity: 5 });
+  assert.equal((await admin.call('DELETE', `/api/warehouses/${whDel}`)).status, 409); assert.equal((await admin.call('DELETE', `/api/warehouses/${whDel}?force=1`)).status, 200); assert.equal((await admin.call('GET', `/api/warehouses/${whDel}`)).status, 404); ok('Lager mit Bestand: normal gesperrt, Superadmin löscht samt Inhalt');
+
+  // Finanzen
+  assert.equal((await mod.call('GET', '/api/finance/summary')).status, 403); assert.equal((await mod.call('POST', '/api/finance/entries', { direction: 'in', amount: 10, description: 'x' })).status, 403);
+  assert.equal((await admin.call('POST', '/api/finance/entries', { direction: 'in', amount: -5, description: 'Test' })).status, 400); assert.equal((await admin.call('POST', '/api/finance/entries', { direction: 'sideways', amount: 5, description: 'Test' })).status, 400);
+  const sum0 = (await admin.call('GET', '/api/finance/summary')).summary;
+  r = await admin.call('POST', '/api/finance/entries', { direction: 'in', amount: 250.5, description: 'Spende Test', date: '2026-09-15' }); assert.equal(r.status, 201); const feIn = r.id;
+  r = await admin.call('POST', '/api/finance/entries', { direction: 'out', amount: 100, description: 'Reparatur Test', status: 'expected' }); const feOut = r.id;
+  const sum1 = (await admin.call('GET', '/api/finance/summary')).summary; assert.equal(sum1.settledIn, Math.round((sum0.settledIn + 250.5) * 100) / 100); assert.equal(sum1.expectedOut, Math.round((sum0.expectedOut + 100) * 100) / 100);
+  assert.equal((await admin.call('POST', `/api/finance/entries/${feOut}/settle`)).status, 200); assert.equal((await admin.call('POST', `/api/finance/entries/${feOut}/settle`)).status, 409);
+  r = await admin.call('GET', '/api/finance/ledger?type=manual&direction=out'); assert.ok(r.entries.every((e) => e.entryType === 'manual' && e.direction === 'out')); assert.equal((await admin.call('GET', '/api/finance/ledger?from=2026-09-15&to=2026-09-15&type=manual')).entries.some((e) => e.id === feIn), true);
+  r = await admin.call('GET', '/api/finance/report?months=6'); assert.ok(r.monthly.length >= 1); assert.ok(r.byType.some((x) => x.type === 'manual'));
+  const fcsv = await fetch(`${base}/api/finance/export.csv?type=manual`, { headers: { cookie: admin.cookie } }); const fcsvT = await fcsv.text(); assert.equal(fcsv.status, 200); assert.ok(fcsv.headers.get('content-type').startsWith('text/csv')); assert.ok(fcsvT.includes('Spende Test') && fcsvT.includes('250,5'));
+  assert.equal((await fetch(`${base}/api/finance/export.csv`, { headers: { cookie: mod.cookie } })).status, 403);
+  await setPerms(['finance.view', 'finance.manual', 'finance.delete']); assert.equal((await mod.call('POST', `/api/finance/entries/${feIn}/cancel`)).status, 200); assert.equal((await mod.call('GET', '/api/finance/export.csv')).status, 403); // Export braucht finance.export
+  r = await admin.call('GET', '/api/finance/ledger?type=deal&limit=5'); if (r.entries[0]) assert.equal((await mod.call('DELETE', `/api/finance/entries/${r.entries[0].id}`)).status, 403); // eingebundene Einträge nur Superadmin
+  assert.equal((await mod.call('DELETE', `/api/finance/entries/${feIn}`)).status, 200); assert.equal((await admin.call('DELETE', `/api/finance/entries/${feOut}`)).status, 200); assert.equal((await mod.call('POST', '/api/finance/entries/999999/cancel')).status, 404); await setPerms([]);
+  ok('Finanzen: Journal-Filter, Auswertung, manuelle Buchungen, CSV-Export und Löschen – jeweils mit eigenem Recht');
+
+  // Statistik
+  assert.equal((await mod.call('GET', '/api/stats')).status, 403);
+  r = await admin.call('GET', '/api/stats'); assert.equal(r.status, 200); for (const k of ['users', 'market', 'credit', 'tab', 'warehouse', 'vehicles', 'chat', 'finance', 'activity']) assert.ok(r.sections[k], k); assert.equal(r.sections.users.byStatus.some((x) => x.key === 'active'), true);
+  await setPerms(['stats.view']); let sk = Object.keys((await mod.call('GET', '/api/stats')).sections); assert.ok(!sk.includes('finance') && !sk.includes('tab') && !sk.includes('credit') && !sk.includes('market'));
+  await setPerms(['stats.view', 'finance.view', 'tab.statements']); sk = Object.keys((await mod.call('GET', '/api/stats')).sections); assert.ok(sk.includes('finance') && sk.includes('tab') && !sk.includes('credit')); await setPerms([]); ok('Statistik: je Bereich nur mit zusätzlichem Ansichtsrecht, nur aggregierte Zahlen');
+
+  // Audit-Export hat ein eigenes Recht
+  await setPerms(['audit.view']); assert.equal((await fetch(`${base}/api/audit/export`, { headers: { cookie: mod.cookie } })).status, 403); await setPerms(['audit.view', 'audit.export']); assert.equal((await fetch(`${base}/api/audit/export`, { headers: { cookie: mod.cookie } })).status, 200); await setPerms([]); ok('Audit-Export braucht audit.export');
+
   // Audit
   const actions = new Set();
   for (let off = 0; off < 2000; off += 200) { r = await admin.call('GET', `/api/audit?limit=200&offset=${off}`); r.rows.forEach((x) => actions.add(x.action)); if (r.rows.length < 200) break; }
@@ -991,6 +1033,20 @@ try {
   ok('Audit-Log enthält alle Aktionen');
   assert.equal((await mod.call('GET', '/api/audit')).status, 200); ok('audit.view erlaubt Zugriff');
   assert.equal((await mod.call('GET', '/api/permissions')).status, 200);
+
+  // ══ Werksreset (nur Superadmin) – muss der letzte Test sein ══
+  assert.equal((await mod.call('POST', '/api/admin/reset', { confirm: 'ALLES LÖSCHEN', password: 'passwort123' })).status, 403);
+  assert.equal((await admin.call('POST', '/api/admin/reset', { confirm: 'alles löschen', password: 'passwort123' })).status, 400);
+  assert.equal((await admin.call('POST', '/api/admin/reset', { confirm: 'ALLES LÖSCHEN', password: 'falsch' })).status, 403);
+  assert.equal((await admin.call('GET', '/api/users')).users.length > 0, true);
+  r = await admin.call('POST', '/api/admin/reset', { confirm: 'ALLES LÖSCHEN', password: 'passwort123' }); assert.equal(r.status, 200); assert.match(r.backup, /^mdt-\d{8}-\d{6}\.db$/);
+  assert.equal((await admin.call('GET', '/api/auth/me')).status, 401); // Sitzungen sind weg
+  assert.equal((await new Client().call('GET', '/api/bootstrap')).setupRequired, true);
+  const fresh = new Client(); assert.equal((await fresh.call('POST', '/api/setup', { systemName: 'Neu', adminRoleName: 'Chef', displayName: 'Neu Admin', username: 'neuadmin', password: 'passwort123' })).status, 201);
+  assert.equal((await fresh.call('GET', '/api/users')).users.length, 1); assert.equal((await fresh.call('GET', '/api/partners')).partners.length, 0); assert.equal((await fresh.call('GET', '/api/audit')).total <= 3, true);
+  assert.ok((await fresh.call('GET', '/api/permissions')).permissions.length > 40); assert.equal((await fresh.call('GET', '/api/auth/me')).user.isSuperadmin, true);
+  assert.equal((await fresh.call('GET', '/api/lookups')).status, 200); assert.equal((await fresh.call('GET', '/api/admin/backups')).backups.length >= 1, true);
+  ok('Werksreset: nur Superadmin, Bestätigungstext + Passwort, automatische Sicherung, alle Daten weg, Programm bleibt, Einrichtung startet neu');
 
   console.log(`\nAlle ${passed} Prüfungen bestanden.`);
 } catch (e) {

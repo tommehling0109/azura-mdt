@@ -10,6 +10,7 @@ import { labelForUser } from '../core/identity.js';
 import { notify, staffWith } from '../core/notifications.js';
 import { quote, bookStock } from '../core/stock.js';
 import { expectDealPayment, settleDeal, voidDeal } from '../core/ledger.js';
+import { purgeDeal } from '../core/purge.js';
 import { assertCanBook } from './warehouses.js';
 
 /** Zustände eines Geschäfts. Die SCHLÜSSEL kennt der Code, Beschriftung und Farbe sind im Admin-Bereich änderbar. */
@@ -353,6 +354,7 @@ export default {
     ['market.deals.manage', 'Börse: Geschäfte bearbeiten (annehmen, ablehnen, Gegenangebot, Übergabe)'],
     ['market.wanted.manage', 'Börse: Gesuche („Wir suchen“) verwalten'],
     ['market.catalog.manage', 'Börse: Item-Katalog verwalten'],
+    ['market.delete', 'Börse: Geschäfte und Angebote endgültig löschen (jeder Status)'],
   ],
   config: [
     { key: 'market.currency', group: 'Börse', label: 'Währungssymbol', help: 'Wird hinter Preisen angezeigt (z. B. $).', type: 'string', default: '$', max: 6, public: true },
@@ -402,6 +404,20 @@ export default {
       audit(ctx, { action: `market.deal_${action}`, module: 'market', targetType: 'deal', targetId: id, targetLabel: `${deal.item.name} · ${deal.partner.name}`,
         before: { status: before.status, quantity: before.quantity, unitPrice: before.unitPrice }, after: { status: deal.status, quantity: deal.quantity, unitPrice: deal.unitPrice } });
       return { deal, events: eventsOf(id, false, ctx.user.id) };
+    });
+
+    r.delete('/api/market/deals/:id', { perm: 'market.delete' }, (ctx) => {
+      const id = Number(ctx.params.id);
+      const d = get(`${DEAL_SQL} WHERE d.id = ?`, id);
+      if (!d) throw notFound('Geschäft nicht gefunden.');
+      audit(ctx, { action: 'market.deal_deleted', module: 'market', targetType: 'deal', targetId: id, targetLabel: `${d.item_name} · ${d.partner_name}`, before: { status: d.status, quantity: d.quantity, unitPrice: d.unit_price } });
+      tx(() => {
+        if (d.direction === 'sell' && d.stock_booked && ['accepted', 'delivery'].includes(d.status) && d.warehouse_id) {
+          bookStock({ warehouseId: d.warehouse_id, itemId: d.item_id, delta: d.quantity, kind: 'deal_return', userId: ctx.user.id, note: `Löschung ${d.deal_number}` }); // Ware, die noch nicht übergeben war, geht zurück ins Lager
+        }
+        purgeDeal(id);
+      });
+      return { ok: true };
     });
 
     // Angebot an einen Partner (Verkauf aus dem Lager)

@@ -30,7 +30,8 @@ export function loadAccess(userId) {
     `SELECT r.id,r.name,r.color,r.is_admin FROM roles r JOIN user_roles ur ON ur.role_id=r.id
      WHERE ur.user_id=? ORDER BY r.sort_order,r.name`, userId,
   );
-  const isAdmin = roles.some((r) => r.is_admin);
+  const isSuperadmin = !!get('SELECT is_superadmin s FROM users WHERE id = ?', userId)?.s;
+  const isAdmin = isSuperadmin || roles.some((r) => r.is_admin);
   let perms;
   if (isAdmin) perms = new Set(all('SELECT key FROM permissions').map((r) => r.key));
   else {
@@ -40,7 +41,7 @@ export function loadAccess(userId) {
        UNION SELECT rp.permission_key FROM rank_permissions rp JOIN users u ON u.rank_id=rp.rank_id WHERE u.id=?`, userId, userId, userId,
     ).map((r) => r.k));
   }
-  return { roles: roles.map((r) => ({ id: r.id, name: r.name, color: r.color, isAdmin: !!r.is_admin })), isAdmin, perms };
+  return { roles: roles.map((r) => ({ id: r.id, name: r.name, color: r.color, isAdmin: !!r.is_admin })), isAdmin, isSuperadmin, perms };
 }
 
 export const can = (user, perm) => !!user && user.status === 'active' && user.perms.has(perm);

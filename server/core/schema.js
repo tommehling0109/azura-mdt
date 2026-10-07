@@ -604,4 +604,22 @@ export const SCHEMA_MIGRATIONS = [
   ALTER TABLE users ADD COLUMN avatar_ext TEXT;
   ALTER TABLE users ADD COLUMN avatar_version INTEGER NOT NULL DEFAULT 0;
   `,
+  /* v13 – Superadmin, Firmensitz/Kontonummer, strukturierte Daten für externe Zugänge */ `
+  ALTER TABLE users ADD COLUMN is_superadmin INTEGER NOT NULL DEFAULT 0;
+  UPDATE users SET is_superadmin = 1 WHERE id = (SELECT MIN(u.id) FROM users u JOIN user_roles ur ON ur.user_id = u.id JOIN roles r ON r.id = ur.role_id WHERE r.is_admin = 1);
+  ALTER TABLE tab_companies ADD COLUMN seat TEXT NOT NULL DEFAULT '';
+  ALTER TABLE tab_companies ADD COLUMN account_number TEXT NOT NULL DEFAULT '';
+  ALTER TABLE partners ADD COLUMN partner_type TEXT NOT NULL DEFAULT 'customer' CHECK (partner_type IN ('customer','supplier'));
+  ALTER TABLE partners ADD COLUMN first_name TEXT NOT NULL DEFAULT '';
+  ALTER TABLE partners ADD COLUMN last_name TEXT NOT NULL DEFAULT '';
+  ALTER TABLE partners ADD COLUMN birth_date TEXT;
+  ALTER TABLE partners ADD COLUMN postal_code TEXT NOT NULL DEFAULT '';
+  ALTER TABLE partners ADD COLUMN street TEXT NOT NULL DEFAULT '';
+  ALTER TABLE partners ADD COLUMN umail_local TEXT NOT NULL DEFAULT '';
+  ALTER TABLE partners ADD COLUMN phone TEXT NOT NULL DEFAULT '';
+  ALTER TABLE partners ADD COLUMN account_number TEXT NOT NULL DEFAULT '';
+  ALTER TABLE partners ADD COLUMN id_doc_ext TEXT;
+  ALTER TABLE partners ADD COLUMN weapon_required INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE partners ADD COLUMN weapon_doc_ext TEXT;
+  `,
 ];

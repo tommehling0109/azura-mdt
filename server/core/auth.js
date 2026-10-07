@@ -52,13 +52,13 @@ export function loadUser(id) {
     id: u.id, username: u.username, displayName: u.display_name, status: u.status, statusReason: u.status_reason, memberNumber: u.member_number,
     rank: u.rank_id ? { id: u.rank_id, name: u.rank_name, color: u.rank_color } : null,
     department: u.dept_id ? { id: u.dept_id, name: u.dept_name, color: u.dept_color } : null,
-    roles: acc.roles, isAdmin: acc.isAdmin, perms: acc.perms, avatarUrl: u.avatar_ext ? `/api/avatars/${u.id}?v=${u.avatar_version}` : null,
+    roles: acc.roles, isAdmin: acc.isAdmin, isSuperadmin: acc.isSuperadmin, perms: acc.perms, avatarUrl: u.avatar_ext ? `/api/avatars/${u.id}?v=${u.avatar_version}` : null,
   };
 }
 export const publicUser = (u) => ({
   id: u.id, username: u.username, displayName: u.displayName, status: u.status, statusReason: u.statusReason,
   memberNumber: u.memberNumber, rank: u.rank, department: u.department,
-  roles: u.roles, isAdmin: u.isAdmin, permissions: [...u.perms], avatarUrl: u.avatarUrl ?? null,
+  roles: u.roles, isAdmin: u.isAdmin, isSuperadmin: !!u.isSuperadmin, permissions: [...u.perms], avatarUrl: u.avatarUrl ?? null,
 });
 
 // Brute-Force-Bremse (im Speicher, pro IP+Benutzername)

@@ -2,7 +2,7 @@ import { h, mount, fmtDateTime, debounce } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { button, busy, card, field, input, select, table, tabs, formError, openModal, confirmDialog, toast, skeletons, empty, note, memberNo } from '../ui/kit.js';
 import { api } from '../api.js';
-import { can } from '../state.js';
+import { can, state } from '../state.js';
 
 const nf = (n) => Number(n ?? 0).toLocaleString('de-DE');
 const num = (el) => (el.value === '' ? null : Number(el.value));
@@ -203,7 +203,12 @@ export default async function render(container, ctx) {
     const footer = [];
     if (w) footer.push(button('Löschen', { variant: 'danger', icon: 'trash', onClick: async () => {
       if (!await confirmDialog({ title: 'Lager löschen?', message: `${w.name} (${w.number}) wird gelöscht. Das geht nur, wenn es leer ist.`, confirmLabel: 'Löschen' })) return;
-      try { await api.del(`/api/warehouses/${w.id}`); m.close(); toast('Lager gelöscht.'); } catch (e) { toast(e.message, 'err'); }
+      try { await api.del(`/api/warehouses/${w.id}`); m.close(); toast('Lager gelöscht.'); }
+      catch (e) {
+        if (e.status === 409 && state.user.isSuperadmin && await confirmDialog({ title: 'Samt Inhalt löschen?', message: `${w.name} ist nicht leer. Als Superadmin kannst du es samt Bestand und Verlauf endgültig löschen.`, confirmLabel: 'Samt Inhalt löschen' })) {
+          try { await api.del(`/api/warehouses/${w.id}?force=1`); m.close(); toast('Lager gelöscht.'); } catch (e2) { toast(e2.message, 'err'); }
+        } else if (e.status !== 409 || !state.user.isSuperadmin) toast(e.message, 'err');
+      }
     } }));
     footer.push(h('span', { class: 'grow' }), button('Abbrechen', { onClick: () => m.close() }), button(w ? 'Speichern' : 'Anlegen', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
       err.replaceChildren();

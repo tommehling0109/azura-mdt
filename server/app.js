@@ -9,6 +9,7 @@ import { PARTNER_COOKIE, partnerFromToken } from './core/partner-auth.js';
 import { syncLookups } from './core/lookups.js';
 import { registerConfig } from './core/config.js';
 import { migrate, DB_PATH } from './core/db.js';
+import { setReinit } from './core/reset.js';
 import { dirname } from 'node:path';
 
 import systemModule, { brandingFile } from './modules/system.js';
@@ -27,12 +28,13 @@ import financeModule from './modules/finance.js';
 import tabModule from './modules/tab.js';
 import creditModule from './modules/credit.js';
 import profileModule from './modules/profile.js';
+import statsModule from './modules/stats.js';
 import lookupsModule from './modules/lookups.js';
 import partnersModule from './modules/partners.js';
 import marketModule from './modules/market.js';
 
 /** Modulliste – spätere Phasen hängen hier weitere Module an (vehicles, storage, purchasing, chat, …). */
-const MODULES = [systemModule, authModule, usersModule, rolesModule, orgModule, auditModule, dashboardModule, lookupsModule, partnersModule, marketModule, chatModule, vehiclesModule, mapModule, warehouseModule, financeModule, tabModule, creditModule, profileModule, realtimeModule];
+const MODULES = [systemModule, authModule, usersModule, rolesModule, orgModule, auditModule, dashboardModule, lookupsModule, partnersModule, marketModule, chatModule, vehiclesModule, mapModule, warehouseModule, financeModule, tabModule, creditModule, profileModule, statsModule, realtimeModule];
 
 /** Hinter nginx o. ä.: TRUST_PROXY=1 ⇒ Client-IP und Protokoll aus X-Forwarded-* übernehmen (sonst ignorieren – nicht fälschbar). */
 const TRUST_PROXY = process.env.TRUST_PROXY === '1';
@@ -64,6 +66,7 @@ export function buildApp() {
   syncPermissions();
   syncLookups();
   for (const m of MODULES) m.init?.();
+  setReinit(() => { syncPermissions(); syncLookups(); for (const m of MODULES) m.init?.(); }); // nach einem Werksreset wie bei der Erstinstallation
 
   async function handleApi(req, res, url) {
     const { route, params, pathMatched } = router.match(req.method, url.pathname);

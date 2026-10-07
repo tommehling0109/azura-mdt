@@ -4,10 +4,11 @@ import { mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync, readFileSy
 import { dirname, join } from 'node:path';
 import { HttpError, bad, str, conflict, notFound, forbidden } from '../core/http.js';
 import { getConfig, publicConfig, describeConfig, validateConfigValue, setConfig } from '../core/config.js';
-import { hashPassword, checkPassword, createSession, COOKIE, publicUser, loadUser } from '../core/auth.js';
+import { hashPassword, checkPassword, createSession, COOKIE, publicUser, loadUser, verifyPassword } from '../core/auth.js';
 import { listPermissions } from '../core/permissions.js';
 import { audit } from '../core/audit.js';
 import { assignMemberNumber } from '../core/members.js';
+import { factoryReset } from '../core/reset.js';
 
 // ── Branding: eigenes Logo / Hintergrundbild (nur PNG, JPEG, WebP – kein SVG, wegen Skript-Risiko) ──
 const brandDir = () => join(dirname(DB_PATH), 'branding');
@@ -89,7 +90,7 @@ export default {
         const t = now();
         const role = run('INSERT INTO roles (name,description,color,is_admin,is_system,sort_order,created_at) VALUES (?,?,?,1,1,0,?)',
           roleName, 'Voller Zugriff auf alle Funktionen. Systemrolle.', '#f5a524', t);
-        const user = run('INSERT INTO users (username,display_name,password_hash,status,created_at,updated_at) VALUES (?,?,?,?,?,?)',
+        const user = run('INSERT INTO users (username,display_name,password_hash,status,is_superadmin,created_at,updated_at) VALUES (?,?,?,?,1,?,?)',
           username, displayName, hashPassword(b.password), 'active', t, t);
         run('INSERT INTO user_roles (user_id,role_id) VALUES (?,?)', user.lastInsertRowid, role.lastInsertRowid);
         setConfig('system.name', systemName, user.lastInsertRowid);
@@ -191,8 +192,7 @@ export default {
           .map((f) => ({ name: f, size: statSync(join(backupDir(), f)).size, createdAt: statSync(join(backupDir(), f)).mtime.toISOString() }));
       } catch { return []; }
     };
-    r.get('/api/admin/backups', { perm: 'system.backup' }, () => ({ backups: listBackups(), directory: backupDir() }));
-    r.post('/api/admin/backups', { perm: 'system.backup' }, (ctx) => {
+    const makeBackup = () => {
       mkdirSync(backupDir(), { recursive: true });
       const d = new Date();
       const p2 = (n) => String(n).padStart(2, '0');
@@ -200,6 +200,26 @@ export default {
       const file = join(backupDir(), name);
       db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
       for (const old of listBackups().slice(15)) { try { unlinkSync(join(backupDir(), old.name)); } catch { /* egal */ } }
+      return name;
+    };
+    r.get('/api/admin/backups', { perm: 'system.backup' }, () => ({ backups: listBackups(), directory: backupDir() }));
+
+    /**
+     * Panel auf null setzen (nur Superadmin): vorher wird automatisch eine Datensicherung angelegt. Verlangt das Passwort und den exakten Bestätigungstext.
+     * Programm, Schema, Datensicherungen und Kartenkacheln bleiben; alle Daten und hochgeladenen Dateien sind weg; der Setup-Bildschirm kehrt zurück.
+     */
+    r.post('/api/admin/reset', (ctx) => {
+      if (!ctx.user.isSuperadmin) throw forbidden('Nur Superadmins dürfen das Panel zurücksetzen.');
+      if (ctx.body.confirm !== 'ALLES LÖSCHEN') throw bad('Bitte gib zur Bestätigung exakt „ALLES LÖSCHEN“ ein.');
+      const row = get('SELECT password_hash h FROM users WHERE id = ?', ctx.user.id);
+      if (typeof ctx.body.password !== 'string' || !row || !verifyPassword(ctx.body.password, row.h)) throw forbidden('Das Passwort ist nicht korrekt.');
+      const backup = makeBackup();
+      const res = factoryReset();
+      audit({ ip: ctx.ip, actorName: 'Superadmin' }, { action: 'system.factory_reset', module: 'system', targetType: 'system', targetLabel: `Zurückgesetzt (Sicherung: ${backup})` });
+      return { ok: true, backup, tables: res.tables };
+    });
+    r.post('/api/admin/backups', { perm: 'system.backup' }, (ctx) => {
+      const name = makeBackup();
       audit(ctx, { action: 'system.backup_created', module: 'system', targetType: 'backup', targetLabel: name });
       ctx.status = 201;
       return { backup: listBackups().find((b) => b.name === name), backups: listBackups() };

@@ -1,5 +1,5 @@
 import { h, mount } from '../../ui/dom.js';
-import { button, busy, card, input, select, toggle, toast, skeletons, formError, empty, note } from '../../ui/kit.js';
+import { button, busy, card, field, input, select, toggle, toast, skeletons, formError, empty, note, openModal } from '../../ui/kit.js';
 import { fmtDateTime } from '../../ui/dom.js';
 import { api } from '../../api.js';
 import { icon } from '../../ui/icons.js';
@@ -83,6 +83,13 @@ async function addExtras(host, editable) {
   }
   try { drawWidgets((await api.get('/api/dashboard/layout')).widgets); } catch (e) { mount(dashHost, empty('Nicht verfügbar', e.message, 'alert')); }
 
+  // Gefahrenzone: Panel auf null setzen (nur Superadmin)
+  if (state.user.isSuperadmin) {
+    host.append(card('Gefahrenzone', h('div', { class: 'setting-row', style: { gridTemplateColumns: 'minmax(0,1fr) auto' } },
+      h('div', null, h('div', { class: 'lbl' }, 'Panel auf null zurücksetzen'), h('div', { class: 'hlp' }, 'Löscht ALLE Daten (Benutzer, Rollen, Börse, Kredite, Deckel, Chat, Lager, Fahrzeuge, Einstellungen, Audit-Log, hochgeladene Dateien). Das Programm bleibt installiert – es muss nichts neu geladen werden. Vorher wird automatisch eine Datensicherung angelegt.')),
+      button('Zurücksetzen …', { variant: 'danger', icon: 'trash', onClick: () => resetDialog() })), { icon: 'alert', flush: true }));
+  }
+
   // Datensicherung
   if (!can('system.backup')) return;
   const bkHost = h('div');
@@ -96,6 +103,20 @@ async function addExtras(host, editable) {
       h('span', { class: 'muted' }, `${(b.size / 1024 / 1024).toFixed(2)} MB`))));
   }
   drawBackups().catch((e) => mount(bkHost, empty('Nicht verfügbar', e.message, 'alert')));
+}
+
+function resetDialog() {
+  const err = h('div'); const text = input({ placeholder: 'ALLES LÖSCHEN', autocomplete: 'off' }); const pw = input({ type: 'password', autocomplete: 'current-password' });
+  const go = button('Alles endgültig löschen', { variant: 'danger', icon: 'trash', disabled: true, onClick: (e) => busy(e.currentTarget, async () => {
+    err.replaceChildren();
+    try { await api.post('/api/admin/reset', { confirm: text.value, password: pw.value }); toast('Das Panel wurde zurückgesetzt.'); setTimeout(() => location.replace('/reset'), 600); }
+    catch (ex) { err.replaceChildren(formError(ex.message)); }
+  }) });
+  text.addEventListener('input', () => { go.disabled = text.value !== 'ALLES LÖSCHEN'; });
+  const m = openModal({ title: 'Panel wirklich auf null setzen?', body: h('div', null, err,
+    note('Alle Daten werden unwiderruflich gelöscht – auch alle Benutzer, auch dein eigener. Danach erscheint wieder die Ersteinrichtung. Eine automatische Datensicherung wird vorher im Ordner „backups“ angelegt.', 'alert'), h('div', { style: { height: '12px' } }),
+    field('Zur Bestätigung „ALLES LÖSCHEN“ eintippen', text), field('Dein Passwort', pw)),
+  footer: [button('Abbrechen', { onClick: () => m.close() }), go] });
 }
 
 export default async function render(container, ctx) {

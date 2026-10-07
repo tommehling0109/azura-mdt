@@ -13,17 +13,32 @@ const ORG_JOIN = `SELECT u.*, r.name rank_name, r.color rank_color, d.name dept_
   s.member_number supervisor_number
   FROM users u LEFT JOIN ranks r ON r.id=u.rank_id LEFT JOIN departments d ON d.id=u.department_id LEFT JOIN users s ON s.id=u.supervisor_id`;
 
-/** viewerId = angemeldeter Benutzer: nur der eigene Name wird ausgegeben, sonst die Personalnummer (Bewerber: „Antrag #…“ + gewählter Login). */
-const listDto = (u, viewerId = null) => ({
-  id: u.id, isSelf: u.id === viewerId,
-  username: u.id === viewerId || u.status === 'pending' ? u.username : null,
-  displayName: u.id === viewerId ? u.display_name : memberLabel(u),
+/**
+ * Anonymität mit Hierarchie: Den echten Namen sieht man bei sich selbst, als Superadmin sowie bei Mitgliedern, die in der Hierarchie UNTER einem stehen
+ * (übergeordneter Rang oder Vorgesetzten-Kette). Alle anderen sehen nur die Personalnummer.
+ */
+const viewerOf = (u) => (u && typeof u === 'object' ? { id: u.id, isSuperadmin: !!u.isSuperadmin, rankId: u.rank?.id ?? null } : { id: u ?? null });
+function mayUnmask(viewer, u) {
+  if (!viewer?.id) return false;
+  if (u.id === viewer.id || viewer.isSuperadmin) return true;
+  if (viewer.rankId && u.rank_id) {
+    let cur = get('SELECT parent_rank_id p FROM ranks WHERE id = ?', u.rank_id)?.p;
+    for (let g = 0; cur && g < 30; g++) { if (cur === viewer.rankId) return true; cur = get('SELECT parent_rank_id p FROM ranks WHERE id = ?', cur)?.p; }
+  }
+  let s = u.supervisor_id;
+  for (let g = 0; s && g < 30; g++) { if (s === viewer.id) return true; s = get('SELECT supervisor_id s FROM users WHERE id = ?', s)?.s; }
+  return false;
+}
+const listDto = (u, viewerIn = null) => { const viewer = viewerOf(viewerIn), see = mayUnmask(viewer, u), viewerId = viewer.id; return {
+  id: u.id, isSelf: u.id === viewerId, isSuperadmin: !!u.is_superadmin, nameVisible: see,
+  username: see || u.status === 'pending' ? u.username : null,
+  displayName: see ? u.display_name : memberLabel(u),
   status: u.status, statusReason: u.status_reason, avatarUrl: u.avatar_ext ? `/api/avatars/${u.id}?v=${u.avatar_version}` : null,
   createdAt: u.created_at, lastLoginAt: u.last_login_at, memberNumber: u.member_number,
   rank: u.rank_id ? { id: u.rank_id, name: u.rank_name, color: u.rank_color } : null,
   department: u.department_id ? { id: u.department_id, name: u.dept_name, color: u.dept_color } : null,
   supervisor: u.supervisor_id ? { id: u.supervisor_id, displayName: u.supervisor_id === viewerId ? 'Du' : (u.supervisor_number || `Mitglied #${u.supervisor_id}`), memberNumber: u.supervisor_number } : null,
-});
+}; };
 
 function detail(id, viewerId = null) {
   const u = get(`${ORG_JOIN} WHERE u.id = ?`, id);
@@ -106,7 +121,8 @@ export default {
   permissions: [
     ['users.view', 'Benutzer ansehen'],
     ['users.create', 'Benutzer anlegen'],
-    ['users.edit', 'Benutzer bearbeiten (Rollen, Rechte, Passwort)'],
+    ['users.edit', 'Benutzer bearbeiten (Rang, Abteilung, Vorgesetzter, Rollen, direkte Rechte)'],
+    ['users.password_reset', 'Passwörter anderer Mitglieder zurücksetzen'],
     ['users.delete', 'Benutzer löschen'],
     ['users.approve', 'Benutzer freischalten, ablehnen, sperren'],
   ],
@@ -123,12 +139,12 @@ export default {
       const counts = Object.fromEntries(all('SELECT status, COUNT(*) c FROM users GROUP BY status').map((x) => [x.status, x.c]));
       return {
         counts,
-        users: rows.map((u) => ({ ...listDto(u, ctx.user.id), roles: roles.filter((x) => x.user_id === u.id).map(({ id, name, color }) => ({ id, name, color })) })),
+        users: rows.map((u) => ({ ...listDto(u, ctx.user), roles: roles.filter((x) => x.user_id === u.id).map(({ id, name, color }) => ({ id, name, color })) })),
       };
     });
 
     r.get('/api/users/:id', { perm: 'users.view' }, (ctx) => {
-      const d = detail(Number(ctx.params.id), ctx.user.id);
+      const d = detail(Number(ctx.params.id), ctx.user);
       if (!d) throw notFound('Benutzer nicht gefunden.');
       return { user: d };
     });
@@ -158,7 +174,7 @@ export default {
       });
       audit(ctx, { action: 'user.created', module: 'users', targetType: 'user', targetId: id, targetLabel: memberLabel(get('SELECT id, member_number, status FROM users WHERE id = ?', id)), after: snapshot(id) });
       ctx.status = 201;
-      return { user: detail(id, ctx.user.id) };
+      return { user: detail(id, ctx.user) };
     });
 
     r.patch('/api/users/:id', { perm: 'users.edit' }, (ctx) => {
@@ -169,8 +185,15 @@ export default {
       const before = snapshot(id);
       const target = loadAccess(id);
       if (target.isAdmin && !ctx.user.isAdmin) throw forbidden('Administratoren dürfen nur von Administratoren bearbeitet werden.');
+      if (target.isSuperadmin && !ctx.user.isSuperadmin) throw forbidden('Superadmins dürfen nur von Superadmins bearbeitet werden.');
 
       tx(() => {
+        if (b.isSuperadmin !== undefined) {
+          if (!ctx.user.isSuperadmin) throw forbidden('Nur Superadmins können den Superadmin-Status vergeben oder entziehen.');
+          const v = b.isSuperadmin ? 1 : 0;
+          if (!v && cur.is_superadmin && get('SELECT COUNT(*) c FROM users WHERE is_superadmin = 1').c <= 1) throw conflict('Es muss mindestens ein Superadmin bleiben.');
+          run('UPDATE users SET is_superadmin = ? WHERE id = ?', v, id);
+        }
         if (b.displayName !== undefined) {
           if (id !== ctx.user.id) throw forbidden('Namen anderer Mitglieder sind nicht einsehbar und werden hier nicht geändert.');
           run('UPDATE users SET display_name = ?, updated_at = ? WHERE id = ?', str(b.displayName, 'Anzeigename', { min: 2, max: 60 }), now(), id);
@@ -202,7 +225,7 @@ export default {
         }
       });
       audit(ctx, { action: 'user.updated', module: 'users', targetType: 'user', targetId: id, targetLabel: memberLabel(cur), before, after: snapshot(id) });
-      return { user: detail(id, ctx.user.id) };
+      return { user: detail(id, ctx.user) };
     });
 
     // Statuswechsel: Freischalten / Ablehnen / Sperren / Entsperren
@@ -215,6 +238,7 @@ export default {
       const reason = str(ctx.body.reason, 'Begründung', { max: 300, required: false });
       if (id === ctx.user.id) throw forbidden('Du kannst deinen eigenen Status nicht ändern.');
       if (loadAccess(id).isAdmin && !ctx.user.isAdmin) throw forbidden('Administratoren dürfen nur von Administratoren verwaltet werden.');
+      if (cur.is_superadmin && !ctx.user.isSuperadmin) throw forbidden('Superadmins dürfen nur von Superadmins verwaltet werden.');
       if (status !== 'active' && isActiveAdmin(id) && otherActiveAdmins(id) === 0) throw conflict('Der letzte aktive Administrator kann nicht gesperrt werden.');
       const roleIds = ctx.body.roleIds !== undefined ? intList(ctx.body.roleIds, 'Rollen') : null;
 
@@ -227,14 +251,15 @@ export default {
       if (status === 'blocked' || status === 'rejected') destroyUserSessions(id);
       const action = { active: cur.status === 'pending' ? 'user.approved' : 'user.unblocked', blocked: 'user.blocked', rejected: 'user.rejected', pending: 'user.reset_pending' }[status];
       audit(ctx, { action, module: 'users', targetType: 'user', targetId: id, targetLabel: memberLabel(cur), before, after: { ...snapshot(id), reason: reason || undefined } });
-      return { user: detail(id, ctx.user.id) };
+      return { user: detail(id, ctx.user) };
     });
 
-    r.post('/api/users/:id/password', { perm: 'users.edit' }, (ctx) => {
+    r.post('/api/users/:id/password', { perm: 'users.password_reset' }, (ctx) => {
       const id = Number(ctx.params.id);
       const cur = get('SELECT id, member_number, status FROM users WHERE id = ?', id);
       if (!cur) throw notFound('Benutzer nicht gefunden.');
       if (loadAccess(id).isAdmin && !ctx.user.isAdmin) throw forbidden('Administratoren dürfen nur von Administratoren verwaltet werden.');
+      if (get('SELECT is_superadmin s FROM users WHERE id = ?', id)?.s && !ctx.user.isSuperadmin) throw forbidden('Superadmins dürfen nur von Superadmins verwaltet werden.');
       const err = checkPassword(ctx.body.password);
       if (err) throw bad(err);
       run('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', hashPassword(ctx.body.password), now(), id);
@@ -249,6 +274,8 @@ export default {
       if (!cur) throw notFound('Benutzer nicht gefunden.');
       if (id === ctx.user.id) throw forbidden('Du kannst dich nicht selbst löschen.');
       if (loadAccess(id).isAdmin && !ctx.user.isAdmin) throw forbidden('Administratoren dürfen nur von Administratoren gelöscht werden.');
+      if (cur.is_superadmin && !ctx.user.isSuperadmin) throw forbidden('Superadmins dürfen nur von Superadmins gelöscht werden.');
+      if (cur.is_superadmin && get('SELECT COUNT(*) c FROM users WHERE is_superadmin = 1').c <= 1) throw conflict('Der letzte Superadmin kann nicht gelöscht werden.');
       if (isActiveAdmin(id) && otherActiveAdmins(id) === 0) throw conflict('Der letzte aktive Administrator kann nicht gelöscht werden.');
       const before = snapshot(id);
       run('DELETE FROM users WHERE id = ?', id);

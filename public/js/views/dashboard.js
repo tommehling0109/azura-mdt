@@ -130,11 +130,11 @@ const RENDERERS = {
     const d = w.data;
     const cents = (c) => money(c / 100);
     return card(w.title, h('div', { class: 'stack-v' },
-      h('div', { class: 'tile-row' }, tile(d.openCompanies, 'Offene Deckel', { ic: 'dollar', tone: d.openCompanies ? 'info' : '', onClick: () => openApp('tab') }), tile(d.pendingPeriods, 'Abrechnungen ausstehend', { ic: 'hourglass', tone: d.pendingPeriods ? 'warn' : '', onClick: () => openApp('tab') }),
-        tile(d.submitted + d.review, 'Eingereicht / Prüfung', { ic: 'search', tone: d.submitted ? 'warn' : '', onClick: () => openApp('tab') }), tile(d.confirmed + d.paymentPending, 'Zahlung ausstehend', { ic: 'alert', tone: d.confirmed + d.paymentPending ? 'warn' : '', onClick: () => openApp('tab') }), tile(d.paid, 'Bezahlt', { ic: 'check', tone: 'ok', onClick: () => openApp('tab') })),
-      h('div', { class: 'fin-balance neg' }, h('div', { class: 'fb-l' }, 'Gesamt offen'), h('div', { class: 'fb-v' }, cents(d.openCents))),
+      h('div', { class: 'tile-row' }, tile(d.companies, 'Aktive Firmen', { ic: 'dollar', tone: 'info', onClick: () => openApp('tab') }),
+        tile(d.submitted + d.review, 'Neu / in Prüfung', { ic: 'search', tone: d.submitted ? 'warn' : '', onClick: () => openApp('tab') }), tile(d.confirmed + d.paymentPending, 'Zahlung ausstehend', { ic: 'alert', tone: d.confirmed + d.paymentPending ? 'warn' : '', onClick: () => openApp('tab') }), tile(d.paid, 'Bezahlt', { ic: 'check', tone: 'ok', onClick: () => openApp('tab') })),
+      h('div', { class: 'fin-balance neg' }, h('div', { class: 'fb-l' }, 'Noch zu zahlen'), h('div', { class: 'fb-v' }, cents(d.openCents))),
       d.recent.length > 0 && h('div', null, h('div', { class: 'sub-title' }, 'Aktuelle Abrechnungen'), d.recent.slice(0, 4).map((x) => h('div', { class: 'list-row', style: { padding: '8px 0', cursor: 'pointer' }, onclick: () => openApp('tab') },
-        h('div', { class: 'grow' }, h('div', { class: 't' }, x.company), h('div', { class: 's' }, x.interval + ' · ' + x.period)), h('b', null, cents(x.submittedCents)), h('span', { class: 'badge', style: { '--c': x.statusColor } }, x.statusLabel))))), { icon: 'dollar' });
+        h('div', { class: 'grow' }, h('div', { class: 't' }, x.company), h('div', { class: 's' }, x.period)), h('b', null, cents(x.amountCents)), h('span', { class: 'badge', style: { '--c': x.statusColor } }, x.statusLabel))))), { icon: 'dollar' });
   },
 
   'credit-overview': (w) => {

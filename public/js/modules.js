@@ -28,8 +28,10 @@ export const NAV = [
   {
     section: 'Finanzen',
     items: [
+      { id: 'finance', label: 'Finanzen', subtitle: 'Journal, Kontostand und Auswertungen', icon: 'wallet', path: '/finance', perm: ['finance.view'], win: { w: 1120, h: 700 }, view: () => import('./views/finance.js') },
+      { id: 'stats', label: 'Statistik', subtitle: 'Kennzahlen und Diagramme aus allen Bereichen', icon: 'chart', path: '/stats', perm: ['stats.view'], win: { w: 1120, h: 700 }, view: () => import('./views/stats.js') },
       { id: 'credit', label: 'Kredit', subtitle: 'Kreditanfragen, Zinsen und Ratenpläne', icon: 'bank', path: '/credit', perm: ['credit.view'], win: { w: 1120, h: 680 }, view: () => import('./views/credit.js'), badge: 'creditAwaiting' },
-      { id: 'tab', label: 'Deckel', subtitle: 'Firmen-Deckel, Abrechnungen und Zahlungen', icon: 'dollar', path: '/deckel', perm: ['tab.book', 'tab.view', 'tab.statements', 'tab.manage_companies'], win: { w: 1120, h: 680 }, view: () => import('./views/tab.js') },
+      { id: 'tab', label: 'Deckel', subtitle: 'Firmen-Deckel, Abrechnungen und Zahlungen', icon: 'dollar', path: '/deckel', perm: ['tab.view', 'tab.statements', 'tab.manage_companies'], win: { w: 1120, h: 680 }, view: () => import('./views/tab.js') },
     ],
   },
   {
