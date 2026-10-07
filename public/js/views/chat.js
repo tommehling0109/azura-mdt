@@ -92,7 +92,7 @@ export async function chatApp(container, ctx, o = {}) {
   function drawSide() {
     const row = (c, dm) => {
       const b = h('button', { class: `chat-chan ${c.id === current ? 'on' : ''}`, type: 'button', style: { '--c': c.color } },
-        dm ? icon('users') : h('span', { class: 'dot' }), h('span', { class: 'cn' }, !dm && c.restricted && icon('lockClosed'), c.name), c.unread > 0 && h('span', { class: 'count hot' }, c.unread));
+        dm ? (c.peer?.avatar ? h('img', { class: 'avatar xs', src: c.peer.avatar, alt: '' }) : icon('users')) : h('span', { class: 'dot' }), h('span', { class: 'cn' }, !dm && c.restricted && icon('lockClosed'), c.name), c.unread > 0 && h('span', { class: 'count hot' }, c.unread));
       b.addEventListener('click', () => { if (current !== c.id) { current = c.id; replyTo = editing = null; setBanner(); sessionStorage.setItem(CHANNEL_KEY, String(current)); drawSide(); loadMessages({ initial: true }); } });
       return b;
     };
@@ -154,7 +154,7 @@ export async function chatApp(container, ctx, o = {}) {
       m.canDelete && button('', { size: 'sm', variant: 'ghost', icon: 'trash', title: 'Löschen', onClick: () => del(m) }));
     return h('div', { class: `msg ${m.isMine ? 'mine' : ''} ${m.deleted ? 'gone' : ''}`, 'data-mid': m.id },
       h('div', { class: 'msg-bubble' },
-        h('div', { class: 'msg-meta' }, h('span', { class: 'member-no' }, m.sender), m.isMine && h('span', { class: 'muted' }, 'Du'), m.pinned && h('span', { class: 'pinmark', title: 'Angepinnt' }, icon('pin')),
+        h('div', { class: 'msg-meta' }, m.senderAvatar && h('img', { class: 'avatar xs', src: m.senderAvatar, alt: '', loading: 'lazy' }), h('span', { class: 'member-no' }, m.sender), m.isMine && h('span', { class: 'muted' }, 'Du'), m.pinned && h('span', { class: 'pinmark', title: 'Angepinnt' }, icon('pin')),
           h('span', { class: 'msg-time', title: fmtDateTime(m.createdAt) }, hhmm(m.createdAt)), m.editedAt && !m.deleted && h('span', { class: 'muted', title: `Bearbeitet ${fmtDateTime(m.editedAt)}` }, '(bearbeitet)')),
         m.replyTo && h('div', { class: 'msg-quote', onclick: () => jumpTo(m.replyTo.id) }, h('b', null, m.replyTo.sender), ' ', m.replyTo.snippet),
         h('div', { class: 'msg-body' }, m.deleted ? h('i', null, 'Nachricht gelöscht') : renderBody(m.body))),
@@ -254,7 +254,7 @@ export async function chatApp(container, ctx, o = {}) {
   mount(scroller, skeletons(4, 56));
   await loadChannels();
   await loadMessages({ initial: true });
-  ctx.live(['chat'], async () => { await loadChannels(); await loadMessages(); }, { wait: 120 });
+  ctx.live(['chat', 'profile'], async () => { await loadChannels(); await loadMessages(); }, { wait: 120 });
   const onOpen = async () => { const id = Number(sessionStorage.getItem(CHANNEL_KEY)); if (id && id !== current) { current = id; await loadChannels(); await loadMessages({ initial: true }); } };
   window.addEventListener('mdt:chat-open', onOpen);
   const onVis = () => { if (document.visibilityState === 'visible') loadMessages(); };

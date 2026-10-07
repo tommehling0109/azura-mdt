@@ -114,6 +114,11 @@ App „Kredit“ (Finanzen) für Mitarbeiter und – als Partner-App – für ex
 - **Finanz-Journal:** Auszahlung = Ausgang (verbucht), jede Rate = erwartete Einnahme (verbucht bei Zahlung) – später auswertbar (Zinsanteil im Vermerk).
 - **Grenzen & Rechte:** Kreditrahmen je Kreditnehmer, Min/Max-Summe, längste Laufzeit und Zahl offener Anfragen (Konfiguration → Kredit). Rechte: `credit.view`, `credit.manage` (verhandeln, auszahlen), `credit.payments` (Zahlungen/Ausfall), `credit.limits` (Kreditrahmen).
 
+## Profilbilder & Live-Synchronisation
+
+- **Profilbild:** Jedes Mitglied lädt unter Konto & Sicherheit → *Profilbild* ein eigenes Bild hoch (wird quadratisch zugeschnitten, PNG/JPEG/WebP, Typ per Dateikopf geprüft, kein SVG). Es erscheint in der Kopfzeile, in der Benutzerverwaltung und im Chat – immer neben der Personalnummer, nie mit Namen. Mitglieder mit dem Recht `users.avatar_remove` (Admins immer) können fremde Bilder in der Benutzerverwaltung entfernen. Änderungen erscheinen bei allen sofort.
+- **Live überall:** Jede Änderung (Deckel, Kredit, Börse, Lager, Chat, Benutzer …) wird als Ereignis gemeldet und in allen offenen Fenstern ohne Neuladen aktualisiert – auch im **Firmenportal** (Statuswechsel erscheinen dort sofort, Eingaben im Formular bleiben erhalten) und im Partner-Portal. Ein automatischer Test prüft, dass jede schreibende Aktion ein Live-Ereignis auslöst und Firmen nie Ereignisse anderer Firmen erhalten.
+
 ## Nächste Phasen
 
 Weitere Module (Fahrzeuge, Lager, Ankauf, Chat …) werden als `server/modules/<name>.js` (Permissions + Routen + Migration) und

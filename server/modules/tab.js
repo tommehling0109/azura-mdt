@@ -13,6 +13,7 @@ import { notify, staffWith } from '../core/notifications.js';
 import { expectTabEntry, cancelTabEntry, settleTabPeriod } from '../core/ledger.js';
 import { periodKey, periodInfo, recentPeriods } from '../core/periods.js';
 import { registerWidget } from './dashboard.js';
+import { openStream } from '../core/realtime.js';
 
 /**
  * Deckel-System: Firmen als Geschäftskunden, auf die Mitarbeiter „auf Deckel schreiben“ (jede Buchung mit Personalnummer).
@@ -460,6 +461,8 @@ export default {
       })),
     });
     r.get('/api/c/:token', { auth: false }, (ctx) => portalState(byToken(ctx)));
+    /** Live-Verbindung des Firmenportals: Statuswechsel erscheinen ohne Neuladen. */
+    r.get('/api/c/:token/events', { auth: false }, (ctx) => { const c = byToken(ctx); return openStream(ctx, { kind: 'company', companyId: c.id, token: c.link_token }); });
     r.post('/api/c/:token/statements', { auth: false }, (ctx) => {
       const c = byToken(ctx);
       if (!rateLimit(`cosub|${c.id}`, 20, 10 * 60_000)) throw new HttpError(429, 'Zu viele Versuche. Bitte warte einige Minuten.', 'rate_limited');

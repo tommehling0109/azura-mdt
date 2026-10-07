@@ -18,7 +18,7 @@ const listDto = (u, viewerId = null) => ({
   id: u.id, isSelf: u.id === viewerId,
   username: u.id === viewerId || u.status === 'pending' ? u.username : null,
   displayName: u.id === viewerId ? u.display_name : memberLabel(u),
-  status: u.status, statusReason: u.status_reason,
+  status: u.status, statusReason: u.status_reason, avatarUrl: u.avatar_ext ? `/api/avatars/${u.id}?v=${u.avatar_version}` : null,
   createdAt: u.created_at, lastLoginAt: u.last_login_at, memberNumber: u.member_number,
   rank: u.rank_id ? { id: u.rank_id, name: u.rank_name, color: u.rank_color } : null,
   department: u.department_id ? { id: u.department_id, name: u.dept_name, color: u.dept_color } : null,

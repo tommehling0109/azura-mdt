@@ -36,6 +36,10 @@ export const roleChip = (r) => h('span', { class: 'badge no-dot', style: { '--c'
 
 const hue = (s) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7);
 const initials = (name) => (/\d/.test(name) ? name.replace(/\D/g, '').slice(-3) : name.trim().slice(0, 2).toUpperCase());
+/** Profilbild des Mitglieds (Bild, sonst Initialen/Nummer). user: { avatarUrl, displayName } */
+export const userAvatar = (user, cls = '', fallbackName) => (user?.avatarUrl
+  ? h('img', { class: `avatar ${cls}`, src: user.avatarUrl, alt: '', loading: 'lazy', decoding: 'async' })
+  : avatar(fallbackName ?? user?.displayName ?? user?.label ?? '?', cls));
 export const avatar = (name, cls = '') => h('div', { class: `avatar ${cls}`, style: { '--h': hue(name) } }, initials(name));
 
 export function field(label, control, { help, error } = {}) {

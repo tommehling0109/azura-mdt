@@ -54,7 +54,7 @@ function channelFor(v, id) {
   return ch;
 }
 
-const MSG_SQL = `SELECT m.*, u.member_number sender_number, u.status sender_status, pp.partner_number sender_partner_number
+const MSG_SQL = `SELECT m.*, u.member_number sender_number, u.status sender_status, u.avatar_ext sender_avatar_ext, u.avatar_version sender_avatar_v, pp.partner_number sender_partner_number
   FROM chat_messages m LEFT JOIN users u ON u.id = m.user_id LEFT JOIN partners pp ON pp.id = m.partner_id`;
 const isMine = (m, v) => (v.isPartner ? m.partner_id === v.partner.id : m.user_id === v.id);
 function msgDto(m, v) {
@@ -67,7 +67,7 @@ function msgDto(m, v) {
   const mine = isMine(m, v);
   const kind = get('SELECT kind FROM chat_channels WHERE id = ?', m.channel_id)?.kind;
   return {
-    id: m.id, channelId: m.channel_id, sender: senderLabel(m), isMine: mine, body: deleted ? '' : m.body, deleted,
+    id: m.id, channelId: m.channel_id, sender: senderLabel(m), senderAvatar: m.sender_avatar_ext ? `/api/avatars/${m.user_id}?v=${m.sender_avatar_v}` : null, isMine: mine, body: deleted ? '' : m.body, deleted,
     createdAt: m.created_at, editedAt: m.edited_at, pinned: !!m.pinned_at && !deleted, pinnedAt: m.pinned_at, replyTo: reply,
     canEdit: mine && !deleted, canDelete: !deleted && (mine || (!v.isPartner && v.perms.has('chat.moderate') && kind !== 'dm')),
   };
@@ -81,7 +81,8 @@ function peerOf(c, v) {
     return { id: c.dm_partner, partner: true, label: p?.partner_number ?? 'Partner', subtitle: p?.name ?? '' };
   }
   const id = c.dm_a === v.id ? c.dm_b : c.dm_a;
-  return { id, label: labelForUser(id, v.id) };
+  const a = get('SELECT avatar_ext, avatar_version FROM users WHERE id = ?', id);
+  return { id, label: labelForUser(id, v.id), avatar: a?.avatar_ext ? `/api/avatars/${id}?v=${a.avatar_version}` : null };
 }
 const channelDto = (c, v) => {
   const dm = c.kind === 'dm';
@@ -195,6 +196,11 @@ function editMessage(v, id, b) {
 function markRead(v, channelId, lastId) {
   const ch = channelFor(v, channelId);
   const last = Number.isInteger(lastId) ? lastId : get('SELECT COALESCE(MAX(id),0) m FROM chat_messages WHERE channel_id = ?', ch.id).m;
+  const prev = v.isPartner ? get('SELECT last_read_id l FROM chat_partner_reads WHERE channel_id = ? AND partner_id = ?', ch.id, v.partner.id)?.l ?? 0 : get('SELECT last_read_id l FROM chat_reads WHERE channel_id = ? AND user_id = ?', ch.id, v.id)?.l ?? 0;
+  if (last > prev) { // Ungelesen-Zähler in anderen Tabs/Geräten derselben Person sofort aktualisieren
+    const base = { topic: 'chat', kind: 'read', entityType: 'channel', entityId: ch.id };
+    if (v.isPartner) publish({ ...base, staff: 0, partnerScope: `id:${v.partner.id}` }); else publish({ ...base, staff: 1, userId: v.id });
+  }
   if (v.isPartner) run('INSERT INTO chat_partner_reads (channel_id,partner_id,last_read_id) VALUES (?,?,?) ON CONFLICT(channel_id,partner_id) DO UPDATE SET last_read_id = MAX(last_read_id, excluded.last_read_id)', ch.id, v.partner.id, last);
   else run('INSERT INTO chat_reads (channel_id,user_id,last_read_id) VALUES (?,?,?) ON CONFLICT(channel_id,user_id) DO UPDATE SET last_read_id = MAX(last_read_id, excluded.last_read_id)', ch.id, v.id, last);
 }

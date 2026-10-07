@@ -45,6 +45,12 @@ export function publishChange({ module, action, targetType, targetId }) {
       const pid = targetId != null ? get('SELECT partner_id FROM market_deals WHERE id = ?', Number(targetId))?.partner_id : null;
       partnerScope = pid ? `id:${pid}` : null;
     } else partnerScope = 'all'; // Katalog, Gesuche
+  } else if (module === 'tab') {
+    // Firmenportal: Abrechnungs-/Firmenänderungen gehen live an die betroffene Firma
+    let cid = null;
+    if (targetType === 'tab_statement' && targetId != null) cid = get('SELECT company_id FROM tab_statements WHERE id = ?', Number(targetId))?.company_id;
+    else if (targetType === 'tab_company' && targetId != null) cid = Number(targetId);
+    if (cid) publish({ topic: 'tab', kind: action, entityType: targetType, entityId: targetId, staff: 0, partnerScope: `company:${cid}` });
   } else if (module === 'credit') {
     const pid = targetType === 'loan' && targetId != null ? get('SELECT partner_id FROM credit_loans WHERE id = ?', Number(targetId))?.partner_id : null;
     partnerScope = pid ? `id:${pid}` : null;
@@ -57,6 +63,7 @@ export function publishChange({ module, action, targetType, targetId }) {
 }
 
 const matches = (c, e) => {
+  if (c.kind === 'company') return e.type === 'change' && e.partner_scope === `company:${c.companyId}`; // Firmenportal: nur Ereignisse der eigenen Firma
   if (e.type === 'change' && e.user_id != null) return c.kind === 'staff' && e.user_id === c.userId; // personenbezogene Änderung (z. B. Privatnachricht)
   if (e.type === 'notification') return c.kind === 'staff' ? e.user_id === c.userId : e.partner_id === c.partnerId;
   if (c.kind === 'staff') return e.staff === 1 && (!e.staff_perm || c.perms.has(e.staff_perm));
@@ -78,7 +85,7 @@ const close = (c) => { conns.delete(c); try { c.res.end(); } catch { /* weg */ }
 function broadcast(e) {
   const affectsAccess = e.type === 'change' && ['users', 'roles', 'org', 'partners'].includes(e.topic);
   for (const c of [...conns]) {
-    if (affectsAccess) { if (c.kind === 'staff') refreshStaff(c); else if (!partnerFromToken(c.token)) close(c); }
+    if (affectsAccess) { if (c.kind === 'staff') refreshStaff(c); else if (c.kind === 'partner' && !partnerFromToken(c.token)) close(c); }
     if (c.closed || !conns.has(c)) continue;
     if (!matches(c, e)) continue;
     try { c.res.write(frame(e)); } catch { conns.delete(c); }
@@ -114,7 +121,7 @@ export function openStream(ctx, conn) {
 // Keepalive + Sitzungs-Prüfung: abgelaufene/beendete Sitzungen und deaktivierte Zugänge verlieren den Stream
 setInterval(() => {
   for (const c of [...conns]) {
-    if (c.kind === 'staff') { refreshStaff(c); } else if (!partnerFromToken(c.token)) close(c);
+    if (c.kind === 'staff') { refreshStaff(c); } else if (c.kind === 'company') { if (!get("SELECT 1 x FROM tab_companies WHERE link_token = ? AND status = 'active'", c.token)) close(c); } else if (!partnerFromToken(c.token)) close(c);
     if (conns.has(c)) { try { c.res.write(': ping\n\n'); } catch { conns.delete(c); } }
   }
 }, 15_000).unref();

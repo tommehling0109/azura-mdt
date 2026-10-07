@@ -44,7 +44,7 @@ export function userFromToken(token) {
 
 export function loadUser(id) {
   const u = get(`SELECT u.id,u.username,u.display_name,u.status,u.status_reason,u.member_number,
-    r.id rank_id, r.name rank_name, r.color rank_color, d.id dept_id, d.name dept_name, d.color dept_color
+    u.avatar_ext, u.avatar_version, r.id rank_id, r.name rank_name, r.color rank_color, d.id dept_id, d.name dept_name, d.color dept_color
     FROM users u LEFT JOIN ranks r ON r.id=u.rank_id LEFT JOIN departments d ON d.id=u.department_id WHERE u.id = ?`, id);
   if (!u) return null;
   const acc = loadAccess(id);
@@ -52,13 +52,13 @@ export function loadUser(id) {
     id: u.id, username: u.username, displayName: u.display_name, status: u.status, statusReason: u.status_reason, memberNumber: u.member_number,
     rank: u.rank_id ? { id: u.rank_id, name: u.rank_name, color: u.rank_color } : null,
     department: u.dept_id ? { id: u.dept_id, name: u.dept_name, color: u.dept_color } : null,
-    roles: acc.roles, isAdmin: acc.isAdmin, perms: acc.perms,
+    roles: acc.roles, isAdmin: acc.isAdmin, perms: acc.perms, avatarUrl: u.avatar_ext ? `/api/avatars/${u.id}?v=${u.avatar_version}` : null,
   };
 }
 export const publicUser = (u) => ({
   id: u.id, username: u.username, displayName: u.displayName, status: u.status, statusReason: u.statusReason,
   memberNumber: u.memberNumber, rank: u.rank, department: u.department,
-  roles: u.roles, isAdmin: u.isAdmin, permissions: [...u.perms],
+  roles: u.roles, isAdmin: u.isAdmin, permissions: [...u.perms], avatarUrl: u.avatarUrl ?? null,
 });
 
 // Brute-Force-Bremse (im Speicher, pro IP+Benutzername)

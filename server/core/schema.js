@@ -600,4 +600,8 @@ export const SCHEMA_MIGRATIONS = [
   );
   CREATE INDEX idx_credit_events ON credit_events(loan_id, id);
   `,
+  /* v12 – Profilbilder */ `
+  ALTER TABLE users ADD COLUMN avatar_ext TEXT;
+  ALTER TABLE users ADD COLUMN avatar_version INTEGER NOT NULL DEFAULT 0;
+  `,
 ];

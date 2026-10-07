@@ -2,7 +2,7 @@ import { everySecond, timeParts, dateLong } from './clock.js';
 import { partnerScope, unseenCount } from './seen.js';
 import { h, mount, timeAgo } from './ui/dom.js';
 import { icon } from './ui/icons.js';
-import { avatar, skeletons, empty, toast, button, toggle } from './ui/kit.js';
+import { avatar, userAvatar, skeletons, empty, toast, button, toggle } from './ui/kit.js';
 import { state, canAny, can, applyConfig } from './state.js';
 import { NAV, allItems } from './modules.js';
 import { openAccountDialog } from './views/account.js';
@@ -120,6 +120,7 @@ export function showApp(onLogout, opts = {}) {
   const dock = h('div', { class: 'dock', role: 'toolbar', 'aria-label': 'Apps' });
   const startMenu = h('div', { class: 'start-menu', hidden: true });
   const startBtn = h('button', { class: 'panel-btn start-btn', type: 'button', title: 'Menü', 'aria-label': 'App-Menü', 'aria-haspopup': 'true' }, h('div', { class: 'logo-phoenix' }));
+  let panelAvatar = null;
   const clock = h('span', { class: 'panel-clock' });
   everySecond(clock, () => { const t = timeParts(); clock.textContent = `${t.hm}:${t.s}`; });
 
@@ -165,7 +166,7 @@ export function showApp(onLogout, opts = {}) {
     h('div', { class: 'panel-right' },
       liveDot, bell, lockBtn,
       h('button', { class: 'panel-btn panel-user', type: 'button', title: opts.partner ? state.user.displayName : 'Konto & Sicherheit', onclick: opts.partner ? undefined : () => openAccountDialog() },
-        icon('users'), h('span', null, state.user.displayName)),
+        opts.partner ? icon('users') : (panelAvatar = userAvatar(state.user, 'sm')), h('span', null, state.user.displayName)),
       h('button', { class: 'panel-btn', type: 'button', title: 'Abmelden', 'aria-label': 'Abmelden', onclick: () => { clearLockState(); lockCtl?.destroy(); onLogout(); } }, icon('logout'))));
   const desktop = h('div', { class: 'desktop' }, panel, area, h('div', { class: 'dock-row' }, dock));
   mount(screen(), h('div', { class: 'wallpaper' }), widget, desktop, startMenu, npanel);
@@ -396,6 +397,9 @@ export function showApp(onLogout, opts = {}) {
   // ── Echtzeit: eine Verbindung für Panel und Partner-Portal ──
   connect(opts.partner ? 'partner' : 'staff');
   initNotifier({ kind: opts.partner ? 'partner' : 'staff', id: opts.partner ? state.user.displayName : state.user.id, open: openTarget });
+  if (!opts.partner) subscribe(['profile'], async () => { // eigenes Profilbild geändert/entfernt (auch durch einen Admin) → Kopfzeile sofort aktualisieren
+    try { const { user } = await api.get('/api/auth/me'); state.user.avatarUrl = user.avatarUrl; const fresh = userAvatar(user, 'sm'); panelAvatar?.replaceWith(fresh); panelAvatar = fresh; } catch { /* egal */ }
+  });
   subscribe(opts.partner ? ['market', 'chat', 'credit'] : ['users', 'market', 'chat', 'credit'], async () => { await refreshCounters(); renderIcons(); }); // Zähler/Abzeichen live
   subscribe(['system', 'dashboard'], async () => { applyConfig((await api.get('/api/bootstrap')).config); }); // Farben/Logo/Namen live für alle
   if (opts.partner) subscribe(['partners'], () => api.get('/api/p/me')); // Zugang geändert/deaktiviert → sofort abgemeldet (401-Handler)

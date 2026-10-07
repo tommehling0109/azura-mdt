@@ -934,6 +934,43 @@ try {
   r = await new Client().call('GET', '/api/bootstrap'); assert.match(r.version, /^[0-9a-f]{12}$/); assert.equal((await new Client().call('GET', '/api/version')).version, r.version);
   assert.equal((await fetch(`${base}/js/main.js`)).headers.get('cache-control'), 'no-store'); assert.equal((await fetch(`${base}/reset`)).status, 200); ok('Version im Bootstrap, Programmdateien ohne Browser-Cache, /reset erreichbar');
 
+
+  // ══ Profilbilder ══
+  const PNGAV = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  await setPerms([]);
+  const sProf = await openSse(admin.cookie, '/api/events');
+  assert.equal((await new Client().call('POST', '/api/account/avatar', { data: PNGAV })).status, 401);
+  assert.equal((await mod.call('POST', '/api/account/avatar', { data: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64') })).status, 400);
+  r = await mod.call('POST', '/api/account/avatar', { data: PNGAV }); assert.equal(r.status, 200); assert.match(r.avatarUrl, /^\/api\/avatars\/\d+\?v=1$/); const avUrl = r.avatarUrl;
+  assert.ok(await sProf.waitFor((e) => e.event === 'change' && e.data.topic === 'profile')); ok('Eigenes Profilbild hochladen (nur echte Bilder) – live bei anderen sichtbar');
+  const avRes = await fetch(`${base}${avUrl}`, { headers: { cookie: admin.cookie } }); assert.equal(avRes.status, 200); assert.equal(avRes.headers.get('content-type'), 'image/png'); assert.match(avRes.headers.get('cache-control'), /immutable/);
+  assert.equal((await fetch(`${base}${avUrl}`)).status, 401);
+  assert.equal((await mod.call('GET', '/api/auth/me')).user.avatarUrl, avUrl);
+  r = await admin.call('GET', '/api/users'); assert.equal(r.users.find((u) => u.id === neuer.id).avatarUrl, avUrl); assert.equal(JSON.stringify(r).includes('Neuer'), false); ok('Profilbild erscheint in Konto, Benutzerliste (weiterhin ohne Namen) und ist nur angemeldet abrufbar');
+  assert.equal((await mod.call('DELETE', `/api/users/${neuer.id}/avatar`)).status, 403); // kein Recht
+  await setPerms(['users.avatar_remove']); assert.equal((await mod.call('DELETE', `/api/users/${1}/avatar`)).status, 403); // Admin hat gar keins
+  assert.equal((await mod.call('DELETE', `/api/users/${neuer.id}/avatar`)).status, 200);
+  assert.equal((await fetch(`${base}${avUrl}`, { headers: { cookie: admin.cookie } })).status, 404); await setPerms([]);
+  await mod.call('POST', '/api/account/avatar', { data: PNGAV }); assert.equal((await admin.call('DELETE', `/api/users/${neuer.id}/avatar`)).status, 200); ok('Entfernen fremder Profilbilder nur mit users.avatar_remove (Admins immer)');
+  await mod.call('POST', '/api/account/avatar', { data: PNGAV }); assert.equal((await mod.call('DELETE', '/api/account/avatar')).status, 200); assert.equal((await mod.call('GET', '/api/auth/me')).user.avatarUrl, null); sProf.close(); ok('Eigenes Profilbild entfernen');
+
+  // ══ Live-Synchronisation im Firmenportal ══
+  r = await admin.call('POST', '/api/tab/companies', { name: 'Live GmbH', interval: 'weekly' }); const liveTok = r.company.linkPath.split('/').pop(); const liveCo = r.company.id;
+  r = await admin.call('POST', '/api/tab/companies', { name: 'Andere GmbH', interval: 'weekly' }); const otherTok = r.company.linkPath.split('/').pop();
+  await admin.call('POST', '/api/tab/entries', { companyId: liveCo, memberNumber: 'AZ-220', amountCents: 1500, description: 'Live Test' });
+  const sCo = await openSse('', `/api/c/${liveTok}/events`), sOther = await openSse('', `/api/c/${otherTok}/events`);
+  assert.equal(sCo.status, 200); assert.equal((await openSse('', '/api/c/ungueltig-ungueltig-ungueltig/events')).status, 404);
+  const curW = tabPeriodKey(new Date(), 'weekly');
+  await new Client().call('POST', `/api/c/${liveTok}/statements`, { periodKey: curW, amountCents: 1500 });
+  assert.ok(await sCo.waitFor((e) => e.event === 'change' && e.data.topic === 'tab')); const n0 = sCo.events.filter((e) => e.event === 'change').length;
+  const liveSt = (await admin.call('GET', '/api/tab/statements?company=' + liveCo)).statements[0];
+  await admin.call('POST', `/api/tab/statements/${liveSt.id}/review`);
+  assert.ok(await sCo.waitFor((e) => e.event === 'change' && e.data.kind === 'tab.statement_review')); ok('Firmenportal: Statuswechsel durch Mitarbeiter kommt live bei der Firma an');
+  await sleep(150); assert.equal(sOther.events.some((e) => e.event === 'change'), false); assert.ok(n0 >= 1); sCo.close(); sOther.close(); ok('Eine Firma bekommt nie Ereignisse einer anderen Firma');
+  // Mitarbeiter-Seite: Einreichung einer Firma kommt live an
+  const sStaff = await openSse(admin.cookie, '/api/events'); r = await new Client().call('POST', `/api/c/${otherTok}/statements`, { periodKey: curW, amountCents: 0 });
+  assert.ok(await sStaff.waitFor((e) => e.event === 'change' && e.data.topic === 'tab' && e.data.kind === 'tab.statement_submitted')); sStaff.close(); ok('Mitarbeiter sehen neu eingereichte Firmen-Abrechnungen live');
+
   // ── Branding: eigenes Logo / Hintergrund ──
   const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
   assert.equal((await mod.call('POST', '/api/admin/branding/logo', { data: PNG })).status, 403);

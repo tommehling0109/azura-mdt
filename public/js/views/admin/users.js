@@ -1,7 +1,7 @@
 import { h, mount, fmtDateTime, timeAgo, debounce } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import {
-  button, busy, table, tabs, avatar, statusBadge, roleChip, memberNo, rankBadge, deptBadge, field, input, select, checkbox, formError,
+  button, busy, table, tabs, avatar, userAvatar, statusBadge, roleChip, memberNo, rankBadge, deptBadge, field, input, select, checkbox, formError,
   openModal, confirmDialog, toast, skeletons, empty, note,
 } from '../../ui/kit.js';
 import { api } from '../../api.js';
@@ -35,7 +35,7 @@ export default async function render(container, ctx) {
     ctx.refreshCounters?.();
     mount(listHost, table([
       { label: 'Nr.', style: { width: '1%' }, render: (u) => memberNo(u.memberNumber) },
-      { label: 'Benutzer', render: (u) => h('div', { class: 'cell-user' }, avatar(u.displayName), h('div', null, h('div', { class: 'nm' }, u.displayName), h('div', { class: 'sub' }, u.username ? '@' + u.username : (u.isSelf ? 'Du' : 'Name geschützt')))) },
+      { label: 'Benutzer', render: (u) => h('div', { class: 'cell-user' }, userAvatar(u), h('div', null, h('div', { class: 'nm' }, u.displayName), h('div', { class: 'sub' }, u.username ? '@' + u.username : (u.isSelf ? 'Du' : 'Name geschützt')))) },
       { label: 'Rang / Abteilung', render: (u) => (u.rank || u.department ? h('div', { class: 'chips' }, rankBadge(u.rank), deptBadge(u.department)) : h('span', { class: 'muted' }, '–')) },
       { label: 'Status', render: (u) => statusBadge(u.status) },
       { label: 'Rollen', render: (u) => (u.roles.length ? h('div', { class: 'chips' }, u.roles.map(roleChip)) : h('span', { class: 'muted' }, '–')) },
@@ -115,10 +115,14 @@ export default async function render(container, ctx) {
       (user?.effectivePermissions ?? []).map((k) => h('span', { class: 'badge no-dot b-info mono' }, k))));
 
     const general = h('div', null, err,
-      user && h('div', { class: 'member-card' }, avatar(user.displayName, 'lg'),
+      user && h('div', { class: 'member-card' }, userAvatar(user, 'lg'),
         h('div', { class: 'grow' }, h('div', { class: 'mc-name' }, user.displayName), h('div', { class: 'mc-sub' }, user.username ? `@${user.username}` : (user.memberNumber ? 'Personalnummer' : '')),
           h('div', { class: 'mc-meta' }, statusBadge(user.status), rankBadge(user.rank), deptBadge(user.department))),
         memberNo(user.memberNumber, true)),
+      user?.avatarUrl && can('users.avatar_remove') && h('div', { style: { margin: '0 0 14px' } }, button('Profilbild entfernen', { size: 'sm', variant: 'danger', icon: 'trash', onClick: async () => {
+        if (!await confirmDialog({ title: 'Profilbild entfernen?', message: 'Das Profilbild dieses Mitglieds wird gelöscht. Es kann ein neues hochladen.', confirmLabel: 'Entfernen' })) return;
+        try { await api.del(`/api/users/${user.id}/avatar`); toast('Profilbild entfernt.'); } catch (e) { toast(e.message, 'err'); }
+      } })),
       (!user || user.isSelf) ? h('div', { class: 'form-row' }, field('Anzeigename', dn), field('Benutzername', un))
         : note('Namen anderer Mitglieder werden aus Datenschutzgründen nicht angezeigt – die Identifikation läuft ausschließlich über die Personalnummer.', 'shield'),
       h('div', { class: 'form-row' }, field('Rang', rankSel), field('Abteilung', deptSel)),
@@ -184,6 +188,6 @@ export default async function render(container, ctx) {
   }
 
   search.addEventListener('input', debounce(() => { f.q = search.value.trim(); load(); }));
-  ctx.live(['users', 'org', 'roles'], () => load(true));
+  ctx.live(['users', 'org', 'roles', 'profile'], () => load(true));
   await load();
 }
