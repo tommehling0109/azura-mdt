@@ -75,6 +75,7 @@ Desktop-Look: obere Leiste (Logo/App-Menü, Uhr, Benutzer), schwebendes Dock mit
   Rechte: `vehicles.view` (nur ansehen), `vehicles.view_location`, `vehicles.create`, `vehicles.edit`, `vehicles.delete`, `vehicles.assign` – so lassen sich reine „Nur ansehen“-Zugriffe vergeben. Klassen: Admin → Kategorien & Status.
 - **Karte** (App „Karte“): interaktive GTA-5-Karte mit Postleitzahlen. `map.view` = ansehen, `map.edit` = Waypoints setzen/verschieben/bearbeiten/löschen (Name, Kategorie, Symbol, Farbe, Stichpunkt-Notizen, Sichtbarkeit „alle“/„nur Bearbeiter“). Fahrzeuge erscheinen als Ebene (nur mit Fahrzeug- und Standortrecht), Suche z. B. „7085“ springt zur Postal.
 - **Kartenquelle:** Standard sind die öffentlichen Kacheln von Viruxe (gtav-map-tiles) (Hotlinking, Lizenz liegt beim Anbieter). Unter Konfiguration → Karte lässt sich die Kachel-URL ersetzen; eigene Kacheln liegen unter `data/maptiles/{z}/{x}/{y}.png` und werden als `/maptiles/{z}/{x}/{y}.png` ausgeliefert. Die Umrechnung Spielkoordinaten → Karte ist kalibrierbar (näherungsweise).
+- **Karten-Ebenen für Module:** Module (z. B. ein späteres Lager) melden ihre Orte mit `registerMapLayer({ key, label, icon, color, perm, topic, items })` in `server/modules/map.js` an. Jeder Ort hat Koordinaten (x, y) **oder** eine Postleitzahl (wird serverseitig umgerechnet) und erscheint automatisch mit eigenem Schalter in der Kartenleiste.
 - Postleitzahl-Daten: Projekt „nearest-postal“ (MIT, © 2019 BlockBa5her). Leaflet 1.9.4 (BSD-2) liegt lokal unter `public/vendor/leaflet`.
 
 ## Nächste Phasen

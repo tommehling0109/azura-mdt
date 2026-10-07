@@ -23,6 +23,15 @@ let postals = null;
 const loadPostals = () => (postals ??= JSON.parse(readFileSync(fileURLToPath(new URL('../data/postals.json', import.meta.url)), 'utf8'))
   .map((p) => [p.code, Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10]));
 
+/**
+ * Karten-Ebenen: Andere Module (z. B. Lager) melden ihre Orte hier an und erscheinen automatisch auf der Karte.
+ *   registerMapLayer({ key, label, icon, color, perm, topic, items: (user) => [{ id, name, subtitle, x, y, postal }] })
+ * Ein Ort braucht entweder Koordinaten (x, y) oder eine Postleitzahl (postal) – die Postleitzahl wird serverseitig in Koordinaten umgerechnet.
+ */
+const layers = new Map();
+export const registerMapLayer = (l) => layers.set(l.key, { icon: 'pin', color: '#f59e0b', ...l });
+export const postalCoords = (code) => { const p = loadPostals().find((q) => String(q[0]) === String(code).trim()); return p ? { x: p[1], y: p[2] } : null; };
+
 const SQL = `SELECT p.*, c.label cat_label, c.color cat_color FROM map_points p LEFT JOIN lookups c ON c.id = p.category_id`;
 const dto = (p, user) => ({
   id: p.id, name: p.name, description: p.description, icon: p.icon, color: p.color ?? p.cat_color ?? '#5b82b8',
@@ -72,6 +81,16 @@ export default {
       showPostals: getConfig('map.show_postals'), icons: MAP_ICONS,
       canEdit: ctx.user.perms.has('map.edit'), canVehicles: ctx.user.perms.has('vehicles.view') && ctx.user.perms.has('vehicles.view_location'),
       categories: lookupEntries('map.category', { onlyActive: true }),
+    }));
+
+    r.get('/api/map/layers', { perm: 'map.view' }, (ctx) => ({
+      layers: [...layers.values()].filter((l) => !l.perm || ctx.user.perms.has(l.perm)).map((l) => ({
+        key: l.key, label: l.label, icon: l.icon, color: l.color, topic: l.topic ?? null,
+        items: l.items(ctx.user).map((i) => {
+          const at = Number.isFinite(i.x) && Number.isFinite(i.y) ? { x: i.x, y: i.y } : i.postal ? postalCoords(i.postal) : null;
+          return at ? { id: i.id, name: i.name, subtitle: i.subtitle ?? '', postal: i.postal ?? null, x: at.x, y: at.y } : null;
+        }).filter(Boolean),
+      })),
     }));
 
     r.get('/api/map/postals', { perm: 'map.view' }, () => ({ postals: loadPostals() }));

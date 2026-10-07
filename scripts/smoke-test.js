@@ -546,6 +546,7 @@ try {
   assert.equal((await mod.call('GET', '/api/map/config')).status, 403);
   await setPerms(['map.view']);
   r = await mod.call('GET', '/api/map/config'); assert.ok(['{z}', '{x}', '{y}'].every((p) => r.tileUrl.includes(p))); assert.equal(r.canEdit, false); assert.equal(r.calib.scale, 0.6465); ok('Karten-Konfiguration (Kachel-URL, Kalibrierung) abrufbar');
+  r = await mod.call('GET', '/api/map/layers'); assert.ok(Array.isArray(r.layers)); ok('Karten-Ebenen für Module (z. B. Lager) abrufbar');
   r = await mod.call('GET', '/api/map/postals'); assert.ok(r.postals.length > 1000 && r.postals[0].length === 3); ok('Postleitzahlen-Daten (über 1000 Einträge)');
   r = await admin.call('POST', '/api/lookups/map.category', { label: 'Farming', color: '#84cc16' }); const mcat = r.entry.id;
   r = await admin.call('POST', '/api/map/points', { name: 'Eisen-Farm', description: '- Nur nachts\n- 2 Fahrzeuge', categoryId: mcat, icon: 'wrench', x: 1200.5, y: -300, visibility: 'all' });

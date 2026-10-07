@@ -29,12 +29,11 @@ export default async function render(container, ctx) {
   const SIZE = 256 * 2 ** maxZoom;
   const bounds = L.latLngBounds([[0, 0], [SIZE, SIZE]]);
 
-  const state = { points: [], vehicles: [], hidden: new Set(), q: '', showPostals: cfg.showPostals, showVeh: true, placing: false, moving: false };
+  const state = { points: [], vehicles: [], hidden: new Set(), q: '', showPostals: cfg.showPostals, showVeh: true, layers: [], offLayers: new Set(), placing: false, moving: false };
   const side = h('aside', { class: 'map-side' });
   const mapEl = h('div', { class: 'map-el' });
   const status = h('div', { class: 'map-bar' }, 'Bewege die Maus über die Karte');
-  const tools = h('div', { class: 'map-tools' });
-  const stage = h('div', { class: 'map-stage' }, mapEl, tools, status);
+  const stage = h('div', { class: 'map-stage' }, mapEl, status);
   mount(container, h('div', { class: 'mapview' }, side, stage));
 
   const crs = L.extend({}, L.CRS.Simple, { transformation: new L.Transformation(1, 0, 1, 0), scale: (z) => 2 ** (z - maxZoom), zoom: (s) => Math.log2(s) + maxZoom });
@@ -141,8 +140,16 @@ export default async function render(container, ctx) {
     const notes = h('textarea', { class: 'textarea', rows: 5, maxLength: 1500, placeholder: '- Stichpunkt 1\n- Stichpunkt 2' }, p?.description ?? '');
     const vis = select([{ value: 'all', label: 'Alle mit Kartenzugriff' }, { value: 'editors', label: 'Nur Bearbeiter' }], p?.visibility ?? 'all');
     const px = input({ type: 'number', step: 'any', value: p?.x ?? at?.x ?? 0 }), py = input({ type: 'number', step: 'any', value: p?.y ?? at?.y ?? 0 });
+    const plz = input({ placeholder: 'z. B. 7085', inputMode: 'numeric', maxLength: 6 });
+    plz.addEventListener('change', async () => {
+      const code = plz.value.trim();
+      if (!code) return;
+      await ensurePostals();
+      const hit = postals.find((q) => String(q[0]) === code);
+      if (hit) { px.value = hit[1]; py.value = hit[2]; } else toast('Postleitzahl nicht gefunden.', 'err');
+    });
     const body = h('div', null, err, field('Name', name), h('div', { class: 'form-row' }, field('Kategorie', cat), field('Sichtbarkeit', vis)),
-      field('Symbol', iconGrid), field('Farbe', colorRow), field('Notizen (Stichpunkte mit „- “)', notes), h('div', { class: 'form-row' }, field('X', px), field('Y', py)));
+      field('Symbol', iconGrid), field('Farbe', colorRow), field('Notizen (Stichpunkte mit „- “)', notes), field('Position per Postleitzahl setzen (optional)', plz), h('div', { class: 'form-row' }, field('X', px), field('Y', py)));
     const footer = [];
     if (p) footer.push(button('Löschen', { variant: 'danger', icon: 'trash', onClick: async () => {
       if (!await confirmDialog({ title: 'Waypoint löschen?', message: `„${p.name}“ wird entfernt.`, confirmLabel: 'Löschen' })) return;
@@ -158,10 +165,11 @@ export default async function render(container, ctx) {
 
   // ── Werkzeuge & Seitenleiste ──
   function drawTools() {
-    mount(tools,
+    ctx.setActions(
       cfg.canEdit && button(state.placing ? 'Abbrechen' : 'Waypoint setzen', { variant: 'primary', icon: state.placing ? 'x' : 'pin', onClick: () => (state.placing || state.moving ? stopModes() : startPlace()) }),
       button('Postleitzahlen', { icon: 'list', variant: state.showPostals ? 'info' : '', onClick: () => { state.showPostals = !state.showPostals; drawPostals(); drawTools(); } }),
-      cfg.canVehicles && button('Fahrzeuge', { icon: 'car', variant: state.showVeh ? 'info' : '', onClick: () => { state.showVeh = !state.showVeh; drawVehicles(); drawTools(); } }));
+      cfg.canVehicles && button('Fahrzeuge', { icon: 'car', variant: state.showVeh ? 'info' : '', onClick: () => { state.showVeh = !state.showVeh; drawVehicles(); drawTools(); } }),
+      state.layers.map((l) => button(l.label, { icon: l.icon, variant: state.offLayers.has(l.key) ? '' : 'info', onClick: () => { state.offLayers.has(l.key) ? state.offLayers.delete(l.key) : state.offLayers.add(l.key); drawLayers(); drawTools(); } })));
   }
   const search = input({ placeholder: 'Waypoint oder „Postal 1234“ …' });
   const catBox = h('div', { class: 'chips' });
@@ -205,8 +213,28 @@ export default async function render(container, ctx) {
     drawVehicles();
   }
 
+  // Ebenen anderer Module (z. B. Lager) – Orte per Koordinaten oder Postleitzahl
+  const layerGroup = L.layerGroup().addTo(map);
+  const layerSubs = new Set();
+  function drawLayers() {
+    layerGroup.clearLayers();
+    for (const l of state.layers) {
+      if (state.offLayers.has(l.key)) continue;
+      for (const i of l.items) {
+        const m = L.marker(toLL(i.x, i.y), { icon: pinIcon({ icon: l.icon, color: l.color }), title: i.name });
+        m.bindPopup(() => { const el = h('div'); el.innerHTML = `<div class="pop-title">${esc(i.name)}</div><span class="badge" style="--c:${esc(l.color)}">${esc(l.label)}</span>${i.subtitle ? `<div class="pop-kv">${esc(i.subtitle)}</div>` : ''}<div class="pop-kv">${i.postal ? 'Postal ' + esc(i.postal) + ' · ' : ''}X ${Math.round(i.x)} · Y ${Math.round(i.y)}</div>`; return el; });
+        m.addTo(layerGroup);
+      }
+    }
+  }
+  async function loadLayers() {
+    try { state.layers = (await api.get('/api/map/layers')).layers; } catch { state.layers = []; }
+    drawLayers(); drawTools();
+    for (const l of state.layers) if (l.topic && !layerSubs.has(l.topic)) { layerSubs.add(l.topic); ctx.live([l.topic], loadLayers, { wait: 300 }); }
+  }
+
   drawTools();
-  await Promise.all([loadPoints(), loadVehicles()]);
+  await Promise.all([loadPoints(), loadVehicles(), loadLayers()]);
   if (state.showPostals) drawPostals();
 
   // Fokus aus der Fahrzeugverwaltung (auch wenn die Karte schon offen ist)
