@@ -70,7 +70,7 @@ install -d -o mdt -g mdt -m 0750 "$DATA_DIR"
 install -d -o root -g root -m 0755 "$APP_DIR" "$CONF_DIR"
 
 say "App nach $APP_DIR kopieren"
-rsync -a --delete --exclude '.git' --exclude 'node_modules' --exclude 'data' --exclude '*.log' "$SRC/" "$APP_DIR/"
+rsync -a --delete --exclude '.git' --exclude 'node_modules' --exclude '/data' --exclude '*.log' "$SRC/" "$APP_DIR/"
 chown -R root:root "$APP_DIR"
 
 if [[ -n "$IMPORT" ]]; then
