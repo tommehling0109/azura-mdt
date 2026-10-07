@@ -34,7 +34,7 @@ function countdown(sec, label) {
 function setHud(index, total, lives) {
   hud.hidden = false; hud.replaceChildren();
   const a = el('span'); a.append('STUFE ', Object.assign(el('b'), { textContent: `${index + 1}/${total}` }));
-  const b = el('span', 'lives', '\u2665'.repeat(lives) + '\u2661'.repeat(Math.max(0, 3 - lives)));
+  const b = el('span', 'lives', '\u2665'.repeat(lives) + '\u2661'.repeat(Math.max(0, state.maxLives - lives)));
   const c = el('span'); c.append('ZEIT ', Object.assign(el('b'), { textContent: '--:--' }));
   hud.append(a, b, c);
   if (!setHud.t0) setHud.t0 = Date.now();
@@ -56,7 +56,8 @@ async function boot() {
   if (data.cooldownSec > 0) return locked(data.cooldownSec);
   await line('');
   await line('Zielsystem gefunden. Vier Sicherheitsstufen aktiv.', 'warn');
-  await line('Du hast 3 Versuche. Wird die Rückverfolgung abgeschlossen, bist du raus.', 'dim');
+  state.maxLives = data.lives;
+  await line(`Du hast ${data.lives} Versuch${data.lives === 1 ? '' : 'e'}. Wird die Rückverfolgung abgeschlossen, bist du raus.`, 'dim');
   const go = el('button', '', 'Verbindung aufbauen'); go.addEventListener('click', () => { clearPanel(); begin(); });
   panel.append(go); go.focus();
 }
@@ -72,11 +73,11 @@ async function begin() {
   if (status === 429) return locked(data.details?.cooldownSec ?? 60);
   if (status !== 200) { await line('[-] Verbindung abgelehnt.', 'err'); return; }
   setHud.t0 = Date.now();
-  state.sid = data.sid;
+  state.sid = data.sid; state.maxLives = data.maxLives ?? data.lives;
   await line('[+] Verbindung steht. Sicherheitsstufe 1 …', 'ok');
   await stage(data.stage, data.lives);
 }
-const state = { sid: null };
+const state = { sid: null, maxLives: 3 };
 
 // Antwort des Servers verarbeiten
 async function handle(res, lives) {
@@ -98,7 +99,7 @@ async function stage(s, lives) {
 
 // 1) Brute-Force: Befehle exakt abtippen
 async function typing(s, lives) {
-  await prompt('payload --compose   # tippe die Befehle exakt ab');
+  await prompt(`payload --compose   # tippe die Befehle exakt ab (${s.typeSec} s)`);
   const target = s.lines.join('\n'); let t0 = 0, sent = false;
   const view = el('div', 'typed'), ta = el('textarea'); ta.setAttribute('aria-label', 'Befehle eingeben'); ta.spellcheck = false; ta.autocomplete = 'off';
   const draw = () => {
@@ -115,11 +116,11 @@ async function typing(s, lives) {
 
 // 2) Kennwort knacken (Mastermind, 4 verschiedene Ziffern)
 async function code(s, lives) {
-  await prompt('hash --crack   # 4 verschiedene Ziffern, ● = richtige Stelle, ○ = falsche Stelle');
-  const inp = el('input'); inp.maxLength = 4; inp.inputMode = 'numeric'; inp.placeholder = '0000'; inp.autocomplete = 'off';
+  await prompt(`hash --crack   # ${s.length} verschiedene Ziffern, ● = richtige Stelle, ○ = falsche Stelle`);
+  const inp = el('input'); inp.maxLength = s.length; inp.inputMode = 'numeric'; inp.placeholder = '0'.repeat(s.length); inp.autocomplete = 'off';
   const go = el('button', '', 'Testen'), info = el('div', 'dim', `Versuche übrig: ${s.tries}`), hist = el('div', 'hist');
   const submit = async () => {
-    if (!/^\d{4}$/.test(inp.value)) { info.textContent = 'Bitte genau vier Ziffern eingeben.'; return; }
+    if (!new RegExp(`^\\d{${s.length}}$`).test(inp.value)) { info.textContent = `Bitte genau ${s.length} Ziffern eingeben.`; return; }
     go.disabled = inp.disabled = true; const g = inp.value;
     const res = await call('/answer', { sid: state.sid, guess: g });
     if (res.data.result === 'feedback') {
@@ -138,7 +139,7 @@ async function sequence(s, lives) {
   for (let i = 0; i < s.grid; i++) { const b = el('button', '', ''); b.disabled = true; b.setAttribute('aria-label', `Feld ${i + 1}`); cells.push(b); grid.append(b); }
   panel.append(grid, info);
   await sleep(700);
-  for (const n of s.sequence) { cells[n].classList.add('lit'); await sleep(520); cells[n].classList.remove('lit'); await sleep(220); }
+  for (const n of s.sequence) { cells[n].classList.add('lit'); await sleep(s.speed); cells[n].classList.remove('lit'); await sleep(Math.round(s.speed / 2.4)); }
   info.textContent = `Jetzt du: ${s.sequence.length} Felder in derselben Reihenfolge.`;
   const mine = []; cells.forEach((b) => (b.disabled = false));
   cells.forEach((b, i) => b.addEventListener('click', async () => {

@@ -14,11 +14,18 @@ import { notify, staffWith } from '../core/notifications.js';
  *
  * Die Lösungen liegen ausschließlich auf dem Server (Sitzung im Speicher); der Browser bekommt nur die Aufgaben.
  */
-const RUN_MAX_MS = 10 * 60_000; // so lange darf ein Zugriffsversuch dauern
-const LIVES = 3;
+const runMs = () => Number(getConfig('hack.max_minutes')) * 60_000; // so lange darf ein Zugriffsversuch dauern
+const lives = () => Number(getConfig('hack.lives'));
+// Schwierigkeit: Anzahl Befehle, Zeit zum Tippen, Ziffern/Versuche beim Kennwort, Länge/Tempo der Sequenz
+const PRESETS = {
+  easy: { lines: 2, typeSec: 150, digits: 3, tries: 10, seq: 4, speed: 700 },
+  normal: { lines: 3, typeSec: 90, digits: 4, tries: 8, seq: 6, speed: 520 },
+  hard: { lines: 4, typeSec: 45, digits: 5, tries: 6, seq: 8, speed: 340 },
+};
+const preset = () => PRESETS[getConfig('hack.difficulty')] ?? PRESETS.normal;
 const sessions = new Map(); // sid → Zustand
 export const __sessions = sessions; // nur für den Test
-setInterval(() => { const t = Date.now(); for (const [k, s] of sessions) if (t - s.started > RUN_MAX_MS + 60_000) sessions.delete(k); }, 60_000).unref();
+setInterval(() => { const t = Date.now(); for (const [k, s] of sessions) if (t - s.started > 61 * 60_000) sessions.delete(k); }, 60_000).unref();
 
 // ── Link-Schlüssel ──
 const KEY = 'hack.link_token';
@@ -41,8 +48,9 @@ function guard(ctx) {
 function cooldownLeftSec() {
   const last = get('SELECT * FROM hack_runs ORDER BY id DESC LIMIT 1');
   if (!last) return 0;
-  const end = last.ended_at ? Date.parse(last.ended_at) : Date.parse(last.started_at) + RUN_MAX_MS;
-  return Math.max(0, Math.ceil((end + getConfig('hack.cooldown_minutes') * 60_000 - Date.now()) / 1000));
+  const end = last.ended_at ? Date.parse(last.ended_at) : Date.parse(last.started_at) + runMs();
+  const minutes = last.success ? getConfig('hack.cooldown_minutes') : getConfig('hack.cooldown_fail_minutes');
+  return Math.max(0, Math.ceil((end + minutes * 60_000 - Date.now()) / 1000));
 }
 
 // ── Minigames ──
@@ -62,12 +70,12 @@ const STAGES = ['typing', 'code', 'sequence', 'cipher'];
 
 function makeStage(type) {
   switch (type) {
-    case 'typing': { const lines = [...COMMANDS].sort(() => randomInt(0, 3) - 1).slice(0, 3).map((f) => f()); return { type, lines, secret: { lines } }; }
+    case 'typing': { const lines = [...COMMANDS].sort(() => randomInt(0, 3) - 1).slice(0, preset().lines).map((f) => f()); return { type, lines, secret: { lines, limitMs: preset().typeSec * 1000 }, typeSec: preset().typeSec }; }
     case 'code': {
-      const digits = [...'0123456789'].sort(() => randomInt(0, 3) - 1).slice(0, 4).join('');
-      return { type, secret: { digits, tries: 8 }, public: { tries: 8, length: 4 } };
+      const p = preset(), digits = [...'0123456789'].sort(() => randomInt(0, 3) - 1).slice(0, p.digits).join('');
+      return { type, secret: { digits, tries: p.tries }, public: { tries: p.tries, length: p.digits } };
     }
-    case 'sequence': { const seq = []; while (seq.length < 6) { const n = randomInt(0, 9); if (n !== seq.at(-1)) seq.push(n); } return { type, secret: { seq }, public: { sequence: seq, grid: 9 } }; }
+    case 'sequence': { const seq = []; const p = preset(); while (seq.length < p.seq) { const n = randomInt(0, 9); if (n !== seq.at(-1)) seq.push(n); } return { type, secret: { seq }, public: { sequence: seq, grid: 9, speed: p.speed } }; }
     case 'cipher': {
       const word = WORDS[randomInt(0, WORDS.length)], shift = randomInt(3, 23);
       const enc = [...word].map((c) => String.fromCharCode(((c.charCodeAt(0) - 65 + shift) % 26) + 65)).join('');
@@ -76,39 +84,40 @@ function makeStage(type) {
     default: throw new Error('stage');
   }
 }
-const stageDto = (st, index) => ({ type: st.type, index, total: STAGES.length, ...(st.type === 'typing' ? { lines: st.lines } : st.public) });
+const stageDto = (st, index) => ({ type: st.type, index, total: STAGES.length, ...(st.type === 'typing' ? { lines: st.lines, typeSec: st.typeSec } : st.public) });
 
 // ── Beute: harmlose Schnipsel, nur ausdrücklich ausgewählte Spalten (keine Namen, Telefonnummern, Akten, Preise) ──
 const SNIPPETS = [
-  () => { // Personalnummern (nur Kennung + Rang)
+  ['personal', () => { // Personalnummern (nur Kennung + Rang)
     const rows = all("SELECT u.member_number n, r.name rank FROM users u LEFT JOIN ranks r ON r.id = u.rank_id WHERE u.status = 'active' AND u.member_number IS NOT NULL ORDER BY RANDOM() LIMIT 3");
     return rows.length ? { kind: 'Personal', title: 'Personalkennungen', lines: rows.map((x) => `${x.n}${x.rank ? `  ·  ${x.rank}` : ''}`) } : null;
-  },
-  () => { // Teilbestand eines Lagers – wenige Positionen, gerundete Menge, nur die Lagernummer
+  }],
+  ['warehouse', () => { // Teilbestand eines Lagers – wenige Positionen, gerundete Menge, nur die Lagernummer
     const w = get("SELECT w.id, w.warehouse_number n FROM warehouses w WHERE w.is_active = 1 AND EXISTS (SELECT 1 FROM warehouse_stock s WHERE s.warehouse_id = w.id AND s.quantity > 0) ORDER BY RANDOM() LIMIT 1");
     if (!w) return null;
     const rows = all('SELECT i.name, s.quantity q, i.unit FROM warehouse_stock s JOIN market_items i ON i.id = s.item_id WHERE s.warehouse_id = ? AND s.quantity > 0 ORDER BY RANDOM() LIMIT 2', w.id);
     const round = (q) => (q < 10 ? q : q < 100 ? Math.round(q / 5) * 5 : Math.round(q / 50) * 50);
     return { kind: 'Lager', title: `Lagerauszug ${w.n ?? ''}`.trim(), lines: [...rows.map((x) => `${x.name}  ·  ca. ${round(x.q)} ${x.unit}`), '… (Auszug unvollständig)'] };
-  },
-  () => { // Fahrzeug
+  }],
+  ['vehicles', () => { // Fahrzeug
     const v = get('SELECT plate, name FROM vehicles ORDER BY RANDOM() LIMIT 1');
     return v ? { kind: 'Fahrzeug', title: 'Fahrzeugregister', lines: [`${v.plate}  ·  ${v.name}`] } : null;
-  },
-  () => { // Geschäft (ohne Preise und Namen)
+  }],
+  ['deals', () => { // Geschäft (ohne Preise und Namen)
     const d = get("SELECT d.deal_number n, i.name item, d.quantity q, d.status FROM market_deals d JOIN market_items i ON i.id = d.item_id ORDER BY RANDOM() LIMIT 1");
     return d ? { kind: 'Handel', title: 'Geschäftsvorgang', lines: [`${d.n}  ·  ${d.item} ×${d.q}  ·  Status: ${d.status}`] } : null;
-  },
-  () => { // Externe Zugänge (nur Kennung)
+  }],
+  ['partners', () => { // Externe Zugänge (nur Kennung)
     const rows = all("SELECT partner_number n FROM partners WHERE status = 'active' AND partner_number IS NOT NULL ORDER BY RANDOM() LIMIT 2");
     return rows.length ? { kind: 'Extern', title: 'Gegenstellen', lines: rows.map((x) => x.n) } : null;
-  },
+  }],
 ];
 function loot() {
   const want = Math.max(1, Number(getConfig('hack.reward_count')) || 3);
   const out = [];
-  for (const f of [...SNIPPETS].sort(() => randomInt(0, 3) - 1)) {
+  for (const [key, f] of [...SNIPPETS].sort(() => randomInt(0, 3) - 1)) {
     if (out.length >= want) break;
+    if (!getConfig(`hack.loot_${key}`)) continue;
     const s = f(); if (s) out.push(s);
   }
   return out.length ? out : [{ kind: 'Hinweis', title: 'Keine Daten', lines: ['Der Zugriff war erfolgreich, aber es wurden keine verwertbaren Datensätze gefunden.'] }];
@@ -125,9 +134,18 @@ export default {
   name: 'hack',
   permissions: [['hack.manage', 'Exekutive-Zugang: Link ansehen/erneuern, Einstellungen und Zugriffsprotokoll']],
   config: [
-    { key: 'hack.enabled', group: 'Exekutive-Zugang', label: 'Zugang aktiv', help: 'Schaltet den Hack-Link der Exekutive ein oder aus.', type: 'bool', default: true },
-    { key: 'hack.cooldown_minutes', group: 'Exekutive-Zugang', label: 'Sperrzeit nach einem Versuch (Minuten)', help: 'Gilt für den Link insgesamt – nach Erfolg und nach Misserfolg.', type: 'number', default: 30, min: 1, max: 10080 },
-    { key: 'hack.reward_count', group: 'Exekutive-Zugang', label: 'Datenschnipsel pro Erfolg', type: 'number', default: 3, min: 1, max: 5 },
+    { key: 'hack.enabled', group: 'Exekutive-Zugang', label: 'Zugang aktiv', help: 'Schaltet den Hack-Link der Exekutive ein oder aus.', type: 'bool', default: true, perm: 'hack.manage' },
+    { key: 'hack.difficulty', group: 'Exekutive-Zugang', label: 'Schwierigkeit', help: 'Leicht: 2 Befehle, 3 Ziffern, kurze Folge. Normal: 3 Befehle, 4 Ziffern, 6er-Folge. Schwer: 4 Befehle (knappe Zeit), 5 Ziffern, 8er-Folge, schnelles Tempo.', type: 'select', default: 'normal', options: [{ value: 'easy', label: 'Leicht' }, { value: 'normal', label: 'Normal' }, { value: 'hard', label: 'Schwer' }], perm: 'hack.manage' },
+    { key: 'hack.lives', group: 'Exekutive-Zugang', label: 'Versuche (Leben) pro Zugriff', help: 'Jeder Fehler in einer Stufe kostet ein Leben; bei 0 ist der Zugriff gescheitert.', type: 'number', default: 3, min: 1, max: 10, perm: 'hack.manage' },
+    { key: 'hack.max_minutes', group: 'Exekutive-Zugang', label: 'Zeitlimit pro Zugriff (Minuten)', type: 'number', default: 10, min: 2, max: 60, perm: 'hack.manage' },
+    { key: 'hack.cooldown_minutes', group: 'Exekutive-Zugang', label: 'Sperrzeit nach Erfolg (Minuten)', help: 'Gilt für den Link insgesamt (alle Beamten gemeinsam).', type: 'number', default: 30, min: 1, max: 10080, perm: 'hack.manage' },
+    { key: 'hack.cooldown_fail_minutes', group: 'Exekutive-Zugang', label: 'Sperrzeit nach Misserfolg (Minuten)', type: 'number', default: 15, min: 1, max: 10080, perm: 'hack.manage' },
+    { key: 'hack.reward_count', group: 'Exekutive-Zugang', label: 'Datenschnipsel pro Erfolg', type: 'number', default: 3, min: 1, max: 5, perm: 'hack.manage' },
+    { key: 'hack.loot_personal', group: 'Exekutive-Zugang', label: 'Beute: Personalkennungen', help: 'Nur Kennung und Rang – nie Namen.', type: 'bool', default: true, perm: 'hack.manage' },
+    { key: 'hack.loot_warehouse', group: 'Exekutive-Zugang', label: 'Beute: Lager-Teilbestände', help: 'Nur Lagernummer, wenige Positionen, gerundete Mengen.', type: 'bool', default: true, perm: 'hack.manage' },
+    { key: 'hack.loot_vehicles', group: 'Exekutive-Zugang', label: 'Beute: Fahrzeuge', help: 'Kennzeichen und Modell.', type: 'bool', default: true, perm: 'hack.manage' },
+    { key: 'hack.loot_deals', group: 'Exekutive-Zugang', label: 'Beute: Geschäftsvorgänge', help: 'Vorgangsnummer, Artikel, Menge – ohne Preis und Partner.', type: 'bool', default: true, perm: 'hack.manage' },
+    { key: 'hack.loot_partners', group: 'Exekutive-Zugang', label: 'Beute: Externe Zugänge', help: 'Nur die Partnernummer.', type: 'bool', default: true, perm: 'hack.manage' },
   ],
   routes(r) {
     // ── Verwaltung ──
@@ -148,7 +166,7 @@ export default {
 
     // ── Öffentlicher Link (ohne Anmeldung, ohne Kennzeichnung) ──
     const O = { auth: false };
-    r.get('/api/h/:token/status', O, (ctx) => { guard(ctx); return { enabled: getConfig('hack.enabled'), cooldownSec: cooldownLeftSec() }; });
+    r.get('/api/h/:token/status', O, (ctx) => { guard(ctx); return { enabled: getConfig('hack.enabled'), cooldownSec: cooldownLeftSec(), lives: lives() }; });
 
     r.post('/api/h/:token/start', O, (ctx) => {
       guard(ctx);
@@ -157,17 +175,17 @@ export default {
       if (left > 0) throw new HttpError(429, 'Gesperrt.', 'cooldown', { cooldownSec: left });
       const runId = Number(run('INSERT INTO hack_runs (started_at, ip) VALUES (?, ?)', now(), ctx.ip).lastInsertRowid);
       const sid = randomBytes(16).toString('hex');
-      const s = { sid, runId, started: Date.now(), index: 0, lives: LIVES, stage: makeStage(STAGES[0]) };
+      const s = { sid, runId, started: Date.now(), index: 0, lives: lives(), stage: makeStage(STAGES[0]) };
       sessions.set(sid, s);
       audit({ ip: ctx.ip, actorName: 'Unbekannter Zugriff' }, { action: 'hack.started', module: 'hack', targetType: 'hack', targetId: runId, targetLabel: 'Zugriffsversuch gestartet' });
-      return { sid, lives: s.lives, stage: stageDto(s.stage, 0) };
+      return { sid, lives: s.lives, maxLives: s.lives, stage: stageDto(s.stage, 0) };
     });
 
     r.post('/api/h/:token/answer', O, (ctx) => {
       guard(ctx);
       const s = sessions.get(String(ctx.body.sid ?? ''));
       if (!s || s.done) throw new HttpError(410, 'Verbindung verloren.', 'lost');
-      if (Date.now() - s.started > RUN_MAX_MS) { finish(ctx, s, false, 'Zeit abgelaufen'); return { result: 'failed', reason: 'Zeitüberschreitung', cooldownSec: cooldownLeftSec() }; }
+      if (Date.now() - s.started > runMs()) { finish(ctx, s, false, 'Zeit abgelaufen'); return { result: 'failed', reason: 'Zeitüberschreitung', cooldownSec: cooldownLeftSec() }; }
       const st = s.stage, a = ctx.body;
       const lose = (feedback) => { // Leben verlieren, neue Aufgabe gleicher Art
         s.lives -= 1;
@@ -185,17 +203,17 @@ export default {
         case 'typing': {
           const text = String(a.text ?? ''), ms = Number(a.ms);
           if (!Number.isFinite(ms) || ms < text.length * 45) return lose('Eingabe zu schnell – Muster erkannt.'); // Einfügen/Automaten abwehren
-          if (ms > 150_000) return lose('Zeit abgelaufen.');
+          if (ms > st.secret.limitMs) return lose('Zeit abgelaufen.');
           return text === st.secret.lines.join('\n') ? advance() : lose('Eingabe fehlerhaft.');
         }
         case 'code': {
           const g = String(a.guess ?? '');
-          if (!/^\d{4}$/.test(g)) throw bad('Vier Ziffern eingeben.');
+          if (g.length !== st.secret.digits.length || !/^\d+$/.test(g)) throw bad(`${st.secret.digits.length} Ziffern eingeben.`);
           st.secret.tries -= 1;
           const d = st.secret.digits;
           const exact = [...g].filter((c, i) => c === d[i]).length;
           const present = [...g].filter((c, i) => c !== d[i] && d.includes(c)).length;
-          if (exact === 4) return advance();
+          if (exact === d.length) return advance();
           if (st.secret.tries <= 0) return lose('Kennwort nicht geknackt.');
           return { result: 'feedback', exact, present, tries: st.secret.tries };
         }

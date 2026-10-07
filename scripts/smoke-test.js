@@ -1125,7 +1125,7 @@ try {
     const page = await fetch(`${base}${adm.path}`); const html = await page.text(); assert.equal(page.status, 200); assert.match(html, /\/hack\/hack\.js\?v=/); assert.equal(/azura|logo|mdt|\.webp/i.test(html), false, 'Seite darf nichts vom System verraten');
     const css = await (await fetch(`${base}/hack/hack.css`)).text(); assert.equal(/azura/i.test(css), false);
     const guest = new Client(); assert.deepEqual((({ enabled, cooldownSec }) => ({ enabled, cooldownSec }))(await guest.call('GET', `${H}/status`)), { enabled: true, cooldownSec: 0 });
-    const solve = (s) => { const st = s.stage; switch (st.type) { case 'typing': return { text: st.secret.lines.join('\n'), ms: 60000 }; case 'code': return { guess: st.secret.digits }; case 'sequence': return { sequence: st.secret.seq }; default: return { text: st.secret.word }; } };
+    const solve = (s) => { const st = s.stage; switch (st.type) { case 'typing': return { text: st.secret.lines.join('\n'), ms: 20000 }; case 'code': return { guess: st.secret.digits }; case 'sequence': return { sequence: st.secret.seq }; default: return { text: st.secret.word }; } };
     // Lauf 1: falsche/zu schnelle Eingaben kosten Leben, dann alle vier Stufen lösen
     let r = await guest.call('POST', `${H}/start`, {}); assert.equal(r.status, 200); assert.equal(r.stage.type, 'typing'); assert.equal(r.stage.total, 4); assert.equal(JSON.stringify(r).includes('secret'), false); const sid = r.sid;
     r = await guest.call('POST', `${H}/answer`, { sid, text: 'x', ms: 99999 }); assert.equal(r.result, 'retry'); assert.equal(r.lives, 2);
@@ -1152,6 +1152,23 @@ try {
     await admin.call('POST', '/api/hack/admin/reset-cooldown'); await admin.call('PUT', '/api/config', { values: { 'hack.enabled': false } }); assert.equal((await guest.call('POST', `${H}/start`, {})).status, 403); await admin.call('PUT', '/api/config', { values: { 'hack.enabled': true } });
     // Link erneuern: alter Link tot
     assert.equal((await mod.call('POST', '/api/hack/admin/regenerate')).status, 403); const nw = await admin.call('POST', '/api/hack/admin/regenerate'); assert.notEqual(nw.path, adm.path); assert.equal((await guest.call('GET', `${H}/status`)).status, 404); assert.equal((await guest.call('GET', `/api/h/${nw.path.split('/')[2]}/status`)).status, 200);
+    const H2 = '/api/h/' + nw.path.split('/')[2]; // Einstellungen: nur mit hack.manage, Schwierigkeit, Leben, Beute-Schalter
+    assert.equal((await mod.call('PUT', '/api/config', { values: { 'hack.lives': 5 } })).status, 403);
+    await setPerms(['hack.manage']);
+    r = await mod.call('GET', '/api/config'); assert.equal(r.status, 200); assert.ok(r.settings.filter((x) => x.key.startsWith('hack.')).length >= 10 && r.settings.filter((x) => x.key.startsWith('hack.')).every((x) => x.perm === 'hack.manage'), 'Exekutive-Einstellungen tragen das eigene Recht');
+    assert.equal((await mod.call('PUT', '/api/config', { values: { 'ui.accent': '#112233' } })).status, 403);
+    r = await mod.call('PUT', '/api/config', { values: { 'hack.difficulty': 'hard', 'hack.lives': 2, 'hack.cooldown_minutes': 45, 'hack.cooldown_fail_minutes': 5, 'hack.loot_personal': false } }); assert.equal(r.status, 200);
+    assert.equal((await mod.call('PUT', '/api/config', { values: { 'hack.lives': 99 } })).status, 400); assert.equal((await mod.call('PUT', '/api/config', { values: { 'hack.difficulty': 'brutal' } })).status, 400);
+    await setPerms([]); assert.equal((await mod.call('PUT', '/api/config', { values: { 'hack.lives': 4 } })).status, 403);
+    await admin.call('POST', '/api/hack/admin/reset-cooldown'); assert.equal((await guest.call('GET', `${H2}/status`)).lives, 2);
+    r = await guest.call('POST', `${H2}/start`, {}); assert.equal(r.status, 200); assert.equal(r.lives, 2); assert.equal(r.stage.lines.length, 4); assert.equal(r.stage.typeSec, 45);
+    let hs = __sessions.get(r.sid); r = await guest.call('POST', `${H2}/answer`, { sid: r.sid, ...solve(hs) }); assert.equal(r.stage.type, 'code'); assert.equal(r.stage.length, 5); assert.equal(r.stage.tries, 6);
+    hs = __sessions.get(hs.sid); assert.equal((await guest.call('POST', `${H2}/answer`, { sid: hs.sid, guess: '1234' })).status, 400); // falsche Stellenzahl
+    r = await guest.call('POST', `${H2}/answer`, { sid: hs.sid, ...solve(hs) }); assert.equal(r.stage.type, 'sequence'); assert.equal(r.stage.sequence.length, 8); assert.equal(r.stage.speed, 340);
+    hs = __sessions.get(hs.sid); await guest.call('POST', `${H2}/answer`, { sid: hs.sid, ...solve(hs) }); hs = __sessions.get(hs.sid); r = await guest.call('POST', `${H2}/answer`, { sid: hs.sid, ...solve(hs) }); assert.equal(r.result, 'done');
+    assert.equal(JSON.stringify(r.rewards).includes('Personalkennungen'), false); // abgeschaltete Beute-Art
+    assert.ok(r.cooldownSec > 40 * 60 && r.cooldownSec <= 45 * 60); // Sperrzeit nach Erfolg aus der Einstellung
+    await admin.call('PUT', '/api/config', { values: { 'hack.difficulty': 'normal', 'hack.lives': 3, 'hack.cooldown_minutes': 30, 'hack.loot_personal': true } });
     ok('Exekutive-Zugang: neutraler Link, vier Minigames serverseitig geprüft, harmlose Beute, Sperrzeit, Benachrichtigung, Link erneuern'); }
 
   // Superadmin: Artikel samt Geschäften/Bestand löschen

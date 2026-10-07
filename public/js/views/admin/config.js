@@ -61,6 +61,31 @@ function brandingCard(host, editable) {
   draw();
 }
 
+/** Karte „Exekutive-Zugang (Hack-Link)“: Link abrufen/erneuern, Sperrzeit aufheben, Zugriffsprotokoll. */
+function hackCard(host) {
+    const hkHost = h('div');
+    host.append(card('Exekutive-Zugang (Hack-Link)', hkHost, { icon: 'lock', flush: true }));
+    const drawHack = (d) => {
+      const url = `${location.origin}${d.path}`;
+      const urlBox = input({ value: url, readOnly: true, class: 'input mono' }); urlBox.addEventListener('focus', () => urlBox.select());
+      mount(hkHost,
+        h('div', { class: 'setting-row', style: { gridTemplateColumns: 'minmax(0,1fr)' } },
+          h('div', null, h('div', { class: 'lbl' }, 'Dauerhafter Link für die Exekutive'),
+            h('div', { class: 'hlp' }, 'Ohne Anmeldung nutzbar, zeigt weder Namen noch Logo des Systems. Vier Minigames, danach zufällige Datenschnipsel (nur Personalkennungen, Teilbestände, Kennzeichen, Vorgangsnummern – nie Klarnamen oder Telefonnummern) und eine Sperrzeit. Einstellungen (aktiv, Sperrzeit, Anzahl Schnipsel) stehen oben unter „Exekutive-Zugang“.'), urlBox,
+            h('div', { class: 'row', style: { marginTop: '10px' } },
+              button('Link kopieren', { icon: 'link', size: 'sm', onClick: async () => { try { await navigator.clipboard.writeText(url); toast('Link kopiert.'); } catch { urlBox.select(); toast('Zum Kopieren Strg+C drücken.', 'info'); } } }),
+              button('Link erneuern', { icon: 'refresh', size: 'sm', variant: 'ghost', onClick: async () => {
+                try { await api.post('/api/hack/admin/regenerate'); toast('Neuer Link erstellt – der alte funktioniert nicht mehr.'); drawHack(await api.get('/api/hack/admin')); } catch (ex) { toast(ex.message, 'err'); }
+              } }),
+              button(d.cooldownLeftSec > 0 ? `Sperrzeit aufheben (noch ${Math.ceil(d.cooldownLeftSec / 60)} Min.)` : 'Keine Sperrzeit aktiv', { size: 'sm', variant: 'ghost', disabled: d.cooldownLeftSec <= 0, onClick: async () => {
+                try { await api.post('/api/hack/admin/reset-cooldown'); toast('Sperrzeit aufgehoben.'); drawHack(await api.get('/api/hack/admin')); } catch (ex) { toast(ex.message, 'err'); }
+              } })))),
+        d.runs.length ? d.runs.map((r) => h('div', { class: 'list-row' }, h('div', { class: 'dot-icon' }, icon(r.success ? 'check' : 'alert')),
+          h('div', { class: 'grow' }, h('div', { class: 't' }, r.success ? 'Zugriff erfolgreich' : r.endedAt ? `Abgewehrt (Stufe ${r.stage + 1} von 4)` : 'Abgebrochen / läuft'), h('div', { class: 's' }, fmtDateTime(r.startedAt))))) : h('div', { class: 'muted', style: { padding: '12px 20px' } }, 'Noch keine Zugriffsversuche.'));
+    };
+    api.get('/api/hack/admin').then(drawHack).catch((e) => mount(hkHost, empty('Nicht verfügbar', e.message, 'alert')));
+}
+
 /** Zusatzkarten: Logo/Hintergrund, Dashboard-Widgets (Sichtbarkeit/Reihenfolge) und Datensicherung. */
 async function addExtras(host, editable) {
   brandingCard(host, editable);
@@ -98,30 +123,7 @@ async function addExtras(host, editable) {
       button('Jetzt prüfen', { icon: 'refresh', variant: u.available ? '' : 'primary', onClick: (e) => busy(e.currentTarget, async () => { try { drawUpdate(await api.post('/api/admin/update/check')); } catch (ex) { toast(ex.message, 'err'); } }) }))));
   api.get('/api/admin/update').then(drawUpdate).catch((e) => mount(updHost, empty('Nicht verfügbar', e.message, 'alert')));
 
-  // Exekutive-Zugang: dauerhafter Hack-Link (ohne Systemkennzeichnung), Sperrzeit, Protokoll
-  if (can('hack.manage')) {
-    const hkHost = h('div');
-    host.append(card('Exekutive-Zugang (Hack-Link)', hkHost, { icon: 'lock', flush: true }));
-    const drawHack = (d) => {
-      const url = `${location.origin}${d.path}`;
-      const urlBox = input({ value: url, readOnly: true, class: 'input mono' }); urlBox.addEventListener('focus', () => urlBox.select());
-      mount(hkHost,
-        h('div', { class: 'setting-row', style: { gridTemplateColumns: 'minmax(0,1fr)' } },
-          h('div', null, h('div', { class: 'lbl' }, 'Dauerhafter Link für die Exekutive'),
-            h('div', { class: 'hlp' }, 'Ohne Anmeldung nutzbar, zeigt weder Namen noch Logo des Systems. Vier Minigames, danach zufällige Datenschnipsel (nur Personalkennungen, Teilbestände, Kennzeichen, Vorgangsnummern – nie Klarnamen oder Telefonnummern) und eine Sperrzeit. Einstellungen (aktiv, Sperrzeit, Anzahl Schnipsel) stehen oben unter „Exekutive-Zugang“.'), urlBox,
-            h('div', { class: 'row', style: { marginTop: '10px' } },
-              button('Link kopieren', { icon: 'link', size: 'sm', onClick: async () => { try { await navigator.clipboard.writeText(url); toast('Link kopiert.'); } catch { urlBox.select(); toast('Zum Kopieren Strg+C drücken.', 'info'); } } }),
-              button('Link erneuern', { icon: 'refresh', size: 'sm', variant: 'ghost', onClick: async () => {
-                try { await api.post('/api/hack/admin/regenerate'); toast('Neuer Link erstellt – der alte funktioniert nicht mehr.'); drawHack(await api.get('/api/hack/admin')); } catch (ex) { toast(ex.message, 'err'); }
-              } }),
-              button(d.cooldownLeftSec > 0 ? `Sperrzeit aufheben (noch ${Math.ceil(d.cooldownLeftSec / 60)} Min.)` : 'Keine Sperrzeit aktiv', { size: 'sm', variant: 'ghost', disabled: d.cooldownLeftSec <= 0, onClick: async () => {
-                try { await api.post('/api/hack/admin/reset-cooldown'); toast('Sperrzeit aufgehoben.'); drawHack(await api.get('/api/hack/admin')); } catch (ex) { toast(ex.message, 'err'); }
-              } })))),
-        d.runs.length ? d.runs.map((r) => h('div', { class: 'list-row' }, h('div', { class: 'dot-icon' }, icon(r.success ? 'check' : 'alert')),
-          h('div', { class: 'grow' }, h('div', { class: 't' }, r.success ? 'Zugriff erfolgreich' : r.endedAt ? `Abgewehrt (Stufe ${r.stage + 1} von 4)` : 'Abgebrochen / läuft'), h('div', { class: 's' }, fmtDateTime(r.startedAt))))) : h('div', { class: 'muted', style: { padding: '12px 20px' } }, 'Noch keine Zugriffsversuche.'));
-    };
-    api.get('/api/hack/admin').then(drawHack).catch((e) => mount(hkHost, empty('Nicht verfügbar', e.message, 'alert')));
-  }
+  if (can('hack.manage')) hackCard(host);
 
   // Gefahrenzone: Panel auf null setzen (nur Superadmin)
   if (state.user.isSuperadmin) {
@@ -164,13 +166,15 @@ export default async function render(container, ctx) {
   const { settings } = await api.get('/api/config');
   if (!ctx.isCurrent()) return;
   const editable = can('config.edit');
+  const full = can('config.view');
+  const mayEdit = (s) => (s.perm ? can(s.perm) : editable); // Einstellungen mit eigenem Recht (Exekutive-Zugang: hack.manage)
   const controls = new Map();
   const groups = {};
   for (const s of settings.filter((x) => !x.hidden)) (groups[s.group] ??= []).push(s);
 
   const err = h('div');
   const cards = Object.entries(groups).map(([g, items]) => card(g, items.map((s) => {
-    const c = control(s, !editable);
+    const c = control(s, !mayEdit(s));
     controls.set(s.key, { ...c, initial: s.value });
     // Live-Vorschau: jede Änderung an Darstellungs-Einstellungen wirkt sofort (gespeichert wird erst per Knopf)
     if (s.key.startsWith('ui.')) {
@@ -194,8 +198,8 @@ export default async function render(container, ctx) {
     } catch (ex) { err.replaceChildren(formError(ex.message)); }
   }) });
   const extras = h('div', { class: 'stack', style: { gap: '18px' } });
-  mount(container, h('div', { class: 'stack', style: { gap: '18px' } }, err, cards, extras), editable && h('div', { class: 'savebar' }, save));
-  addExtras(extras, editable);
+  mount(container, h('div', { class: 'stack', style: { gap: '18px' } }, err, cards, extras), settings.some((x) => !x.hidden && mayEdit(x)) && h('div', { class: 'savebar' }, save));
+  if (full) addExtras(extras, editable); else if (can('hack.manage')) hackCard(extras);
   // ungespeicherte Live-Vorschau der Akzentfarbe beim Verlassen zurücksetzen
   return () => applyConfig(state.config); // ungespeicherte Vorschau verwerfen
 }

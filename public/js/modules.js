@@ -49,7 +49,7 @@ export const NAV = [
       { id: 'org', label: 'Organisation', subtitle: 'Ränge, Abteilungen und Hierarchie', icon: 'sitemap', path: '/admin/org', perm: ['org.view'], win: { w: 1020, h: 640 }, view: () => import('./views/admin/org.js') },
       { id: 'partners', label: 'Externe Zugänge', subtitle: 'Links und Codes für Partner verwalten', icon: 'link', path: '/admin/partners', perm: ['partners.view'], win: { w: 1000, h: 640 }, view: () => import('./views/admin/partners.js') },
       { id: 'lookups', label: 'Kategorien & Status', subtitle: 'Auswahllisten, Kategorien und Status-Beschriftungen', icon: 'list', path: '/admin/lookups', perm: ['lookups.view'], win: { w: 900, h: 620 }, view: () => import('./views/admin/lookups.js') },
-      { id: 'config', label: 'Konfiguration', subtitle: 'Darstellung und Systemverhalten anpassen', icon: 'settings', path: '/admin/config', perm: ['config.view'], view: () => import('./views/admin/config.js') },
+      { id: 'config', label: 'Konfiguration', subtitle: 'Darstellung und Systemverhalten anpassen', icon: 'settings', path: '/admin/config', perm: ['config.view', 'hack.manage'], view: () => import('./views/admin/config.js') },
       { id: 'audit', label: 'Audit-Log', subtitle: 'Nachvollziehbarkeit aller wichtigen Aktionen', icon: 'audit', path: '/admin/audit', perm: ['audit.view'], win: { w: 1020, h: 640 }, view: () => import('./views/admin/audit.js') },
     ],
   },

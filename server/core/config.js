@@ -23,9 +23,13 @@ export const publicConfig = () => {
   return out;
 };
 
-export function describeConfig() {
-  return [...defs.values()].map((d) => ({
-    key: d.key, group: d.group, label: d.label, help: typeof d.help === 'function' ? d.help() : d.help, type: d.type, options: d.options,
+/** Recht, das zum Ändern einer Einstellung nötig ist (Standard: config.edit). */
+export const configEditPerm = (key) => defs.get(key)?.perm ?? 'config.edit';
+
+/** viewer (optional): nur Einstellungen liefern, die der Benutzer sehen darf (config.view = alle, sonst nur die mit eigenem Recht). */
+export function describeConfig(viewer = null) {
+  return [...defs.values()].filter((d) => !viewer || viewer.perms.has('config.view') || (d.perm && viewer.perms.has(d.perm))).map((d) => ({
+    key: d.key, perm: d.perm ?? null, group: d.group, label: d.label, help: typeof d.help === 'function' ? d.help() : d.help, type: d.type, options: d.options,
     min: d.min, max: d.max, hidden: !!d.hidden, value: getConfig(d.key), default: d.default,
   }));
 }

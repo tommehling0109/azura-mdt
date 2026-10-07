@@ -3,7 +3,7 @@ import { APP_VERSION, APP_COMMIT } from '../core/version.js';
 import { mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { HttpError, bad, str, conflict, notFound, forbidden } from '../core/http.js';
-import { getConfig, publicConfig, describeConfig, validateConfigValue, setConfig } from '../core/config.js';
+import { getConfig, publicConfig, describeConfig, validateConfigValue, setConfig, configEditPerm } from '../core/config.js';
 import { hashPassword, checkPassword, createSession, COOKIE, publicUser, loadUser, verifyPassword } from '../core/auth.js';
 import { listPermissions } from '../core/permissions.js';
 import { audit } from '../core/audit.js';
@@ -144,14 +144,16 @@ export default {
       return { version: 0 };
     });
 
-    r.get('/api/config', { perm: 'config.view' }, () => ({ settings: describeConfig() }));
+    r.get('/api/config', { perm: ['config.view', 'hack.manage'] }, (ctx) => ({ settings: describeConfig(ctx.user) }));
 
-    r.put('/api/config', { perm: 'config.edit' }, (ctx) => {
+    // Änderungen: je Einstellung das passende Recht (Standard config.edit; Exekutive-Zugang: hack.manage)
+    r.put('/api/config', { perm: ['config.edit', 'hack.manage'] }, (ctx) => {
       const changes = ctx.body.values;
       if (!changes || typeof changes !== 'object') throw bad('Keine Werte übergeben.');
       const applied = tx(() => {
         const out = [];
         for (const [key, raw] of Object.entries(changes)) {
+          if (!ctx.user.perms.has(configEditPerm(key))) throw forbidden(`Für „${key}“ fehlt dir das Recht „${configEditPerm(key)}“.`);
           const value = validateConfigValue(key, raw);
           const before = getConfig(key);
           if (JSON.stringify(before) === JSON.stringify(value)) continue;
@@ -161,7 +163,7 @@ export default {
         }
         return out;
       });
-      return { changed: applied, settings: describeConfig() };
+      return { changed: applied, settings: describeConfig(ctx.user) };
     });
 
     r.get('/api/permissions', { perm: ['roles.view', 'users.view', 'org.view', 'permissions.manage'] }, () => ({ permissions: listPermissions() }));

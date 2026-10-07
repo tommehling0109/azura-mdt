@@ -307,8 +307,8 @@
 | POST | `/api/setup` | *öffentlich* |
 | POST | `/api/admin/branding/:kind` | `config.edit` |
 | DELETE | `/api/admin/branding/:kind` | `config.edit` |
-| GET | `/api/config` | `config.view` |
-| PUT | `/api/config` | `config.edit` |
+| GET | `/api/config` | `config.view` \| `hack.manage` |
+| PUT | `/api/config` | `config.edit` \| `hack.manage` |
 | GET | `/api/permissions` | `roles.view` \| `users.view` \| `org.view` \| `permissions.manage` |
 | POST | `/api/permissions` | `permissions.manage` |
 | PATCH | `/api/permissions/:key` | `permissions.manage` |
