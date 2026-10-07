@@ -54,7 +54,7 @@ export default async function render(container, ctx) {
             h('div', { class: 'veh-meta' },
               h('div', null, h('span', { class: 'k' }, 'Standort'), w.location.text || '–', w.location.postal && ` · PLZ ${w.location.postal}`),
               h('div', null, h('span', { class: 'k' }, 'Artikel'), `${w.itemCount} Sorte${w.itemCount === 1 ? '' : 'n'}`),
-              h('div', { style: { gridColumn: '1 / -1' } }, h('span', { class: 'k' }, 'Auslastung'), w.capacity != null ? `${nf(w.used)} / ${nf(w.capacity)} Platzeinheiten` : `${nf(w.used)} belegt (ohne Limit)`, w.capacity != null && fillBar(w.used, w.capacity)),
+              h('div', { style: { gridColumn: '1 / -1' } }, h('span', { class: 'k' }, 'Auslastung'), w.capacity != null ? `${nf(w.used)} / ${nf(w.capacity)} Slots` : `${nf(w.used)} belegt (ohne Limit)`, w.capacity != null && fillBar(w.used, w.capacity)),
               w.sizeInfo && h('div', null, h('span', { class: 'k' }, 'Größe'), w.sizeInfo)),
             h('div', { class: 'veh-actions' }, button('Öffnen', { size: 'sm', variant: 'info', icon: 'eye', onClick: (e) => { e.stopPropagation(); details(w.id); } }),
               w.level === 'manage' && canManage && button('Bearbeiten', { size: 'sm', icon: 'edit', onClick: async (e) => { e.stopPropagation(); editor((await api.get(`/api/warehouses/${w.id}`)).warehouse); } }))));
@@ -86,7 +86,7 @@ export default async function render(container, ctx) {
           kv('Beschreibung', w.description || null), kv('Standort', w.location.text || null), kv('Postleitzahl', w.location.postal),
           kv('Position', at ? h('span', { class: 'mono' }, `${Math.round(at.x)}, ${Math.round(at.y)}${w.location.x == null && w.location.postal ? ' (aus Postleitzahl)' : ''}`) : null),
           kv('Größe', w.sizeInfo || null),
-          kv('Kapazität', w.capacity != null ? h('div', { style: { minWidth: '220px' } }, `${nf(w.used)} von ${nf(w.capacity)} Platzeinheiten belegt (${Math.round((w.used / (w.capacity || 1)) * 100)} %)`, fillBar(w.used, w.capacity)) : `${nf(w.used)} belegt – kein Limit`),
+          kv('Kapazität', w.capacity != null ? h('div', { style: { minWidth: '220px' } }, `${nf(w.used)} von ${nf(w.capacity)} Slots belegt (${Math.round((w.used / (w.capacity || 1)) * 100)} %)`, fillBar(w.used, w.capacity)) : `${nf(w.used)} belegt – kein Limit`),
           kv('Zugang / Zugriff', w.accessInfo === null ? h('span', { class: 'muted' }, 'Dafür fehlt dir das Recht „Zugangsinformationen sehen“.') : (w.accessInfo || null)),
           kv('Abteilung', w.department && h('span', { class: 'badge no-dot', style: { '--c': w.department.color } }, w.department.name)), kv('Notizen', w.notes || null), kv('Zuletzt geändert', fmtDateTime(w.updatedAt))));
 
@@ -95,7 +95,7 @@ export default async function render(container, ctx) {
         table([
           { label: 'Artikel', render: (s) => h('div', null, h('b', null, s.name), s.category && h('div', null, chip(s.category))) },
           { label: 'Bestand', render: (s) => `${nf(s.quantity)} ${s.unit}` },
-          { label: 'Platz', render: (s) => nf(s.space) },
+          { label: 'Slots', render: (s) => h('span', { title: `${nf(s.stacks)} Stapel à ${nf(s.slotsPerStack)} Slot(s), max. ${nf(s.stackSize)} pro Stapel` }, `${nf(s.space)} (${nf(s.stacks)} Stapel)`) },
           canPrices && { label: 'Preisspanne', render: (s) => (s.minPrice != null ? `${money(s.minPrice)} – ${money(s.maxPrice)}` : '–') },
           w.canBook && { label: '', style: { textAlign: 'right', whiteSpace: 'nowrap' }, render: (s) => h('div', { class: 'row', style: { justifyContent: 'flex-end', flexWrap: 'nowrap' } },
             button('Aus', { size: 'sm', icon: 'download', title: 'Auslagern', onClick: () => stockDialog(w, 'out', s) }), button('Um', { size: 'sm', icon: 'refresh', title: 'Umlagern', onClick: () => transferDialog(w, s) }), button('', { size: 'sm', variant: 'ghost', icon: 'edit', title: 'Bestand korrigieren', onClick: () => stockDialog(w, 'set', s) })) },
@@ -133,10 +133,13 @@ export default async function render(container, ctx) {
     const qty = input({ type: 'number', min: 0, inputmode: 'numeric', value: action === 'set' ? row.quantity : '' });
     const text = input({ maxLength: 200, placeholder: 'Notiz (optional)' });
     const title = { in: 'Einlagern', out: 'Auslagern', set: 'Bestand korrigieren' }[action];
-    const hint = action === 'set' ? 'Setzt den Bestand auf genau diese Menge.' : action === 'out' ? `Aktuell im Lager: ${nf(row.quantity)} ${row.unit}` : w.capacity != null ? `Frei: ${nf(Math.max(0, w.capacity - w.used))} Platzeinheiten` : '';
+    const hint = action === 'set' ? 'Setzt den Bestand auf genau diese Menge.' : action === 'out' ? `Aktuell im Lager: ${nf(row.quantity)} ${row.unit}` : w.capacity != null ? `Frei: ${nf(Math.max(0, w.capacity - w.used))} Slots` : '';
+    const slotInfo = h('div', { class: 'help' });
+    const showSlots = () => { const it = opts.items.find((x) => String(x.id) === String(itemSel.value)); if (!it) { slotInfo.textContent = ''; return; } const q = Number(qty.value) || 0; slotInfo.textContent = `${it.name}: ${it.space} Slot${it.space === 1 ? '' : 's'} pro Stapel, max. ${it.stackSize} pro Stapel${q > 0 ? ` – ${nf(q)} Stück = ${nf(Math.ceil(q / it.stackSize))} Stapel = ${nf(Math.ceil(q / it.stackSize) * it.space)} Slots` : ''}`; };
+    itemSel.addEventListener('change', showSlots); qty.addEventListener('input', showSlots); setTimeout(showSlots, 0);
     const sm = openModal({
       title: `${title}: ${w.name}`,
-      body: h('div', null, err, field('Artikel', itemSel), field(action === 'set' ? 'Neuer Bestand' : 'Menge', qty, { help: hint }), field('Notiz', text),
+      body: h('div', null, err, field('Artikel', itemSel), field(action === 'set' ? 'Neuer Bestand' : 'Menge', qty, { help: hint }), slotInfo, field('Notiz', text),
         !opts.items.length && note('Es gibt noch keine Artikel. Lege sie im Tab „Artikel & Preise“ an.', 'info')),
       footer: [button('Abbrechen', { onClick: () => sm.close() }), button(title, { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
         try { await api.post(`/api/warehouses/${w.id}/stock`, { itemId: Number(itemSel.value), action, quantity: Number(qty.value), note: text.value.trim() }); sm.close(); toast('Gebucht.'); }
@@ -194,7 +197,7 @@ export default async function render(container, ctx) {
       h('div', { class: 'form-row' }, field('Standort', loc), field('Postleitzahl', postal, { help: 'Die Karte setzt das Lager automatisch auf diese Postal.' })),
       h('div', { class: 'form-row' }, field('Position X', lx), field('Position Y', ly)), h('div', { class: 'help' }, 'Koordinaten sind optional und überschreiben die Postleitzahl.'),
       ...sec('Größe & Zugang'),
-      h('div', { class: 'form-row' }, field('Kapazität (Platzeinheiten)', cap), field('Größe', size)), field('Wie wird das Lager zugegriffen?', access),
+      h('div', { class: 'form-row' }, field('Kapazität (Slots)', cap), field('Größe', size)), field('Wie wird das Lager zugegriffen?', access),
       ...sec('Zuordnung'), h('div', { class: 'form-row' }, field('Abteilung', dept), field('Notizen', notes)),
       ...sec('Zugriffe im MDT'),
       h('label', { class: 'check', style: { padding: 0 } }, restricted, h('span', { class: 'check-text' }, 'Beschränkt – nur ausgewählte Rollen sehen dieses Lager')),
@@ -237,7 +240,7 @@ export default async function render(container, ctx) {
       table([
         { label: 'Artikel', render: (i) => h('div', null, h('b', null, i.name), ' ', !i.isActive && h('span', { class: 'badge no-dot b-mute' }, 'Inaktiv'), i.category && h('div', null, chip(i.category))) },
         { label: 'Einheit', render: (i) => i.unit },
-        { label: 'Platz / Einheit', render: (i) => nf(i.space) },
+        { label: 'Slots', render: (i) => h('span', { title: 'Slots pro Stapel · maximale Menge pro Stapel' }, `${nf(i.space)} Slot${i.space === 1 ? '' : 's'} · max. ${nf(i.stackSize)} pro Stapel`) },
         { label: 'Bestand', render: (i) => `${nf(i.totalStock)}${i.targetStock ? ` / Ziel ${nf(i.targetStock)}` : ''}` },
         canPrices && { label: 'Preisspanne', render: (i) => (i.minPrice != null ? `${money(i.minPrice)} – ${money(i.maxPrice)}` : h('span', { class: 'muted' }, 'keine')) },
         canPrices && { label: 'Aktueller Vorschlag', render: (i) => (i.suggestedPrice != null ? h('b', null, money(i.suggestedPrice)) : '–') },
@@ -250,7 +253,7 @@ export default async function render(container, ctx) {
     const name = input({ value: i?.name ?? '', maxLength: 80, placeholder: 'z. B. Eisenerz' });
     const cat = select([{ value: '', label: '— keine —' }, ...opts.categories.map((c) => ({ value: c.id, label: c.label }))], i?.category?.id ?? '');
     const unit = input({ value: i?.unit ?? 'Stück', maxLength: 20 });
-    const space = input({ type: 'number', min: 1, value: i?.space ?? 1 });
+    const space = input({ type: 'number', min: 1, value: i?.space ?? 1 }), stack = input({ type: 'number', min: 1, value: i?.stackSize ?? 1 });
     const target = input({ type: 'number', min: 0, value: i?.targetStock ?? '', placeholder: 'optional' });
     const lo = input({ type: 'number', min: 0, value: i?.minPrice ?? '', placeholder: 'Mindestpreis' }), hi = input({ type: 'number', min: 0, value: i?.maxPrice ?? '', placeholder: 'Höchstpreis' });
     const desc = input({ value: i?.description ?? '', maxLength: 300 });
@@ -260,7 +263,7 @@ export default async function render(container, ctx) {
     lo.addEventListener('input', upd); hi.addEventListener('input', upd); upd();
     const body = h('div', null, err,
       h('div', { class: 'form-row' }, field('Name', name), field('Kategorie', cat)),
-      h('div', { class: 'form-row' }, field('Einheit', unit), field('Platzbedarf pro Einheit', space, { help: 'Zählt gegen die Lagerkapazität.' })), field('Beschreibung', desc),
+      h('div', { class: 'form-row' }, field('Einheit', unit), field('Slots pro Stapel', space, { help: 'So viele Slots belegt ein Stapel.' })), h('div', { class: 'form-row' }, field('Max. Menge pro Stapel', stack, { help: 'Wie im Inventar: z. B. 1 Slot / 5 Stück, 2 Slots / 2 Stück, 3 Slots / 1 Stück. Angefangene Stapel belegen volle Slots.' }), h('div')), field('Beschreibung', desc),
       canPrices && [h('div', { class: 'sep' }), h('div', { class: 'label', style: { margin: '0 0 8px' } }, 'Preisspanne für die Börse (pro Einheit)'),
         h('div', { class: 'form-row' }, field('Mindestpreis', lo), field('Höchstpreis', hi)), preview,
         field('Zielbestand', target, { help: 'Ab dieser Menge im Lager liegt der Vorschlag am Mindestpreis; ist das Lager leer, am Höchstpreis.' })],
@@ -276,7 +279,7 @@ export default async function render(container, ctx) {
     } }));
     footer.push(h('span', { class: 'grow' }), button('Abbrechen', { onClick: () => m.close() }), button(i ? 'Speichern' : 'Anlegen', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
       err.replaceChildren();
-      const payload = { name: name.value, categoryId: cat.value ? Number(cat.value) : null, unit: unit.value, space: Number(space.value), description: desc.value, targetStock: num(target) };
+      const payload = { name: name.value, categoryId: cat.value ? Number(cat.value) : null, unit: unit.value, space: Number(space.value), stackSize: Number(stack.value), description: desc.value, targetStock: num(target) };
       if (canPrices) { payload.minPrice = num(lo); payload.maxPrice = num(hi); }
       if (active) payload.isActive = active.checked;
       try { i ? await api.patch(`/api/warehouse/items/${i.id}`, payload) : await api.post('/api/warehouse/items', payload); m.close(); toast(i ? 'Gespeichert.' : 'Artikel angelegt.'); }

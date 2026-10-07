@@ -10,8 +10,14 @@ import { bad, conflict } from './http.js';
  */
 export const totalStock = (itemId) => get('SELECT COALESCE(SUM(quantity),0) q FROM warehouse_stock WHERE item_id = ?', itemId).q;
 
+/**
+ * Lager wie das Inventar des Servers: Kapazität in Slots. Ein Item belegt `space` Slots pro Stapel, ein Stapel fasst höchstens `stack_size` Stück
+ * (z. B. 1 Slot / 5 Stück, 2 Slots / 2 Stück, 3 Slots / 1 Stück). Belegt = Anzahl Stapel (aufgerundet) × Slots pro Stapel.
+ */
+export const slotsFor = (item, quantity) => (quantity > 0 ? Math.ceil(quantity / Math.max(1, item.stack_size ?? 1)) * item.space : 0);
+
 export function usedSpace(warehouseId) {
-  return get('SELECT COALESCE(SUM(s.quantity * i.space),0) u FROM warehouse_stock s JOIN market_items i ON i.id = s.item_id WHERE s.warehouse_id = ?', warehouseId).u;
+  return get('SELECT COALESCE(SUM(((s.quantity + i.stack_size - 1) / i.stack_size) * i.space),0) u FROM warehouse_stock s JOIN market_items i ON i.id = s.item_id WHERE s.warehouse_id = ? AND s.quantity > 0', warehouseId).u;
 }
 
 export function quote(itemId, quantity = 1) {
@@ -33,15 +39,16 @@ export function quote(itemId, quantity = 1) {
 /** Bucht Bestand (delta > 0 Einlagern, < 0 Auslagern). Läuft in der Transaktion des Aufrufers. Prüft Kapazität und Mindestbestand 0. */
 export function bookStock({ warehouseId, itemId, delta, kind, userId = null, note = '', dealId = null }) {
   const wh = get('SELECT id, capacity FROM warehouses WHERE id = ?', warehouseId);
-  const item = get('SELECT id, space, name, unit FROM market_items WHERE id = ?', itemId);
+  const item = get('SELECT id, space, stack_size, name, unit FROM market_items WHERE id = ?', itemId);
   if (!wh || !item) throw bad('Unbekanntes Lager oder Item.');
   if (!Number.isInteger(delta) || delta === 0) throw bad('Menge: ganze Zahl ungleich 0 erforderlich.');
   const cur = get('SELECT quantity FROM warehouse_stock WHERE warehouse_id = ? AND item_id = ?', warehouseId, itemId)?.quantity ?? 0;
   const after = cur + delta;
   if (after < 0) throw conflict(`Nicht genug Bestand: ${cur.toLocaleString('de-DE')} ${item.unit} vorhanden.`);
-  if (delta > 0 && wh.capacity != null && usedSpace(warehouseId) + delta * item.space > wh.capacity) {
+  const need = slotsFor(item, after) - slotsFor(item, cur); // zusätzliche Slots (angefangene Stapel werden zuerst aufgefüllt)
+  if (delta > 0 && wh.capacity != null && need > 0 && usedSpace(warehouseId) + need > wh.capacity) {
     const free = Math.max(0, wh.capacity - usedSpace(warehouseId));
-    throw conflict(`Nicht genug Platz im Lager: noch ${free.toLocaleString('de-DE')} von ${wh.capacity.toLocaleString('de-DE')} Platzeinheiten frei.`);
+    throw conflict(`Nicht genug Platz im Lager: noch ${free.toLocaleString('de-DE')} von ${wh.capacity.toLocaleString('de-DE')} Slots frei (benötigt: ${need.toLocaleString('de-DE')}).`);
   }
   run(`INSERT INTO warehouse_stock (warehouse_id,item_id,quantity) VALUES (?,?,?) ON CONFLICT(warehouse_id,item_id) DO UPDATE SET quantity = excluded.quantity`, warehouseId, itemId, after);
   run('INSERT INTO warehouse_events (warehouse_id,item_id,user_id,kind,delta,quantity_after,note,deal_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)', warehouseId, itemId, userId, kind, delta, after, note, dealId, now());

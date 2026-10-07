@@ -617,6 +617,22 @@ try {
   r = await admin.call('POST', '/api/warehouses', { name: 'Zweitlager', capacity: 1000 }); const wh2 = r.warehouse.id;
   assert.equal((await admin.call('POST', `/api/warehouses/${wh}/transfer`, { toId: wh2, itemId: ore, quantity: 100 })).status, 200);
   r = await admin.call('GET', `/api/warehouses/${wh2}`); assert.equal(r.stock[0].quantity, 100); assert.ok(r.events.length >= 1); ok('Umlagern zwischen Lagern mit Verlauf');
+  { // Slots wie im Server-Inventar: Slots pro Stapel + maximale Menge pro Stapel
+    const mk = async (name, space, stackSize) => (await admin.call('POST', '/api/warehouse/items', { name, unit: 'Stk', space, stackSize })).item;
+    const A = await mk('Slot-A', 1, 5), B = await mk('Slot-B', 2, 2), C = await mk('Slot-C', 3, 1); assert.equal(A.stackSize, 5); assert.equal(B.space, 2);
+    assert.equal((await admin.call('POST', '/api/warehouse/items', { name: 'Slot-X', space: 1, stackSize: 0 })).status, 400); assert.equal((await admin.call('POST', '/api/warehouse/items', { name: 'Slot-Y', space: 0, stackSize: 1 })).status, 400);
+    r = await admin.call('POST', '/api/warehouses', { name: 'Slot-Lager', capacity: 10 }); const sw = r.warehouse.id; const put = (item, q) => admin.call('POST', `/api/warehouses/${sw}/stock`, { itemId: item.id, action: 'in', quantity: q });
+    assert.equal((await put(A, 5)).used, 1); // 5 Stück = 1 Stapel = 1 Slot
+    assert.equal((await put(A, 1)).used, 2); // 6 Stück = 2 Stapel
+    assert.equal((await put(A, 4)).used, 2); // 10 Stück = 2 Stapel (angefangener Stapel wird aufgefüllt)
+    assert.equal((await put(B, 3)).used, 6); // 3 Stück = 2 Stapel à 2 Slots = 4
+    assert.equal((await put(C, 1)).used, 9); // 1 Stück = 1 Stapel à 3 Slots
+    r = await put(C, 1); assert.equal(r.status, 409); assert.match(r.error, /Slots/); // wäre 12 von 10
+    assert.equal((await put(B, 1)).used, 9); // 4 Stück = 2 Stapel: noch 4 Slots → kein Zusatzbedarf
+    r = await admin.call('GET', `/api/warehouses/${sw}`); const rowA = r.stock.find((x) => x.itemId === A.id); assert.equal(rowA.space, 2); assert.equal(rowA.stacks, 2); assert.equal(rowA.stackSize, 5); assert.equal(r.warehouse.used, 9);
+    assert.equal((await admin.call('POST', `/api/warehouses/${sw}/stock`, { itemId: A.id, action: 'out', quantity: 7 })).used, 8); // A: 3 Stück = 1 Stapel = 1 Slot (+ B 4 + C 3)
+    assert.equal((await admin.call('PATCH', `/api/warehouse/items/${C.id}`, { stackSize: 2 })).item.stackSize, 2);
+    ok('Lager in Slots: Stapelgröße und Slots pro Stapel (1/5, 2/2, 3/1), angefangene Stapel, Kapazitätsprüfung'); }
   r = await admin.call('GET', `/api/warehouses/${wh}`); assert.equal(r.stock[0].quantity, 500);
   // Zugriffe
   await admin.call('PATCH', `/api/roles/${modRole}`, { permissions: ['users.view', 'users.approve', 'users.edit', 'audit.view', 'chat.view', 'chat.send', 'warehouse.view'] });

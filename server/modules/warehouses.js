@@ -5,7 +5,7 @@ import { allocateNumber } from '../core/numbers.js';
 import { getConfig } from '../core/config.js';
 import { labelForUser } from '../core/identity.js';
 import { registerLookup, lookupEntries, isActiveEntry } from '../core/lookups.js';
-import { bookStock, usedSpace, totalStock, quote } from '../core/stock.js';
+import { bookStock, usedSpace, totalStock, quote, slotsFor } from '../core/stock.js';
 import { registerMapLayer, postalCoords } from './map.js';
 import { registerWidget } from './dashboard.js';
 import { purgeItem } from '../core/purge.js';
@@ -82,7 +82,7 @@ const itemRow = (i, user) => {
   const visibleIds = new Set(visible(user).map((x) => x.w.id));
   const total = all('SELECT warehouse_id, quantity FROM warehouse_stock WHERE item_id = ?', i.id).filter((s) => visibleIds.has(s.warehouse_id)).reduce((a, s) => a + s.quantity, 0);
   return {
-    id: i.id, name: i.name, description: i.description, unit: i.unit, space: i.space, isActive: !!i.is_active, targetStock: i.target_stock,
+    id: i.id, name: i.name, description: i.description, unit: i.unit, space: i.space, stackSize: i.stack_size, isActive: !!i.is_active, targetStock: i.target_stock,
     category: i.category_id ? { id: i.category_id, label: i.cat_label, color: i.cat_color } : null, totalStock: total,
     minPrice: prices ? i.min_price : undefined, maxPrice: prices ? i.max_price : undefined,
     suggestedPrice: prices ? (quote(i.id, 1)?.unitPrice ?? null) : undefined,
@@ -113,7 +113,7 @@ function whFields(b, partial) {
     if (x != null && (!Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x) > 20000 || Math.abs(y) > 20000)) throw bad('Ungültige Koordinaten.');
     out.loc_x = x; out.loc_y = y;
   }
-  if (b.capacity !== undefined) out.capacity = nonNeg(b.capacity, 'Kapazität');
+  if (b.capacity !== undefined) out.capacity = nonNeg(b.capacity, 'Kapazität (Slots)');
   if (b.sizeInfo !== undefined) out.size_info = str(b.sizeInfo, 'Größe', { max: 120, required: false });
   if (b.accessInfo !== undefined) out.access_info = str(b.accessInfo, 'Zugang', { max: 500, required: false });
   if (b.notes !== undefined) out.notes = str(b.notes, 'Notizen', { max: 1000, required: false });
@@ -140,7 +140,7 @@ registerMapLayer({
   key: 'warehouses', label: 'Lager', icon: 'storage', color: '#f59e0b', perm: 'warehouse.view', topic: 'warehouse',
   items: (user) => visible(user).filter(({ w }) => w.is_active && (w.loc_x != null || w.postal)).map(({ w }) => ({
     id: w.id, name: w.name, postal: w.postal, x: w.loc_x ?? undefined, y: w.loc_y ?? undefined,
-    subtitle: [w.type_label, w.capacity != null ? `${usedSpace(w.id).toLocaleString('de-DE')} / ${w.capacity.toLocaleString('de-DE')} belegt` : null, w.warehouse_number].filter(Boolean).join(' · '),
+    subtitle: [w.type_label, w.capacity != null ? `${usedSpace(w.id).toLocaleString('de-DE')} / ${w.capacity.toLocaleString('de-DE')} Slots belegt` : null, w.warehouse_number].filter(Boolean).join(' · '),
   })),
 });
 
@@ -191,7 +191,7 @@ export default {
       categories: lookupEntries('market.item_category', { onlyActive: true }),
       departments: all('SELECT id, name, color FROM departments ORDER BY sort_order, name'),
       roles: ctx.user.perms.has('warehouse.manage') ? all('SELECT id, name, color FROM roles ORDER BY name') : [],
-      items: all('SELECT id, name, unit, space FROM market_items WHERE is_active = 1 ORDER BY name'),
+      items: all('SELECT id, name, unit, space, stack_size stackSize FROM market_items WHERE is_active = 1 ORDER BY name'),
       canManage: ctx.user.perms.has('warehouse.manage'), canItems: ctx.user.perms.has('warehouse.items'), canPrices: ctx.user.perms.has('warehouse.prices'),
       currency: getConfig('market.currency') ?? '$',
     }));
@@ -208,9 +208,9 @@ export default {
     r.get('/api/warehouses/:id', { perm: 'warehouse.view' }, (ctx) => {
       const { w, level } = load(ctx.user, Number(ctx.params.id));
       const prices = ctx.user.perms.has('warehouse.prices');
-      const stock = all(`SELECT s.item_id, s.quantity, i.name, i.unit, i.space, i.min_price, i.max_price, l.label cat_label, l.color cat_color
+      const stock = all(`SELECT s.item_id, s.quantity, i.name, i.unit, i.space, i.stack_size, i.min_price, i.max_price, l.label cat_label, l.color cat_color
         FROM warehouse_stock s JOIN market_items i ON i.id = s.item_id LEFT JOIN lookups l ON l.id = i.category_id WHERE s.warehouse_id = ? AND s.quantity > 0 ORDER BY i.name`, w.id)
-        .map((s) => ({ itemId: s.item_id, name: s.name, unit: s.unit, quantity: s.quantity, space: s.space * s.quantity, category: s.cat_label ? { label: s.cat_label, color: s.cat_color } : null,
+        .map((s) => ({ itemId: s.item_id, name: s.name, unit: s.unit, quantity: s.quantity, space: slotsFor(s, s.quantity), stacks: Math.ceil(s.quantity / s.stack_size), slotsPerStack: s.space, stackSize: s.stack_size, category: s.cat_label ? { label: s.cat_label, color: s.cat_color } : null,
           minPrice: prices ? s.min_price : undefined, maxPrice: prices ? s.max_price : undefined }));
       const events = all(`SELECT e.*, i.name item_name, i.unit item_unit FROM warehouse_events e LEFT JOIN market_items i ON i.id = e.item_id WHERE e.warehouse_id = ? ORDER BY e.id DESC LIMIT 100`, w.id)
         .map((e) => ({ id: e.id, kind: e.kind, item: e.item_name, unit: e.item_unit, delta: e.delta, after: e.quantity_after, note: e.note, dealId: e.deal_id, actor: e.user_id ? labelForUser(e.user_id, ctx.user.id) : 'System', createdAt: e.created_at }));
@@ -309,7 +309,8 @@ export default {
       if (!partial || b.name !== undefined) out.name = str(b.name, 'Name', { min: 2, max: 80 });
       if (!partial || b.description !== undefined) out.description = str(b.description, 'Beschreibung', { max: 300, required: false });
       if (!partial || b.unit !== undefined) out.unit = str(b.unit ?? 'Stück', 'Einheit', { min: 1, max: 20 });
-      if (b.space !== undefined) { if (!Number.isInteger(b.space) || b.space < 1 || b.space > 100000) throw bad('Platzbedarf: ganze Zahl ab 1.'); out.space = b.space; }
+      if (b.space !== undefined) { if (!Number.isInteger(b.space) || b.space < 1 || b.space > 100000) throw bad('Slots pro Stapel: ganze Zahl ab 1.'); out.space = b.space; }
+      if (b.stackSize !== undefined) { if (!Number.isInteger(b.stackSize) || b.stackSize < 1 || b.stackSize > 100000) throw bad('Maximale Menge pro Stapel: ganze Zahl ab 1.'); out.stack_size = b.stackSize; }
       if (b.targetStock !== undefined) out.target_stock = nonNeg(b.targetStock, 'Zielbestand');
       if (b.categoryId !== undefined) {
         const c = b.categoryId == null || b.categoryId === '' ? null : b.categoryId;

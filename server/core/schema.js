@@ -696,4 +696,8 @@ export const SCHEMA_MIGRATIONS = [
   );
   CREATE INDEX idx_board_order ON board_posts(pinned, id);
   `,
+  // 18: Lager nach Slots wie im Inventar des Servers (Slots pro Stapel + maximale Menge pro Stapel)
+  `
+  ALTER TABLE market_items ADD COLUMN stack_size INTEGER NOT NULL DEFAULT 1;
+  `,
 ];
