@@ -241,3 +241,7 @@
 /* Live-Uhr: Sekunden dezent hinter den Minuten */
 .dw-time .dw-sec { font-size: 0.34em; font-weight: 300; opacity: 0.6; margin-left: 4px; }
 .lock-clock .lc-time, .ls-time, .panel-clock { font-variant-numeric: tabular-nums; }
+
+/* Durchgehende Linie über die ganze Breite; die Button-Leiste (Dock) liegt darüber und verdeckt sie nur dort, wo sie selbst ist */
+.dock-row::before { content: ''; position: absolute; left: 0; right: 0; bottom: calc(6px + 9px + var(--dock-size) / 2); height: 1px; background: rgba(255, 255, 255, 0.16); z-index: 0; pointer-events: none; }
+.dock-row > .dock { position: relative; z-index: 1; background: color-mix(in srgb, var(--bg-1) 90%, transparent); }

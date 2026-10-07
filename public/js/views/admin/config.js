@@ -83,6 +83,21 @@ async function addExtras(host, editable) {
   }
   try { drawWidgets((await api.get('/api/dashboard/layout')).widgets); } catch (e) { mount(dashHost, empty('Nicht verfügbar', e.message, 'alert')); }
 
+  // Updates: installierter Stand vs. neuester Stand auf GitHub (Superadmin/Administratoren werden zusätzlich benachrichtigt)
+  const updHost = h('div');
+  host.append(card('Updates', updHost, { icon: 'refresh', flush: true }));
+  const drawUpdate = (u) => mount(updHost, h('div', { class: 'setting-row', style: { gridTemplateColumns: 'minmax(0,1fr) auto' } },
+    h('div', null, h('div', { class: 'lbl' }, `Installiert: ${u.installed}`),
+      h('div', { class: 'hlp' }, u.error ? `Prüfung nicht möglich: ${u.error}`
+        : !u.latest ? 'Noch nicht geprüft (automatisch alle 6 Stunden, oder jetzt prüfen).'
+          : u.available === null ? `Neuester Stand auf GitHub: ${u.latest.short} – dieser Stand kennt keinen Git-Commit (ZIP-Download), ein Vergleich ist nicht möglich.`
+            : u.available ? `Update verfügbar: ${u.latest.short} – ${u.latest.message}` : `Aktuell – du hast den neuesten Stand (${u.latest.short}).`),
+      u.available && h('div', { class: 'hlp' }, 'Server aktualisieren: im Installationsordner „update-mdt.sh“ (Linux) bzw. „update-mdt.ps1“ (Windows) ausführen, danach im Browser STRG+F5.'),
+      u.checkedAt && h('div', { class: 'hlp' }, `Zuletzt geprüft: ${fmtDateTime(u.checkedAt)}`)),
+    h('div', { class: 'row' }, u.available && u.latest?.url && h('a', { class: 'btn btn-sm', href: u.latest.url, target: '_blank', rel: 'noopener' }, 'Änderungen ansehen'),
+      button('Jetzt prüfen', { icon: 'refresh', variant: u.available ? '' : 'primary', onClick: (e) => busy(e.currentTarget, async () => { try { drawUpdate(await api.post('/api/admin/update/check')); } catch (ex) { toast(ex.message, 'err'); } }) }))));
+  api.get('/api/admin/update').then(drawUpdate).catch((e) => mount(updHost, empty('Nicht verfügbar', e.message, 'alert')));
+
   // Gefahrenzone: Panel auf null setzen (nur Superadmin)
   if (state.user.isSuperadmin) {
     host.append(card('Gefahrenzone', h('div', { class: 'setting-row', style: { gridTemplateColumns: 'minmax(0,1fr) auto' } },

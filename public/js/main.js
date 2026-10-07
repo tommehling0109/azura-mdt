@@ -63,6 +63,9 @@ async function boot() {
     // Die Pille lebt im Hintergrund-Layer des Bildschirms (unter Fenstern und Dock) und wird nach jedem Neuaufbau des Bildschirms wieder eingesetzt
     const place = () => { if (tag.parentNode !== screenEl) screenEl.append(tag); };
     place(); new MutationObserver(place).observe(screenEl, { childList: true });
+    // Einstellbar unter Konfiguration → Darstellung („Build-Anzeige einblenden“)
+    const sync = () => { tag.hidden = (state.config?.['ui.show_build'] ?? b.config?.['ui.show_build']) === false; };
+    sync(); window.addEventListener('mdt:config', sync); setInterval(sync, 2000);
     syncVersion(b.version); watchVersion(b.version); // veralteten lokalen Zustand nach Updates verwerfen / laufende Seite erneuern
     return b;
   } catch (e) {

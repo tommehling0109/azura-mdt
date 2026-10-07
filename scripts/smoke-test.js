@@ -8,6 +8,7 @@ import { periodKey as tabPeriodKey, periodInfo as tabPeriodInfo } from '../serve
 const dir = mkdtempSync(join(tmpdir(), 'mdt-'));
 process.env.MDT_DB = join(dir, 'test.db');
 process.env.TRUST_PROXY = '1'; // wie hinter nginx
+process.env.MDT_UPDATE_CHECK = '0'; process.env.APP_COMMIT = 'abc1234def'; // keine echten GitHub-Abfragen im Test; bekannter Stand
 const { buildApp } = await import('../server/app.js');
 const server = buildApp();
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -951,6 +952,13 @@ try {
 
   // ══ Superadmin, Hierarchie, Stammdaten externer Zugänge, Finanzen, Statistik ══
   const adminId = users.find((u) => u.username === 'admin').id;
+  { // Rollen passend zu den Rängen; der Superadmin hat keine zusätzliche Rolle
+    const rl = (await admin.call('GET', '/api/roles')).roles; const by = (n) => rl.find((x) => x.name === n);
+    for (const n of ['Aspirante', 'Sicario', 'Capitán', 'Jefe de Zona', 'La Mano Azul', 'El Azur Supremo', 'Administrator']) assert.ok(by(n), n);
+    assert.ok(by('Sicario').permissions.includes('market.deals.manage')); assert.ok(by('Sicario').permissions.includes('chat.view')); assert.equal(by('Sicario').permissions.includes('users.view'), false); assert.ok(by('Capitán').permissions.includes('users.view'));
+    assert.ok(by('Capitán').permissions.length > by('Sicario').permissions.length); assert.equal(by('El Azur Supremo').isAdmin, true); assert.deepEqual((await admin.call('GET', `/api/users/${(await admin.call('GET', '/api/users')).users.find((u) => u.username === 'admin').id}`)).user.roles.map((x) => x.name).filter((n) => n !== 'Boss'), ['Superadmin']);
+    ok('Rollen passend zu den Rängen (aufsteigende Rechte); Superadmin ohne Zusatzrolle');
+  }
   r = await admin.call('GET', '/api/auth/me'); assert.equal(r.user.isSuperadmin, true);
   { const allKeys = (await admin.call('GET', '/api/permissions')).permissions.map((p) => p.key); assert.ok(allKeys.length > 60); assert.deepEqual(allKeys.filter((k) => !r.user.permissions.includes(k)), []); ok('Superadmin besitzt jederzeit ALLE Rechte (auch neu hinzugekommene)'); } assert.equal((await mod.call('GET', '/api/auth/me')).user.isSuperadmin, false);
   assert.equal((await admin.call('PATCH', `/api/users/${adminId}`, { isSuperadmin: false })).status, 403); assert.equal((await admin.call('PATCH', `/api/users/${neuer.id}`, { isSuperadmin: true })).status, 403); // die Rolle „Superadmin“ ist fest: weder vergeb- noch entziehbar
@@ -1074,6 +1082,19 @@ try {
   // Superadmin: Artikel samt Geschäften/Bestand löschen
   assert.equal((await admin.call('DELETE', `/api/warehouse/items/${ore}`)).status, 409); assert.equal((await mod.call('DELETE', `/api/warehouse/items/${ore}?force=1`)).status, 403);
   assert.equal((await admin.call('DELETE', `/api/warehouse/items/${ore}?force=1`)).status, 200); assert.equal((await admin.call('GET', '/api/market/deals')).deals.some((d) => d.item?.id === ore), false); ok('Superadmin löscht Artikel samt Geschäften, Gesuchen und Beständen');
+
+  // Update-Prüfung (mit simuliertem GitHub)
+  { const { checkForUpdate, updateState } = await import('../server/core/updates.js');
+    const fake = (sha, ok = true) => async () => ({ ok, status: ok ? 200 : 500, json: async () => ({ sha, commit: { message: 'Neue Funktion\n\nDetails', committer: { date: '2026-10-08T10:00:00Z' } } }) });
+    const newSha = 'f'.repeat(40);
+    await checkForUpdate({ fetchFn: fake(newSha) }); assert.equal(updateState.available, true); assert.equal(updateState.latest.short, 'fffffff'); assert.equal(updateState.latest.message, 'Neue Funktion');
+    r = await admin.call('GET', '/api/notifications'); const upd = r.notifications.filter((n) => n.title === 'Update verfügbar'); assert.equal(upd.length, 1); assert.match(upd[0].body, /fffffff/); assert.match(upd[0].body, /abc1234/);
+    await checkForUpdate({ fetchFn: fake(newSha) }); assert.equal((await admin.call('GET', '/api/notifications')).notifications.filter((n) => n.title === 'Update verfügbar').length, 1); // je Version nur einmal
+    assert.equal((await mod.call('GET', '/api/notifications')).notifications.some((n) => n.title === 'Update verfügbar'), false); // nur Superadmin/Administratoren
+    await checkForUpdate({ fetchFn: fake('abc1234' + '0'.repeat(33)) }); assert.equal(updateState.available, false);
+    await checkForUpdate({ fetchFn: fake('x', false) }); assert.ok(updateState.error);
+    assert.equal((await new Client().call('GET', '/api/admin/update')).status, 401); assert.equal((await admin.call('GET', '/api/admin/update')).installed, 'abc1234');
+    ok('Update-Prüfung: Benachrichtigung nur an Superadmin/Administratoren, einmal je Version, Fehler werden abgefangen'); }
 
   // Audit-Export hat ein eigenes Recht
   await setPerms(['audit.view']); assert.equal((await fetch(`${base}/api/audit/export`, { headers: { cookie: mod.cookie } })).status, 403); await setPerms(['audit.view', 'audit.export']); assert.equal((await fetch(`${base}/api/audit/export`, { headers: { cookie: mod.cookie } })).status, 200); await setPerms([]); ok('Audit-Export braucht audit.export');

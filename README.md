@@ -160,6 +160,12 @@ Konfiguration → *Gefahrenzone* (nur Superadmin): leert **alle Daten** und hoch
 
 Desktop-Symbole (Konfiguration → *Desktop-Symbole anzeigen*) lassen sich frei verschieben (Position wird pro Benutzer im Browser gemerkt); das Dock hebt Symbole über die Leiste hinaus an; außerhalb der Karte ist der Hintergrund meerblau.
 
+## Updates, Rollen & Anzeige
+
+- **Update-Prüfung:** Das MDT fragt alle 6 Stunden (und auf Knopfdruck unter Konfiguration → Updates) bei GitHub den neuesten Commit ab und vergleicht ihn mit dem installierten Stand. Ist er neuer, erhalten **Superadmin und Administratoren** einmal je Version eine Benachrichtigung. Abschaltbar; ohne Git-Stand (ZIP-Download, Anzeige „lokal-…“) ist kein Vergleich möglich.
+- **Rollen passend zu den Rängen:** Bei der Einrichtung werden 13 Rollen (Aspirante … El Azur Supremo) mit aufsteigenden Rechten angelegt (jede Stufe enthält die darunter; die oberste ist Administrator-Rolle) sowie die frei vergebbare Rolle „Administrator“. Der Superadmin braucht keine Rolle.
+- **Build-Anzeige:** unten rechts, abschaltbar unter Konfiguration → Darstellung.
+
 ## Nächste Phasen
 
 Weitere Module (Fahrzeuge, Lager, Ankauf, Chat …) werden als `server/modules/<name>.js` (Permissions + Routen + Migration) und

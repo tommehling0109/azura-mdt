@@ -10,6 +10,7 @@ import { audit } from '../core/audit.js';
 import { assignMemberNumber } from '../core/members.js';
 import { factoryReset } from '../core/reset.js';
 import { seedRanks } from '../core/seed-ranks.js';
+import { updateState, checkForUpdate, startUpdateChecks } from '../core/updates.js';
 
 // ── Branding: eigenes Logo / Hintergrundbild (nur PNG, JPEG, WebP – kein SVG, wegen Skript-Risiko) ──
 const brandDir = () => join(dirname(DB_PATH), 'branding');
@@ -62,6 +63,9 @@ export default {
     { key: 'ui.glass', group: 'Darstellung', label: 'Transparenz-Effekte', help: 'Milchglas-Optik für obere Leiste, Dock und Menüs.', type: 'bool', default: true, public: true },
     { key: 'ui.animations', group: 'Darstellung', label: 'Animationen', help: 'Dezente Übergänge beim Öffnen, Hover und Wechseln.', type: 'bool', default: true, public: true },
     { key: 'ui.show_widget', group: 'Darstellung', label: 'Uhr-Widget auf dem Desktop', type: 'bool', default: true, public: true },
+    { key: 'ui.show_build', group: 'Darstellung', label: 'Build-Anzeige (unten rechts) einblenden', help: 'Zeigt den installierten Programmstand als kleine Pille an (Klick = Diagnose).', type: 'bool', default: true, public: true },
+    { key: 'system.update_check', group: 'Updates', label: 'Automatisch auf Updates prüfen', help: 'Fragt alle 6 Stunden bei GitHub nach einer neueren Version und informiert Superadmin und Administratoren.', type: 'bool', default: true },
+    { key: 'system.update_repo', group: 'Updates', label: 'GitHub-Repository', help: 'Format: besitzer/name', type: 'string', default: 'tommehling0109/azura-mdt', max: 100 },
     { key: 'ui.show_watermark', group: 'Darstellung', label: 'Logo-Wasserzeichen im Hintergrund', type: 'bool', default: true, public: true },
     { key: 'security.lock_timeout_minutes', group: 'Zugang', label: 'Sperrbildschirm nach Inaktivität (Minuten)', help: 'Nach dieser Zeit ohne Eingabe wird der Bildschirm gesperrt; Entsperren per Passwort bzw. Code. 0 = aus.', type: 'number', default: 10, min: 0, max: 1440, public: true },
     { key: 'ui.desktop_icons', group: 'Darstellung', label: 'Desktop-Symbole anzeigen', help: 'Zeigt die Apps zusätzlich als Symbole auf dem Desktop (das Dock unten bleibt immer sichtbar).', type: 'bool', default: false, public: true },
@@ -72,6 +76,7 @@ export default {
   ],
   /** Selbstheilung bei jedem Start: Gibt es Benutzer, aber keinen Superadmin (z. B. Altbestand), wird der älteste aktive Administrator zum Superadmin. */
   init() {
+    startUpdateChecks();
     if (get('SELECT 1 x FROM users WHERE is_superadmin = 1')) return;
     const first = get("SELECT u.id FROM users u JOIN user_roles ur ON ur.user_id = u.id JOIN roles r ON r.id = ur.role_id WHERE r.is_admin = 1 AND u.status = 'active' ORDER BY u.id LIMIT 1")
       ?? get("SELECT id FROM users WHERE status = 'active' ORDER BY id LIMIT 1");
@@ -80,6 +85,8 @@ export default {
   routes(r) {
     // Öffentlich: Konfiguration für Login/Setup-Bildschirm
     r.get('/api/bootstrap', { auth: false }, () => ({ setupRequired: setupRequired(), config: publicConfig(), version: APP_VERSION, commit: APP_COMMIT }));
+    r.get('/api/admin/update', { perm: 'config.view' }, () => ({ installed: APP_COMMIT, ...updateState }));
+    r.post('/api/admin/update/check', { perm: 'config.view' }, async () => ({ installed: APP_COMMIT, ...(await checkForUpdate({ force: true })) }));
     r.get('/api/version', { auth: false }, () => ({ version: APP_VERSION, commit: APP_COMMIT }));
 
     // Erst-Einrichtung: legt Administrator-Rolle + ersten Benutzer an. Nur solange kein Benutzer existiert.
@@ -91,20 +98,16 @@ export default {
       const pwErr = checkPassword(b.password);
       if (pwErr) throw bad(pwErr);
       const systemName = str(b.systemName, 'Systemname', { min: 1, max: 40 });
-      const roleName = 'Administrator'; // frei vergebbare Administrator-Rolle; der erste Benutzer ist der feste Superadmin
 
       const result = tx(() => {
         if (!setupRequired()) throw conflict('Das System ist bereits eingerichtet.');
         const t = now();
-        const role = run('INSERT INTO roles (name,description,color,is_admin,is_system,sort_order,created_at) VALUES (?,?,?,1,1,0,?)',
-          roleName, 'Voller Zugriff auf alle Funktionen. Systemrolle.', '#f5a524', t);
         const user = run('INSERT INTO users (username,display_name,password_hash,status,is_superadmin,created_at,updated_at) VALUES (?,?,?,?,1,?,?)',
           username, displayName, hashPassword(b.password), 'active', t, t);
-        run('INSERT INTO user_roles (user_id,role_id) VALUES (?,?)', user.lastInsertRowid, role.lastInsertRowid);
         setConfig('system.name', systemName, user.lastInsertRowid);
         assignMemberNumber(Number(user.lastInsertRowid));
         seedRanks();
-        return { userId: Number(user.lastInsertRowid), roleId: Number(role.lastInsertRowid) };
+        return { userId: Number(user.lastInsertRowid) };
       });
       const u = loadUser(result.userId);
       audit({ user: u, ip: ctx.ip }, { action: 'system.setup', module: 'system', targetType: 'user', targetId: u.id, targetLabel: u.memberNumber ?? 'Mitglied' });

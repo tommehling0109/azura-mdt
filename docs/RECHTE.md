@@ -288,6 +288,8 @@
 | DELETE | `/api/roles/:id` | `roles.manage` |
 | GET | `/api/stats` | `stats.view` |
 | GET | `/api/bootstrap` | *öffentlich* |
+| GET | `/api/admin/update` | `config.view` |
+| POST | `/api/admin/update/check` | `config.view` |
 | GET | `/api/version` | *öffentlich* |
 | POST | `/api/setup` | *öffentlich* |
 | POST | `/api/admin/branding/:kind` | `config.edit` |
