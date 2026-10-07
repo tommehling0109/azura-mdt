@@ -1,0 +1,215 @@
+import { h, mount, fmtDateTime } from '../ui/dom.js';
+import { icon } from '../ui/icons.js';
+import { button, busy, field, input, checkbox, toggle, formError, openModal, confirmDialog, toast, empty, skeletons } from '../ui/kit.js';
+import { api } from '../api.js';
+import { can, state } from '../state.js';
+
+const CHANNEL_KEY = 'mdt:chat:channel';
+const COLORS = ['#6b7280', '#5b82b8', '#22c4a8', '#f5a524', '#ef4444', '#a78bfa', '#f472b6', '#84cc16'];
+const MENTION = /(@[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-\d+)/g;
+const sameDay = (a, b) => a.toDateString() === b.toDateString();
+const dayLabel = (d) => {
+  const now = new Date(); const y = new Date(now); y.setDate(now.getDate() - 1);
+  return sameDay(d, now) ? 'Heute' : sameDay(d, y) ? 'Gestern' : d.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+};
+const hhmm = (iso) => new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+/** Nachrichtentext: Erwähnungen (@AZ-220) hervorheben – alles andere bleibt reiner Text (kein HTML). */
+function renderBody(text) {
+  const me = (state.user.memberNumber ?? '').toUpperCase();
+  return text.split(MENTION).map((part, i) => (i % 2 ? h('span', { class: `mention ${part.slice(1).toUpperCase() === me ? 'me' : ''}` }, part) : part)); // ungerade Teile = Erwähnungen (Capture-Gruppe)
+}
+
+export default async function render(container, ctx) {
+  const canSend = can('chat.send'), canPin = can('chat.pin'), canManage = can('chat.manage');
+  let channels = [];
+  let current = Number(sessionStorage.getItem(CHANNEL_KEY)) || null;
+  let data = { messages: [], pinned: [], hasMore: false, channel: null };
+  let replyTo = null, editing = null, showPinned = false;
+
+  const side = h('aside', { class: 'chat-side' });
+  const head = h('div', { class: 'chat-head' });
+  const pinnedBar = h('div', { class: 'chat-pinned', hidden: true });
+  const scroller = h('div', { class: 'chat-scroll' });
+  const banner = h('div', { class: 'chat-banner', hidden: true });
+  const ta = h('textarea', { class: 'textarea chat-input', rows: 1, maxLength: 2000, placeholder: 'Nachricht schreiben … (Enter = senden, Shift+Enter = neue Zeile)', disabled: !canSend });
+  const sendBtn = button('', { variant: 'primary', icon: 'check', title: 'Senden', disabled: !canSend });
+  const composer = h('div', { class: 'chat-composer' }, banner, h('div', { class: 'row', style: { alignItems: 'flex-end', flexWrap: 'nowrap' } }, ta, sendBtn));
+  const main = h('section', { class: 'chat-main' }, head, pinnedBar, scroller, composer);
+  mount(container, h('div', { class: 'chat' }, side, main));
+  container.style.maxWidth = 'none';
+  container.style.height = '100%';
+
+  const nearBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
+  const toBottom = () => { scroller.scrollTop = scroller.scrollHeight; };
+
+  // ── Kanäle ──
+  async function loadChannels() {
+    ({ channels } = await api.get('/api/chat/channels'));
+    if (!channels.some((c) => c.id === current)) current = channels[0]?.id ?? null;
+    drawSide();
+  }
+  function drawSide() {
+    mount(side, h('div', { class: 'chat-side-title' }, 'Kanäle'),
+      channels.map((c) => {
+        const b = h('button', { class: `chat-chan ${c.id === current ? 'on' : ''}`, type: 'button', style: { '--c': c.color } },
+          h('span', { class: 'dot' }), h('span', { class: 'cn' }, c.restricted && icon('lockClosed'), c.name), c.unread > 0 && h('span', { class: 'count hot' }, c.unread));
+        b.addEventListener('click', () => { if (current !== c.id) { current = c.id; replyTo = editing = null; setBanner(); sessionStorage.setItem(CHANNEL_KEY, String(current)); drawSide(); loadMessages({ initial: true }); } });
+        return b;
+      }),
+      canManage && h('div', { style: { padding: '8px' } }, button('Kanäle verwalten', { size: 'sm', icon: 'settings', onClick: manageChannels })));
+  }
+
+  // ── Nachrichten ──
+  async function loadMessages({ initial = false } = {}) {
+    if (!current) { mount(scroller, empty('Kein Kanal', 'Es ist noch kein Kanal für dich freigegeben.', 'chat')); mount(head); return; }
+    const stick = initial || nearBottom();
+    const prevH = scroller.scrollHeight, prevTop = scroller.scrollTop;
+    try { data = await api.get(`/api/chat/channels/${current}/messages`); } catch (e) { mount(scroller, empty('Nicht verfügbar', e.message, 'lock')); return; }
+    if (!ctx.isCurrent()) return;
+    drawHead(); drawMessages();
+    if (stick) toBottom(); else scroller.scrollTop = prevTop + (scroller.scrollHeight - prevH) * 0;
+    const last = data.messages.at(-1)?.id;
+    if (last && document.visibilityState === 'visible') {
+      api.post(`/api/chat/channels/${current}/read`, { lastId: last }).then(() => { const c = channels.find((x) => x.id === current); if (c && c.unread) { c.unread = 0; drawSide(); ctx.refreshCounters?.(); } }).catch(() => {});
+    }
+  }
+
+  function drawHead() {
+    const c = data.channel;
+    mount(head, h('div', { class: 'grow' }, h('div', { class: 'ch-name' }, h('span', { class: 'dot', style: { '--c': c.color } }), c.name), c.description && h('div', { class: 'muted', style: { fontSize: '12px' } }, c.description)),
+      c.pinnedCount > 0 && button(`${c.pinnedCount} angepinnt`, { size: 'sm', variant: showPinned ? 'primary' : 'ghost', icon: 'pin', onClick: () => { showPinned = !showPinned; drawHead(); drawMessages(); } }));
+    pinnedBar.hidden = !showPinned || !data.pinned.length;
+    mount(pinnedBar, data.pinned.map((m) => h('div', { class: 'pin-item', onclick: () => jumpTo(m.id) }, icon('pin'), h('b', null, m.sender), ' ', m.body.slice(0, 110))));
+  }
+
+  function jumpTo(id) {
+    const el = scroller.querySelector(`[data-mid="${id}"]`);
+    if (!el) return toast('Diese Nachricht liegt weiter oben – lade ältere Nachrichten.', 'info');
+    el.scrollIntoView({ block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1400);
+  }
+
+  function drawMessages() {
+    const nodes = [];
+    if (data.hasMore) nodes.push(h('div', { class: 'chat-more' }, button('Ältere Nachrichten laden', { size: 'sm', variant: 'ghost', onClick: loadOlder })));
+    let lastDay = null;
+    for (const m of data.messages) {
+      const d = new Date(m.createdAt);
+      if (!lastDay || !sameDay(lastDay, d)) { nodes.push(h('div', { class: 'chat-day' }, h('span', null, dayLabel(d)))); lastDay = d; }
+      nodes.push(messageEl(m));
+    }
+    if (!data.messages.length) nodes.push(empty('Noch keine Nachrichten', canSend ? 'Schreibe die erste Nachricht in diesem Kanal.' : null, 'chat'));
+    mount(scroller, nodes);
+  }
+
+  function messageEl(m) {
+    const actions = h('div', { class: 'msg-actions' },
+      canSend && !m.deleted && button('', { size: 'sm', variant: 'ghost', icon: 'reply', title: 'Antworten', onClick: () => startReply(m) }),
+      canPin && !m.deleted && button('', { size: 'sm', variant: 'ghost', icon: 'pin', title: m.pinned ? 'Lösen' : 'Anpinnen', onClick: () => togglePin(m) }),
+      m.canEdit && button('', { size: 'sm', variant: 'ghost', icon: 'edit', title: 'Bearbeiten', onClick: () => startEdit(m) }),
+      m.canDelete && button('', { size: 'sm', variant: 'ghost', icon: 'trash', title: 'Löschen', onClick: () => del(m) }));
+    return h('div', { class: `msg ${m.isMine ? 'mine' : ''} ${m.deleted ? 'gone' : ''}`, 'data-mid': m.id },
+      h('div', { class: 'msg-bubble' },
+        h('div', { class: 'msg-meta' }, h('span', { class: 'member-no' }, m.sender), m.isMine && h('span', { class: 'muted' }, 'Du'), m.pinned && h('span', { class: 'pinmark', title: 'Angepinnt' }, icon('pin')),
+          h('span', { class: 'msg-time', title: fmtDateTime(m.createdAt) }, hhmm(m.createdAt)), m.editedAt && !m.deleted && h('span', { class: 'muted', title: `Bearbeitet ${fmtDateTime(m.editedAt)}` }, '(bearbeitet)')),
+        m.replyTo && h('div', { class: 'msg-quote', onclick: () => jumpTo(m.replyTo.id) }, h('b', null, m.replyTo.sender), ' ', m.replyTo.snippet),
+        h('div', { class: 'msg-body' }, m.deleted ? h('i', null, 'Nachricht gelöscht') : renderBody(m.body))),
+      !m.deleted && actions);
+  }
+
+  async function loadOlder() {
+    const first = data.messages[0]?.id;
+    if (!first) return;
+    const prevH = scroller.scrollHeight;
+    const older = await api.get(`/api/chat/channels/${current}/messages?before=${first}`);
+    data.messages = [...older.messages, ...data.messages]; data.hasMore = older.hasMore;
+    drawMessages();
+    scroller.scrollTop = scroller.scrollHeight - prevH;
+  }
+
+  // ── Aktionen ──
+  function setBanner() {
+    banner.hidden = !replyTo && !editing;
+    if (editing) mount(banner, icon('edit'), h('span', { class: 'grow' }, 'Nachricht bearbeiten'), button('', { size: 'sm', variant: 'ghost', icon: 'x', title: 'Abbrechen', onClick: cancelCompose }));
+    else if (replyTo) mount(banner, icon('reply'), h('span', { class: 'grow' }, 'Antwort an ', h('b', null, replyTo.sender), ': ', replyTo.body.slice(0, 80)), button('', { size: 'sm', variant: 'ghost', icon: 'x', title: 'Abbrechen', onClick: cancelCompose }));
+  }
+  function cancelCompose() { replyTo = editing = null; ta.value = ''; setBanner(); }
+  function startReply(m) { editing = null; replyTo = m; setBanner(); ta.focus(); }
+  function startEdit(m) { replyTo = null; editing = m; ta.value = m.body; setBanner(); ta.focus(); }
+
+  async function send() {
+    const body = ta.value.trim();
+    if (!body || !current) return;
+    try {
+      if (editing) await api.patch(`/api/chat/messages/${editing.id}`, { body });
+      else await api.post(`/api/chat/channels/${current}/messages`, { body, replyTo: replyTo?.id });
+      cancelCompose();
+      await loadMessages({ initial: true });
+    } catch (e) { toast(e.message, 'err'); }
+  }
+  sendBtn.addEventListener('click', send);
+  ta.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    if (e.key === 'Escape' && (editing || replyTo)) cancelCompose();
+  });
+  ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`; });
+
+  async function togglePin(m) {
+    try { if (m.pinned) await api.del(`/api/chat/messages/${m.id}/pin`); else await api.post(`/api/chat/messages/${m.id}/pin`); await loadMessages(); } catch (e) { toast(e.message, 'err'); }
+  }
+  async function del(m) {
+    const r = await confirmDialog({ title: 'Nachricht löschen?', message: m.isMine ? 'Deine Nachricht wird für alle gelöscht.' : 'Diese Nachricht wird als Moderator für alle gelöscht.', confirmLabel: 'Löschen' });
+    if (!r) return;
+    try { await api.del(`/api/chat/messages/${m.id}`); await loadMessages(); } catch (e) { toast(e.message, 'err'); }
+  }
+
+  // ── Kanal-Verwaltung ──
+  async function manageChannels() {
+    const body = h('div');
+    const m = openModal({ title: 'Kanäle verwalten', wide: true, body, footer: [button('Fertig', { variant: 'primary', onClick: () => m.close() })] });
+    const redraw = async () => {
+      await loadChannels();
+      mount(body, button('Kanal erstellen', { variant: 'primary', icon: 'plus', onClick: () => editChannel(null) }), h('div', { style: { height: '12px' } }),
+        channels.map((c) => h('div', { class: 'list-row' }, h('span', { class: 'dot', style: { '--c': c.color, width: '10px', height: '10px', borderRadius: '50%', background: c.color } }),
+          h('div', { class: 'grow' }, h('div', { class: 't' }, c.name, c.restricted && ' 🔒'), h('div', { class: 's' }, c.description || '–')),
+          button('Bearbeiten', { size: 'sm', icon: 'edit', onClick: () => editChannel(c) }))));
+    };
+    async function editChannel(c) {
+      let roles = [];
+      try { roles = (await api.get('/api/roles')).roles; } catch { /* kein Recht auf Rollenliste */ }
+      const err = h('div');
+      const name = input({ value: c?.name ?? '', maxLength: 40 });
+      const desc = input({ value: c?.description ?? '', maxLength: 200 });
+      let color = c?.color ?? COLORS[1];
+      const sw = h('div', { class: 'swatches' });
+      const paint = () => mount(sw, COLORS.map((x) => h('button', { type: 'button', class: `swatch ${x === color ? 'on' : ''}`, style: { '--s': x }, 'aria-label': x, onclick: () => { color = x; paint(); } })));
+      paint();
+      const restricted = toggle('Nur für bestimmte Rollen sichtbar', c?.restricted ?? false);
+      const boxes = roles.map((r) => [r, checkbox(h('span', null, r.name), c?.roleIds.includes(r.id) ?? false)]);
+      const footer = [];
+      if (c) footer.push(button('Löschen', { variant: 'danger', icon: 'trash', onClick: async () => {
+        const r = await confirmDialog({ title: 'Kanal löschen?', message: `„${c.name}“ und alle Nachrichten darin werden endgültig gelöscht.`, confirmLabel: 'Löschen' });
+        if (!r) return;
+        try { await api.del(`/api/chat/channels/${c.id}`); em.close(); toast('Kanal gelöscht.'); redraw(); loadMessages({ initial: true }); } catch (e) { toast(e.message, 'err'); }
+      } }));
+      footer.push(h('span', { class: 'grow' }), button('Abbrechen', { onClick: () => em.close() }), button(c ? 'Speichern' : 'Erstellen', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
+        err.replaceChildren();
+        const payload = { name: name.value, description: desc.value, color, restricted: restricted.input.checked, roleIds: boxes.filter(([, x]) => x.input.checked).map(([r]) => r.id) };
+        try { if (c) await api.patch(`/api/chat/channels/${c.id}`, payload); else await api.post('/api/chat/channels', payload); em.close(); toast('Gespeichert.'); redraw(); } catch (ex) { err.replaceChildren(formError(ex.message)); }
+      }) }));
+      const em = openModal({ title: c ? `Kanal: ${c.name}` : 'Neuer Kanal', body: h('div', null, err, h('div', { class: 'form-row' }, field('Name', name), field('Beschreibung', desc)), field('Farbe', sw), restricted,
+        h('div', { class: 'help', style: { margin: '8px 0 6px' } }, 'Beschränkte Kanäle sehen nur Mitglieder mit einer der gewählten Rollen (Administratoren immer).'),
+        boxes.map(([, x]) => x)), footer });
+    }
+    redraw();
+  }
+
+  // ── Start + Live ──
+  mount(scroller, skeletons(4, 56));
+  await loadChannels();
+  await loadMessages({ initial: true });
+  ctx.live(['chat'], async () => { await loadChannels(); await loadMessages(); }, { wait: 120 });
+  const onVis = () => { if (document.visibilityState === 'visible') loadMessages(); };
+  document.addEventListener('visibilitychange', onVis);
+  return () => document.removeEventListener('visibilitychange', onVis);
+}

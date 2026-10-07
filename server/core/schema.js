@@ -1,0 +1,368 @@
+// Versionierte Migrationen. Neue Phasen hängen weitere Einträge an (nie bestehende ändern).
+export const SCHEMA_MIGRATIONS = [
+  /* v1 – Phase 1 Foundation */ `
+  CREATE TABLE users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    username      TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    display_name  TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','active','blocked','rejected')),
+    status_reason TEXT,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    last_login_at TEXT
+  );
+  CREATE TABLE roles (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    description TEXT NOT NULL DEFAULT '',
+    color       TEXT NOT NULL DEFAULT '#5b8def',
+    is_admin    INTEGER NOT NULL DEFAULT 0,
+    is_system   INTEGER NOT NULL DEFAULT 0,
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+  );
+  CREATE TABLE permissions (
+    key         TEXT PRIMARY KEY,
+    module      TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    is_custom   INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE role_permissions (
+    role_id        INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    permission_key TEXT NOT NULL REFERENCES permissions(key) ON DELETE CASCADE,
+    PRIMARY KEY (role_id, permission_key)
+  );
+  CREATE TABLE user_roles (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    PRIMARY KEY (user_id, role_id)
+  );
+  CREATE TABLE user_permissions (
+    user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    permission_key TEXT NOT NULL REFERENCES permissions(key) ON DELETE CASCADE,
+    PRIMARY KEY (user_id, permission_key)
+  );
+  CREATE TABLE sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    ip         TEXT,
+    user_agent TEXT
+  );
+  CREATE INDEX idx_sessions_user ON sessions(user_id);
+  CREATE TABLE settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+  );
+  CREATE TABLE audit_log (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts           TEXT NOT NULL,
+    user_id      INTEGER,
+    username     TEXT,
+    action       TEXT NOT NULL,
+    module       TEXT NOT NULL,
+    target_type  TEXT,
+    target_id    TEXT,
+    target_label TEXT,
+    before_value TEXT,
+    after_value  TEXT,
+    ip           TEXT
+  );
+  CREATE INDEX idx_audit_ts ON audit_log(ts DESC);
+  CREATE INDEX idx_audit_module ON audit_log(module);
+  `,
+  /* v2 – Organisation: Mitgliedsnummern, Ränge, Abteilungen + Verknüpfungs-/Integrationsgrundlagen */ `
+  CREATE TABLE departments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    description TEXT NOT NULL DEFAULT '',
+    color       TEXT NOT NULL DEFAULT '#5b8def',
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+  );
+  CREATE TABLE ranks (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    name           TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    description    TEXT NOT NULL DEFAULT '',
+    color          TEXT NOT NULL DEFAULT '#5b8def',
+    sort_order     INTEGER NOT NULL DEFAULT 0,
+    department_id  INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+    parent_rank_id INTEGER REFERENCES ranks(id) ON DELETE SET NULL,
+    created_at     TEXT NOT NULL
+  );
+  CREATE TABLE rank_permissions (
+    rank_id        INTEGER NOT NULL REFERENCES ranks(id) ON DELETE CASCADE,
+    permission_key TEXT NOT NULL REFERENCES permissions(key) ON DELETE CASCADE,
+    PRIMARY KEY (rank_id, permission_key)
+  );
+  ALTER TABLE users ADD COLUMN member_number TEXT;
+  ALTER TABLE users ADD COLUMN rank_id INTEGER REFERENCES ranks(id) ON DELETE SET NULL;
+  ALTER TABLE users ADD COLUMN department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL;
+  ALTER TABLE users ADD COLUMN supervisor_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+  CREATE UNIQUE INDEX idx_users_member_number ON users(member_number) WHERE member_number IS NOT NULL;
+  CREATE INDEX idx_users_rank ON users(rank_id);
+  CREATE INDEX idx_users_department ON users(department_id);
+  -- Zähler für fortlaufende Nummern (nie zurückgesetzt → keine Wiederverwendung)
+  CREATE TABLE sequences (
+    name       TEXT PRIMARY KEY,
+    next_value INTEGER NOT NULL
+  );
+  -- Zuordnung interner Datensätze zu externen Systemen (FiveM: Spieler, Character, Fahrzeug, Garage …)
+  CREATE TABLE external_refs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider    TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id   INTEGER NOT NULL,
+    external_id TEXT NOT NULL,
+    meta        TEXT,
+    created_at  TEXT NOT NULL,
+    UNIQUE (provider, entity_type, external_id),
+    UNIQUE (provider, entity_type, entity_id)
+  );
+  -- Generische Verknüpfungen zwischen Modulen (Operation↔Fahrzeug, Aufgabe↔Mitarbeiter, Karte↔Lager …)
+  CREATE TABLE entity_links (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_type  TEXT NOT NULL,
+    from_id    INTEGER NOT NULL,
+    to_type    TEXT NOT NULL,
+    to_id      INTEGER NOT NULL,
+    relation   TEXT NOT NULL DEFAULT 'related',
+    meta       TEXT,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (from_type, from_id, to_type, to_id, relation)
+  );
+  CREATE INDEX idx_links_from ON entity_links(from_type, from_id);
+  CREATE INDEX idx_links_to ON entity_links(to_type, to_id);
+  `,
+  /* v3 – Phase 2 + Partner-Zugänge + Börse */ `
+  -- Zentrale, frei konfigurierbare Auswahllisten (Kategorien, Status-Beschriftungen, Übergabeorte …)
+  CREATE TABLE lookups (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    list_key    TEXT NOT NULL,
+    key         TEXT NOT NULL,
+    label       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    color       TEXT NOT NULL DEFAULT '#5b8def',
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    is_active   INTEGER NOT NULL DEFAULT 1,
+    is_system   INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (list_key, key)
+  );
+  -- Externe Zugänge (Partner): permanenter Link + Zugangscode, nur freigeschaltete Apps
+  CREATE TABLE partners (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    note            TEXT NOT NULL DEFAULT '',
+    link_token      TEXT NOT NULL UNIQUE,
+    code_hash       TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled')),
+    apps            TEXT NOT NULL DEFAULT '[]',
+    failed_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until    TEXT,
+    last_login_at   TEXT,
+    created_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+  );
+  CREATE TABLE partner_sessions (
+    token_hash TEXT PRIMARY KEY,
+    partner_id INTEGER NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    ip         TEXT,
+    user_agent TEXT
+  );
+  CREATE INDEX idx_partner_sessions_partner ON partner_sessions(partner_id);
+  -- Börse: Katalog, Gesuche, Geschäfte, Verlauf
+  CREATE TABLE market_items (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    category_id     INTEGER REFERENCES lookups(id) ON DELETE SET NULL,
+    unit            TEXT NOT NULL DEFAULT 'Stück',
+    reference_price INTEGER,
+    is_active       INTEGER NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+  );
+  CREATE TABLE market_wanted (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id    INTEGER NOT NULL REFERENCES market_items(id) ON DELETE CASCADE,
+    quantity   INTEGER NOT NULL,
+    unit_price INTEGER NOT NULL,
+    note       TEXT NOT NULL DEFAULT '',
+    status     TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+    expires_at TEXT,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE market_deals (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    origin            TEXT NOT NULL CHECK (origin IN ('offer','wanted')),
+    partner_id        INTEGER NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
+    item_id           INTEGER NOT NULL REFERENCES market_items(id) ON DELETE RESTRICT,
+    wanted_id         INTEGER REFERENCES market_wanted(id) ON DELETE SET NULL,
+    quantity          INTEGER NOT NULL,
+    unit_price        INTEGER NOT NULL,
+    proposed_by       TEXT NOT NULL CHECK (proposed_by IN ('staff','partner')),
+    turn              TEXT CHECK (turn IN ('staff','partner')),
+    status            TEXT NOT NULL DEFAULT 'submitted',
+    note              TEXT NOT NULL DEFAULT '',
+    assignee_id       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    handover_place_id INTEGER REFERENCES lookups(id) ON DELETE SET NULL,
+    handover_info     TEXT NOT NULL DEFAULT '',
+    payout_info       TEXT NOT NULL DEFAULT '',
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL,
+    closed_at         TEXT
+  );
+  CREATE INDEX idx_deals_partner ON market_deals(partner_id);
+  CREATE INDEX idx_deals_status ON market_deals(status);
+  CREATE TABLE market_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    deal_id    INTEGER NOT NULL REFERENCES market_deals(id) ON DELETE CASCADE,
+    actor_type TEXT NOT NULL CHECK (actor_type IN ('staff','partner','system')),
+    actor_id   INTEGER,
+    actor_name TEXT,
+    kind       TEXT NOT NULL,
+    quantity   INTEGER,
+    unit_price INTEGER,
+    text       TEXT,
+    internal   INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_events_deal ON market_events(deal_id);
+  `,
+  /* v4 – Echtzeit (Event-Log), Benachrichtigungen, AZ-Nummern für Geschäfte und Partner */ `
+  -- Event-Log für Live-Sync: fortlaufende IDs ⇒ nach Verbindungsabbruch lassen sich verpasste Ereignisse nachliefern
+  CREATE TABLE events (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts            TEXT NOT NULL,
+    type          TEXT NOT NULL,            -- 'change' | 'notification'
+    topic         TEXT NOT NULL,
+    kind          TEXT,
+    entity_type   TEXT,
+    entity_id     TEXT,
+    staff         INTEGER NOT NULL DEFAULT 0,
+    staff_perm    TEXT,                     -- Mitarbeiter-Zielgruppe (NULL = alle aktiven Mitarbeiter)
+    partner_scope TEXT,                     -- NULL | 'all' | 'id:<partner>'
+    user_id       INTEGER,                  -- direkter Empfänger (Benachrichtigung)
+    partner_id    INTEGER,
+    data          TEXT
+  );
+  -- Benachrichtigungen: pro Empfänger und Ereignis genau eine (UNIQUE ⇒ nie doppelt, aber jede echte Änderung hat einen eigenen Schlüssel)
+  CREATE TABLE notifications (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipient_type TEXT NOT NULL CHECK (recipient_type IN ('user','partner')),
+    recipient_id   INTEGER NOT NULL,
+    event_key      TEXT NOT NULL,
+    title          TEXT NOT NULL,
+    body           TEXT NOT NULL DEFAULT '',
+    target         TEXT,
+    created_at     TEXT NOT NULL,
+    read_at        TEXT,
+    UNIQUE (recipient_type, recipient_id, event_key)
+  );
+  CREATE INDEX idx_notif_recipient ON notifications(recipient_type, recipient_id, id DESC);
+  ALTER TABLE market_deals ADD COLUMN deal_number TEXT;
+  ALTER TABLE partners ADD COLUMN partner_number TEXT;
+  CREATE UNIQUE INDEX idx_deals_number ON market_deals(deal_number) WHERE deal_number IS NOT NULL;
+  CREATE UNIQUE INDEX idx_partners_number ON partners(partner_number) WHERE partner_number IS NOT NULL;
+  `,
+  /* v5 – Chat */ `
+  CREATE TABLE chat_channels (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    description TEXT NOT NULL DEFAULT '',
+    color       TEXT NOT NULL DEFAULT '#6b7280',
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    restricted  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+  );
+  CREATE TABLE chat_channel_roles (
+    channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+    role_id    INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    PRIMARY KEY (channel_id, role_id)
+  );
+  CREATE TABLE chat_messages (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+    user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    body       TEXT NOT NULL,
+    reply_to   INTEGER REFERENCES chat_messages(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    edited_at  TEXT,
+    deleted_at TEXT,
+    deleted_by INTEGER,
+    pinned_at  TEXT,
+    pinned_by  INTEGER
+  );
+  CREATE INDEX idx_chat_msg_channel ON chat_messages(channel_id, id);
+  CREATE TABLE chat_reads (
+    channel_id   INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    last_read_id INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (channel_id, user_id)
+  );
+  `,
+  /* v6 – Fahrzeuge + Karte */ `
+  CREATE TABLE vehicles (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_number   TEXT UNIQUE,
+    plate            TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    vin              TEXT UNIQUE COLLATE NOCASE,
+    name             TEXT NOT NULL,
+    category_id      INTEGER REFERENCES lookups(id) ON DELETE SET NULL,
+    fuel_type        TEXT NOT NULL DEFAULT 'petrol' CHECK (fuel_type IN ('diesel','petrol','electric')),
+    fuel_level       INTEGER CHECK (fuel_level IS NULL OR (fuel_level BETWEEN 0 AND 100)),
+    condition_key    TEXT NOT NULL DEFAULT 'ready',
+    color            TEXT NOT NULL DEFAULT '',
+    mileage          INTEGER,
+    seats            INTEGER,
+    location_text    TEXT NOT NULL DEFAULT '',
+    parking_slot     TEXT NOT NULL DEFAULT '',
+    loc_x            REAL,
+    loc_y            REAL,
+    assigned_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    department_id    INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+    inspection_due   TEXT,
+    notes            TEXT NOT NULL DEFAULT '',
+    image_ext        TEXT,
+    image_version    INTEGER NOT NULL DEFAULT 0,
+    is_active        INTEGER NOT NULL DEFAULT 1,
+    created_by       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
+  );
+  CREATE INDEX idx_vehicles_condition ON vehicles(condition_key);
+  CREATE TABLE vehicle_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id INTEGER NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+    user_id    INTEGER,
+    kind       TEXT NOT NULL,
+    text       TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_vehicle_events ON vehicle_events(vehicle_id, id);
+  CREATE TABLE map_points (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    category_id INTEGER REFERENCES lookups(id) ON DELETE SET NULL,
+    icon        TEXT NOT NULL DEFAULT 'pin',
+    color       TEXT,
+    x           REAL NOT NULL,
+    y           REAL NOT NULL,
+    visibility  TEXT NOT NULL DEFAULT 'all' CHECK (visibility IN ('all','editors')),
+    created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+  );
+  `,
+];
