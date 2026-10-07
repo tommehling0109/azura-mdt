@@ -145,13 +145,14 @@ try {
   // Ränge, Abteilungen, Hierarchie
   r = await admin.call('POST', '/api/departments', { name: 'Legal', color: '#a78bfa' });
   assert.equal(r.status, 201); const legal = r.department.id;
-  r = await admin.call('POST', '/api/ranks', { name: 'Consejero', color: '#f5a524' }); const rConsejero = r.rank.id;
+  r = await admin.call('POST', '/api/ranks', { name: 'Consejero Test', color: '#f5a524' }); const rConsejero = r.rank.id;
   r = await admin.call('POST', '/api/ranks', { name: 'Jefe Jurídico', departmentId: legal, parentRankId: rConsejero }); const rJefe = r.rank.id;
   r = await admin.call('POST', '/api/ranks', { name: 'Abogado', departmentId: legal, parentRankId: rJefe }); const rAbogado = r.rank.id;
   ok('Abteilung und Ränge mit Vorgesetzten-Hierarchie anlegen');
   assert.equal((await admin.call('PATCH', `/api/ranks/${rConsejero}`, { parentRankId: rAbogado })).status, 400); ok('Zyklen in der Rang-Hierarchie werden abgelehnt');
   assert.equal((await mod.call('POST', '/api/ranks', { name: 'Hacker' })).status, 403); ok('Rang anlegen ohne org.manage → 403');
-  r = await admin.call('POST', '/api/ranks/order', { ids: [rAbogado, rJefe, rConsejero] });
+  const allRanks = (await admin.call('GET', '/api/org')).ranks.map((x) => x.id); assert.equal(allRanks.length, 16); // 13 Standard-Ränge + 3 Test-Ränge
+  r = await admin.call('POST', '/api/ranks/order', { ids: [rAbogado, rJefe, rConsejero, ...allRanks.filter((x) => ![rAbogado, rJefe, rConsejero].includes(x))] });
   assert.equal(r.status, 200);
   assert.equal((await admin.call('POST', '/api/ranks/order', { ids: [rAbogado] })).status, 400); ok('Rangfolge ändern (nur vollständige Liste erlaubt)');
   r = await admin.call('PATCH', `/api/users/${neuer.id}`, { rankId: rAbogado, departmentId: legal, supervisorId: adminUser.id });

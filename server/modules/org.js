@@ -1,4 +1,5 @@
 import { all, get, run, tx, now } from '../core/db.js';
+import { seedRanks } from '../core/seed-ranks.js';
 import { bad, conflict, forbidden, notFound, str, strList, intList } from '../core/http.js';
 import { permissionExists } from '../core/permissions.js';
 import { audit } from '../core/audit.js';
@@ -66,6 +67,7 @@ export default {
   ],
   init() {
     backfillMemberNumbers();
+    if (get('SELECT 1 x FROM users LIMIT 1')) seedRanks(); // bestehende Systeme ohne Ränge bekommen die Standard-Ränge einmalig
   },
   routes(r) {
     r.get('/api/org', { perm: ['org.view', 'users.view'] }, () => ({

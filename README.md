@@ -121,6 +121,8 @@ App „Kredit“ (Finanzen) für Mitarbeiter und – als Partner-App – für ex
 
 ## Superadmin, Rechte & Hierarchie
 
+Bei der Ersteinrichtung wird nur der Superadmin angelegt (keine Frage nach einer Administrator-Rolle mehr; die frei vergebbare Rolle „Administrator“ wird automatisch erzeugt) und die 13 Standard-Ränge (Aspirante … El Azur Supremo) angelegt, die danach frei änderbar sind.
+
 - **Superadmin:** Die feste Rolle „Superadmin“ entsteht bei der Einrichtung des Systems (erster Benutzer) und ist **weder veränderbar noch vergebbar**. Sie darf wirklich **alles**, auch alles endgültig löschen – egal in welchem Status: Kredite (auch abgeschlossene), Börsen-Geschäfte/Angebote, Deckel-Abrechnungen und -Firmen, externe Zugänge samt Geschäften/Krediten/Dokumenten, Artikel samt Geschäften und Beständen, Lager samt Inhalt, Tickets, Journal-Einträge – und das Panel zurücksetzen. Daneben gibt es frei vergebbare Rollen wie **Administrator**. Andere löschen nur mit den jeweiligen Rechten (`credit.delete`, `market.delete`, `tab.delete`, `partners.delete`, `finance.delete`, `tickets.delete`); `partners.delete` genügt dafür allein (auch ohne `partners.manage`).
 - **Personalnummern** (z. B. AZ-221) kann nur der Superadmin ändern und beim Anlegen vergeben (eindeutig).
 - **Namen nach Hierarchie:** Den echten Namen eines Mitglieds sieht man bei sich selbst, als Superadmin und bei allen, die in der Hierarchie **unter** einem stehen (übergeordneter Rang oder Vorgesetzten-Kette). Alle anderen sehen nur die Personalnummer.

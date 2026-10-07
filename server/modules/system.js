@@ -9,6 +9,7 @@ import { listPermissions } from '../core/permissions.js';
 import { audit } from '../core/audit.js';
 import { assignMemberNumber } from '../core/members.js';
 import { factoryReset } from '../core/reset.js';
+import { seedRanks } from '../core/seed-ranks.js';
 
 // ── Branding: eigenes Logo / Hintergrundbild (nur PNG, JPEG, WebP – kein SVG, wegen Skript-Risiko) ──
 const brandDir = () => join(dirname(DB_PATH), 'branding');
@@ -83,7 +84,7 @@ export default {
       const pwErr = checkPassword(b.password);
       if (pwErr) throw bad(pwErr);
       const systemName = str(b.systemName, 'Systemname', { min: 1, max: 40 });
-      const roleName = str(b.adminRoleName, 'Name der Administrator-Rolle', { min: 2, max: 40 });
+      const roleName = 'Administrator'; // frei vergebbare Administrator-Rolle; der erste Benutzer ist der feste Superadmin
 
       const result = tx(() => {
         if (!setupRequired()) throw conflict('Das System ist bereits eingerichtet.');
@@ -95,6 +96,7 @@ export default {
         run('INSERT INTO user_roles (user_id,role_id) VALUES (?,?)', user.lastInsertRowid, role.lastInsertRowid);
         setConfig('system.name', systemName, user.lastInsertRowid);
         assignMemberNumber(Number(user.lastInsertRowid));
+        seedRanks();
         return { userId: Number(user.lastInsertRowid), roleId: Number(role.lastInsertRowid) };
       });
       const u = loadUser(result.userId);

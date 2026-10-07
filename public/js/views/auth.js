@@ -52,24 +52,22 @@ export function showRegister({ onAuthed, goLogin }) {
 /** Erst-Einrichtung (nur solange noch kein Benutzer existiert). */
 export function showSetup({ onAuthed }) {
   const sn = input({ name: 'systemName', placeholder: 'z. B. Einsatz-Terminal', maxLength: 40 });
-  const rn = input({ name: 'adminRoleName', value: 'Administrator', maxLength: 40 });
   const dn = input({ name: 'displayName', placeholder: 'Anzeigename', maxLength: 60 });
   const u = input({ name: 'username', autocomplete: 'username', placeholder: 'Benutzername', maxLength: 32 });
   const p = input({ name: 'password', type: 'password', autocomplete: 'new-password', placeholder: 'Mindestens 8 Zeichen' });
   const f = form([
     field('Systemname', sn, { help: 'Später jederzeit in der Konfiguration änderbar.' }),
-    field('Name der Administrator-Rolle', rn),
     h('div', { class: 'form-row' }, field('Anzeigename', dn), field('Benutzername', u)),
     field('Passwort', p),
   ], 'System einrichten', async () => {
     const { user } = await api.post('/api/setup', {
-      systemName: val(sn), adminRoleName: val(rn), displayName: val(dn), username: val(u), password: p.value,
+      systemName: val(sn), displayName: val(dn), username: val(u), password: p.value,
     });
     onAuthed(user, true);
   });
   showLock(h('div', { class: 'lock-card' }, brandBlock(),
     h('h2', null, 'Willkommen – Ersteinrichtung'),
-    h('p', { class: 'lead' }, 'Lege den ersten Administrator an. Alles Weitere (Rollen, Rechte, Darstellung) konfigurierst du danach im Admin-Bereich.'), f));
+    h('p', { class: 'lead' }, 'Lege den Superadmin an – die feste Rolle mit vollem Zugriff. Alles Weitere (Rollen, Rechte, Darstellung) konfigurierst du danach im Admin-Bereich.'), f));
   sn.focus();
 }
 
