@@ -15,11 +15,14 @@ import { allocateNumber } from '../server/core/numbers.js';
 import { tx } from '../server/core/db.js';
 import vehiclesModule from '../server/modules/vehicles.js';
 import mapModule from '../server/modules/map.js';
+import warehouseModule from '../server/modules/warehouses.js';
+import { bookStock } from '../server/core/stock.js';
 
 registerConfig(orgModule.config);
 registerConfig(partnersModule.config);
 registerConfig(vehiclesModule.config);
 registerConfig(mapModule.config);
+registerConfig(warehouseModule.config);
 registerConfig(marketModule.config); // Standardwerte für Mitgliedsnummern (Präfix, Startnummer)
 
 migrate();
@@ -127,6 +130,22 @@ if (!get(`SELECT 1 x FROM partners WHERE name = 'Demo-Händler'`)) {
 
 // Karte & Fahrzeuge (nur wenn noch leer)
 const lk = (list, label, color, i) => { const k = slugify(label); const r = get('SELECT id FROM lookups WHERE list_key = ? AND key = ?', list, k); return r?.id ?? Number(run('INSERT INTO lookups (list_key,key,label,color,sort_order,is_active,is_system) VALUES (?,?,?,?,?,1,0)', list, k, label, color, i).lastInsertRowid); };
+// Lager + Preisspannen (nur wenn noch leer)
+if (!get('SELECT 1 x FROM warehouses')) {
+  const tDepot = lk('warehouse.type', 'Depot', '#f59e0b', 1), tGarage = lk('warehouse.type', 'Garage', '#22d3ee', 2);
+  // Preisspannen für die Börse: [Item, Min, Max, Zielbestand]
+  for (const [n, lo, hi, tgt] of [['Eisen', 40, 70, 500], ['Gold', 800, 1000, 50], ['Schrott', 5, 12, 2000], ['Pistole', 1000, 1400, 20]]) {
+    run('UPDATE market_items SET min_price = ?, max_price = ?, target_stock = ? WHERE id = ?', lo, hi, tgt, itemId[n]);
+  }
+  const mkWh = (name, type, postal, locText, cap, size, access, restricted) => Number(run(
+    'INSERT INTO warehouses (warehouse_number,name,type_id,postal,location_text,capacity,size_info,access_info,restricted,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+    allocateNumber('warehouse_number', 'warehouse.number_prefix', 'warehouse.number_start'), name, type, postal, locText, cap, size, access, restricted, t, t).lastInsertRowid);
+  const w1 = mkWh('Lager Nord', tDepot, '5022', 'Hintereingang, Tor 3', 2000, '240 m², große Halle', 'Hintereingang, Tor 3 – dort klingeln. Schlüssel bei Logistics.', 0);
+  mkWh('Garage Süd', tGarage, '10022', 'Hinterhof Werkstatt', 400, '60 m²', 'Nur nach Absprache, schwarze Tür.', 1);
+  bookStock({ warehouseId: w1, itemId: itemId.Eisen, delta: 120, kind: 'in', note: 'Startbestand' });
+  bookStock({ warehouseId: w1, itemId: itemId.Schrott, delta: 300, kind: 'in', note: 'Startbestand' });
+}
+
 if (!get('SELECT 1 x FROM map_points')) {
   const cFarm = lk('map.category', 'Farming', '#84cc16', 1), cLager = lk('map.category', 'Lager', '#f59e0b', 2), cTreff = lk('map.category', 'Treffpunkt', '#06b6d4', 3);
   for (const [n, d, c, ic, x, y] of [['Eisen-Farm', '- Nur nachts\n- 2 Fahrzeuge', cFarm, 'wrench', 1200, -300], ['Lager Hafen', '- Schlüssel bei Logistics', cLager, 'storage', 1000, -3200], ['Treffpunkt Mitte', '- Kurze Absprachen', cTreff, 'flag', 200, -600]])

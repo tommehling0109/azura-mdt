@@ -60,7 +60,9 @@ export const openApp = (id) => ui?.open(id);
 export async function openTarget(target) {
   if (!target || !ui) return;
   window.focus?.();
+  if (target.app === 'chat' && target.channelId) { try { sessionStorage.setItem('mdt:chat:channel', String(target.channelId)); } catch { /* egal */ } }
   if (target.app) ui.open(target.app);
+  if (target.app === 'chat' && target.channelId) window.dispatchEvent(new Event('mdt:chat-open'));
   if (target.app === 'market' && target.dealId) {
     const { openDealModal } = await import('./views/market-shared.js');
     openDealModal({ side: partnerMode ? 'partner' : 'staff', base: partnerMode ? '/api/p/market' : '/api/market', id: target.dealId });

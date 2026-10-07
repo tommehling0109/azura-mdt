@@ -223,7 +223,7 @@ export default async function render(container, ctx) {
       for (const i of l.items) {
         const m = L.marker(toLL(i.x, i.y), { icon: pinIcon({ icon: l.icon, color: l.color }), title: i.name });
         m.bindPopup(() => { const el = h('div'); el.innerHTML = `<div class="pop-title">${esc(i.name)}</div><span class="badge" style="--c:${esc(l.color)}">${esc(l.label)}</span>${i.subtitle ? `<div class="pop-kv">${esc(i.subtitle)}</div>` : ''}<div class="pop-kv">${i.postal ? 'Postal ' + esc(i.postal) + ' · ' : ''}X ${Math.round(i.x)} · Y ${Math.round(i.y)}</div>`; return el; });
-        m.addTo(layerGroup);
+        m.addTo(layerGroup); markers.set(`${l.key}:${i.id}`, m);
       }
     }
   }
@@ -244,7 +244,7 @@ export default async function render(container, ctx) {
       if (!raw) return;
       sessionStorage.removeItem('mdt:map:focus');
       const f = JSON.parse(raw);
-      if (Number.isFinite(f.x) && Number.isFinite(f.y)) { goto(f.x, f.y, maxZoom); setTimeout(() => markers.get(`v${f.id}`)?.openPopup(), 300); }
+      if (Number.isFinite(f.x) && Number.isFinite(f.y)) { goto(f.x, f.y, maxZoom); setTimeout(() => markers.get(f.type === 'vehicle' ? `v${f.id}` : `${f.type}s:${f.id}`)?.openPopup(), 300); }
     } catch { /* egal */ }
   };
   window.addEventListener('mdt:map-focus', applyFocus);

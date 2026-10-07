@@ -5,6 +5,7 @@ import { publish } from '../core/realtime.js';
 import { notify } from '../core/notifications.js';
 import { memberLabel } from '../core/identity.js';
 import { loadAccess } from '../core/permissions.js';
+import { labelForUser } from '../core/identity.js';
 
 /**
  * Chat: Kanäle (vom Admin angelegt, optional auf Rollen beschränkt), Nachrichten mit Antworten, Bearbeiten, Löschen,
@@ -18,9 +19,9 @@ const snippet = (t) => (t.length > 90 ? `${t.slice(0, 90)}…` : t);
 
 /** Sichtbare Kanäle: offene für alle mit chat.view, beschränkte nur für passende Rollen (Admins sehen alle). */
 function visibleChannelIds(user) {
-  if (user.isAdmin) return all('SELECT id FROM chat_channels').map((r) => r.id);
+  if (user.isAdmin) return all("SELECT id FROM chat_channels WHERE kind = 'channel'").map((r) => r.id);
   const roleIds = user.roles.map((r) => r.id);
-  return all('SELECT id, restricted FROM chat_channels').filter((c) => {
+  return all("SELECT id, restricted FROM chat_channels WHERE kind = 'channel'").filter((c) => {
     if (!c.restricted) return true;
     if (!roleIds.length) return false;
     return !!get(`SELECT 1 x FROM chat_channel_roles WHERE channel_id = ? AND role_id IN (${roleIds.map(() => '?').join(',')})`, c.id, ...roleIds);
@@ -29,6 +30,7 @@ function visibleChannelIds(user) {
 function channelFor(user, id) {
   const ch = get('SELECT * FROM chat_channels WHERE id = ?', id);
   if (!ch) throw notFound('Kanal nicht gefunden.');
+  if (ch.kind === 'dm') { if (ch.dm_a !== user.id && ch.dm_b !== user.id) throw notFound('Kanal nicht gefunden.'); return ch; }
   if (!visibleChannelIds(user).includes(ch.id)) throw forbidden('Kein Zugriff auf diesen Kanal.');
   return ch;
 }
@@ -45,14 +47,15 @@ function msgDto(m, user) {
   return {
     id: m.id, channelId: m.channel_id, sender: senderLabel(m), isMine: mine, body: deleted ? '' : m.body, deleted,
     createdAt: m.created_at, editedAt: m.edited_at, pinned: !!m.pinned_at && !deleted, pinnedAt: m.pinned_at, replyTo: reply,
-    canEdit: mine && !deleted, canDelete: !deleted && (mine || user.perms.has('chat.moderate')),
+    canEdit: mine && !deleted, canDelete: !deleted && (mine || (user.perms.has('chat.moderate') && get('SELECT kind FROM chat_channels WHERE id = ?', m.channel_id)?.kind !== 'dm')),
   };
 }
 
+const peerOf = (c, user) => { const id = c.dm_a === user.id ? c.dm_b : c.dm_a; return { id, label: labelForUser(id, user.id) }; };
 const channelDto = (c, user) => {
   const last = get('SELECT COALESCE(last_read_id,0) l FROM chat_reads WHERE channel_id = ? AND user_id = ?', c.id, user.id)?.l ?? 0;
   return {
-    id: c.id, name: c.name, description: c.description, color: c.color, restricted: !!c.restricted, sortOrder: c.sort_order,
+    id: c.id, kind: c.kind, name: c.kind === 'dm' ? peerOf(c, user).label : c.name, peer: c.kind === 'dm' ? peerOf(c, user) : null, description: c.kind === 'dm' ? 'Privatnachricht' : c.description, color: c.kind === 'dm' ? '#5b82b8' : c.color, restricted: !!c.restricted, sortOrder: c.sort_order,
     roleIds: all('SELECT role_id FROM chat_channel_roles WHERE channel_id = ?', c.id).map((r) => r.role_id),
     unread: get('SELECT COUNT(*) c FROM chat_messages WHERE channel_id = ? AND id > ? AND user_id != ? AND deleted_at IS NULL', c.id, last, user.id).c,
     pinnedCount: get('SELECT COUNT(*) c FROM chat_messages WHERE channel_id = ? AND pinned_at IS NOT NULL AND deleted_at IS NULL', c.id).c,
@@ -60,7 +63,12 @@ const channelDto = (c, user) => {
   };
 };
 
-const changed = (channelId, kind) => publish({ topic: 'chat', kind, entityType: 'channel', entityId: channelId, staff: 1, staffPerm: 'chat.view' });
+/** Kanäle: alle mit chat.view bekommen den Hinweis. Privatnachrichten: nur die beiden Beteiligten (Live-Ereignis je Person). */
+const changed = (channelId, kind) => {
+  const c = get('SELECT kind, dm_a, dm_b FROM chat_channels WHERE id = ?', channelId);
+  if (c?.kind === 'dm') { for (const uid of [c.dm_a, c.dm_b]) publish({ topic: 'chat', kind, entityType: 'channel', entityId: channelId, staff: 1, userId: uid }); return; }
+  publish({ topic: 'chat', kind, entityType: 'channel', entityId: channelId, staff: 1, staffPerm: 'chat.view' });
+};
 
 /** @AZ-220 in einer Nachricht benachrichtigt das Mitglied (sofern es den Kanal sehen darf). */
 function notifyMentions(msg, channel, sender) {
@@ -86,17 +94,44 @@ export default {
     ['chat.manage', 'Chat: Kanäle erstellen, bearbeiten, löschen'],
   ],
   init() {
-    if (!get('SELECT 1 x FROM chat_channels')) run('INSERT INTO chat_channels (name,description,color,sort_order,restricted,created_at) VALUES (?,?,?,?,0,?)', 'Allgemein', 'Allgemeiner Kanal für alle Mitglieder', '#6b7280', 1, now());
+    if (!get("SELECT 1 x FROM chat_channels WHERE kind = 'channel'")) run('INSERT INTO chat_channels (name,description,color,sort_order,restricted,created_at) VALUES (?,?,?,?,0,?)', 'Allgemein', 'Allgemeiner Kanal für alle Mitglieder', '#6b7280', 1, now());
   },
   routes(r) {
     r.get('/api/chat/channels', { perm: 'chat.view' }, (ctx) => {
       const ids = visibleChannelIds(ctx.user);
-      const rows = all('SELECT * FROM chat_channels ORDER BY sort_order, name').filter((c) => ids.includes(c.id));
+      const rows = all("SELECT * FROM chat_channels WHERE kind = 'channel' ORDER BY sort_order, name").filter((c) => ids.includes(c.id));
       return { channels: rows.map((c) => channelDto(c, ctx.user)) };
     });
-    r.get('/api/chat/unread', { perm: 'chat.view' }, (ctx) => ({
-      unread: all('SELECT * FROM chat_channels').filter((c) => visibleChannelIds(ctx.user).includes(c.id)).reduce((a, c) => a + channelDto(c, ctx.user).unread, 0),
+    r.get('/api/chat/unread', { perm: 'chat.view' }, (ctx) => {
+      const ids = visibleChannelIds(ctx.user);
+      const rows = all('SELECT * FROM chat_channels').filter((c) => (c.kind === 'dm' ? c.dm_a === ctx.user.id || c.dm_b === ctx.user.id : ids.includes(c.id)));
+      return { unread: rows.reduce((a, c) => a + channelDto(c, ctx.user).unread, 0) };
+    });
+
+    // ── Privatnachrichten ──
+    /** Alle aktiven Mitglieder mit Chat-Zugang – ausschließlich als Personalnummer (Anonymität). */
+    r.get('/api/chat/people', { perm: 'chat.view' }, (ctx) => ({
+      people: all(`SELECT id FROM users WHERE status = 'active' AND id != ? ORDER BY member_number`, ctx.user.id)
+        .filter((u) => loadAccess(u.id).perms.has('chat.view')).map((u) => ({ id: u.id, label: labelForUser(u.id, ctx.user.id) })),
     }));
+    r.get('/api/chat/dms', { perm: 'chat.view' }, (ctx) => {
+      const rows = all("SELECT * FROM chat_channels WHERE kind = 'dm' AND (dm_a = ? OR dm_b = ?)", ctx.user.id, ctx.user.id);
+      const dms = rows.map((c) => channelDto(c, ctx.user)).filter((c) => c.lastMessageAt).sort((a, b) => (a.lastMessageAt < b.lastMessageAt ? 1 : -1));
+      return { dms };
+    });
+    r.post('/api/chat/dms', { perm: 'chat.send' }, (ctx) => {
+      const peer = get("SELECT id FROM users WHERE id = ? AND status = 'active'", ctx.body.userId);
+      if (!peer) throw bad('Unbekanntes Mitglied.');
+      if (peer.id === ctx.user.id) throw bad('Du kannst dir nicht selbst schreiben.');
+      if (!loadAccess(peer.id).perms.has('chat.view')) throw bad('Dieses Mitglied hat keinen Chat-Zugang.');
+      const [a, b] = [ctx.user.id, peer.id].sort((x, y) => x - y);
+      let ch = get("SELECT * FROM chat_channels WHERE kind = 'dm' AND dm_a = ? AND dm_b = ?", a, b);
+      if (!ch) {
+        run("INSERT INTO chat_channels (name,description,color,sort_order,restricted,created_at,kind,dm_a,dm_b) VALUES (?,?,?,?,1,?,'dm',?,?)", `dm:${a}:${b}`, '', '#5b82b8', 0, now(), a, b);
+        ch = get("SELECT * FROM chat_channels WHERE kind = 'dm' AND dm_a = ? AND dm_b = ?", a, b);
+      }
+      return { channel: channelDto(ch, ctx.user) };
+    });
 
     r.get('/api/chat/channels/:id/messages', { perm: 'chat.view' }, (ctx) => {
       const ch = channelFor(ctx.user, Number(ctx.params.id));
@@ -121,7 +156,10 @@ export default {
         const res = run('INSERT INTO chat_messages (channel_id,user_id,body,reply_to,created_at) VALUES (?,?,?,?,?)', ch.id, ctx.user.id, body, reply, now());
         const mid = Number(res.lastInsertRowid);
         run(`INSERT INTO chat_reads (channel_id,user_id,last_read_id) VALUES (?,?,?) ON CONFLICT(channel_id,user_id) DO UPDATE SET last_read_id = MAX(last_read_id, excluded.last_read_id)`, ch.id, ctx.user.id, mid);
-        notifyMentions({ id: mid, body }, ch, ctx.user);
+        if (ch.kind === 'dm') {
+          const peerId = ch.dm_a === ctx.user.id ? ch.dm_b : ch.dm_a;
+          notify([{ type: 'user', id: peerId }], { key: `dm:${mid}`, title: 'Neue Privatnachricht', body: `${ctx.user.memberNumber ?? 'Mitglied'}: ${snippet(body)}`, target: { app: 'chat', channelId: ch.id, messageId: mid } });
+        } else notifyMentions({ id: mid, body }, ch, ctx.user);
         changed(ch.id, 'message');
         return mid;
       });
@@ -207,7 +245,7 @@ export default {
     });
     r.patch('/api/chat/channels/:id', { perm: 'chat.manage' }, (ctx) => {
       const id = Number(ctx.params.id);
-      const cur = get('SELECT * FROM chat_channels WHERE id = ?', id);
+      const cur = get("SELECT * FROM chat_channels WHERE id = ? AND kind = 'channel'", id);
       if (!cur) throw notFound('Kanal nicht gefunden.');
       const f = fields(ctx.body, true);
       if (f.name && get('SELECT 1 x FROM chat_channels WHERE name = ? AND id != ?', f.name, id)) throw conflict('Ein Kanal mit diesem Namen existiert bereits.');
@@ -221,9 +259,9 @@ export default {
     });
     r.delete('/api/chat/channels/:id', { perm: 'chat.manage' }, (ctx) => {
       const id = Number(ctx.params.id);
-      const cur = get('SELECT * FROM chat_channels WHERE id = ?', id);
+      const cur = get("SELECT * FROM chat_channels WHERE id = ? AND kind = 'channel'", id);
       if (!cur) throw notFound('Kanal nicht gefunden.');
-      if (get('SELECT COUNT(*) c FROM chat_channels').c <= 1) throw conflict('Der letzte Kanal kann nicht gelöscht werden.');
+      if (get("SELECT COUNT(*) c FROM chat_channels WHERE kind = 'channel'").c <= 1) throw conflict('Der letzte Kanal kann nicht gelöscht werden.');
       run('DELETE FROM chat_channels WHERE id = ?', id);
       audit(ctx, { action: 'chat.channel_deleted', module: 'chat', targetType: 'channel', targetId: id, targetLabel: cur.name });
       return { ok: true };

@@ -16,7 +16,7 @@ const conns = new Set();
 const RETAIN = 5000;
 const REPLAY_MAX = 1000;
 
-const STAFF_PERM = { users: 'users.view', roles: 'roles.view', org: 'org.view', market: 'market.view', partners: 'partners.view', audit: 'audit.view', chat: 'chat.view', vehicles: 'vehicles.view', map: 'map.view' };
+const STAFF_PERM = { users: 'users.view', roles: 'roles.view', org: 'org.view', market: 'market.view', partners: 'partners.view', audit: 'audit.view', chat: 'chat.view', vehicles: 'vehicles.view', map: 'map.view', warehouse: 'warehouse.view' };
 
 export function publish({ type = 'change', topic, kind = null, entityType = null, entityId = null, staff = 0, staffPerm = null, partnerScope = null, userId = null, partnerId = null, data = null }) {
   const row = {
@@ -54,6 +54,7 @@ export function publishChange({ module, action, targetType, targetId }) {
 }
 
 const matches = (c, e) => {
+  if (e.type === 'change' && e.user_id != null) return c.kind === 'staff' && e.user_id === c.userId; // personenbezogene Änderung (z. B. Privatnachricht)
   if (e.type === 'notification') return c.kind === 'staff' ? e.user_id === c.userId : e.partner_id === c.partnerId;
   if (c.kind === 'staff') return e.staff === 1 && (!e.staff_perm || c.perms.has(e.staff_perm));
   return !!e.partner_scope && (e.partner_scope === 'all' || e.partner_scope === `id:${c.partnerId}`);

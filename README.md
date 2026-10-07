@@ -78,6 +78,13 @@ Desktop-Look: obere Leiste (Logo/App-Menü, Uhr, Benutzer), schwebendes Dock mit
 - **Karten-Ebenen für Module:** Module (z. B. ein späteres Lager) melden ihre Orte mit `registerMapLayer({ key, label, icon, color, perm, topic, items })` in `server/modules/map.js` an. Jeder Ort hat Koordinaten (x, y) **oder** eine Postleitzahl (wird serverseitig umgerechnet) und erscheint automatisch mit eigenem Schalter in der Kartenleiste.
 - Postleitzahl-Daten: Projekt „nearest-postal“ (MIT, © 2019 BlockBa5her). Leaflet 1.9.4 (BSD-2) liegt lokal unter `public/vendor/leaflet`.
 
+## Privatnachrichten & Lager
+
+- **Privatnachrichten:** Im Chat gibt es neben den Kanälen Privatchats zwischen zwei Mitgliedern („+“ neben „Privatnachrichten“). Empfänger sind alle aktiven Mitglieder mit Chat-Zugang – ausschließlich als Personalnummer. Privatchats sind nur für die beiden Beteiligten les- und schreibbar (auch Moderatoren/Admins sehen sie nicht), mit Ungelesen-Zähler, Benachrichtigung und Live-Update.
+- **Lager** (App „Lager“): mehrere Lagerstandorte mit Koordinaten **oder** Postleitzahl (erscheinen automatisch als Kartenebene), Größe/Kapazität in Platzeinheiten, Zugangsinfo, Bestand je Artikel mit Verlauf, Ein-/Auslagern, Korrigieren und Umlagern.
+  Rechte: `warehouse.view`, `warehouse.view_access` (Zugangsinfo), `warehouse.stock` (buchen), `warehouse.manage` (Lager verwalten + Zugriffe), `warehouse.items` (Artikel), `warehouse.prices` (Preisspannen). Zusätzlich je Lager: „beschränkt“ + Rollen mit Stufe *Ansehen* oder *Verwalten*.
+- **Preisspanne → Börse:** Jeder Artikel hat optional Mindest-/Höchstpreis und einen Zielbestand. Stellt ein Partner ein Angebot ein (Artikel + Stückzahl), sieht er automatisch unseren **Preisvorschlag** (nie die Spanne) und kann ihn direkt annehmen oder einen eigenen Preis nennen. Beides wird vom Team manuell geprüft (annehmen / Gegenangebot / ablehnen). Die Regel steht unter Konfiguration → Lager: nach Bestand (je voller das Lager gegenüber dem Zielbestand, desto niedriger der Preis), Mittelwert, Mindest- oder Höchstpreis. Bei „Ware eingegangen“ kann die Lieferung direkt in ein Lager eingebucht werden.
+
 ## Nächste Phasen
 
 Weitere Module (Fahrzeuge, Lager, Ankauf, Chat …) werden als `server/modules/<name>.js` (Permissions + Routen + Migration) und

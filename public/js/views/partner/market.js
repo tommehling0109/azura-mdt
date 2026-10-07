@@ -70,24 +70,56 @@ export default async function render(container, ctx) {
     const catSel = select([{ value: '', label: 'Alle Kategorien' }, ...catalog.categories.map((c) => ({ value: c.id, label: c.label }))], '');
     const itemSel = h('select', { class: 'select' });
     const fill = () => mount(itemSel, catalog.items.filter((i) => !catSel.value || String(i.category?.id) === catSel.value).map((i) => h('option', { value: i.id }, `${i.name} (${i.unit})`)));
-    catSel.addEventListener('change', fill); fill();
-    const qty = input({ type: 'number', min: 1, inputmode: 'numeric' });
-    const price = input({ type: 'number', min: 1, inputmode: 'numeric' });
+    catSel.addEventListener('change', () => { fill(); refresh(); }); fill();
+    const qty = input({ type: 'number', min: 1, inputmode: 'numeric', placeholder: 'Stückzahl' });
+    const price = input({ type: 'number', min: 1, inputmode: 'numeric', placeholder: 'Dein Preis pro Einheit' });
     const text = h('textarea', { class: 'textarea', maxLength: 500, placeholder: 'Beschreibung (Zustand, Besonderheiten …)' });
-    const total = h('div', { class: 'total-line' }, 'Gesamt: –');
-    const upd = () => mount(total, 'Gesamt: ', h('b', null, Number(qty.value) > 0 && Number(price.value) > 0 ? money(Number(qty.value) * Number(price.value)) : '–'));
-    qty.addEventListener('input', upd); price.addEventListener('input', upd);
+    const quoteBox = h('div', { class: 'quote-box' });
+    let quote = null, custom = false, seq = 0;
+    const unit = () => catalog.items.find((i) => String(i.id) === itemSel.value)?.unit ?? '';
+    const draw = () => {
+      const q = Number(qty.value) > 0;
+      const own = custom || !quote;
+      const pf = price.closest('.field');
+      if (pf) pf.style.display = own ? '' : 'none';
+      if (quote && !custom) {
+        mount(quoteBox, h('div', { class: 'qb-label' }, icon('tag'), 'Unser Preisvorschlag'),
+          h('div', { class: 'qb-price' }, money(quote.unitPrice), h('span', { class: 'muted' }, ` pro ${unit()}`)),
+          h('div', { class: 'qb-total' }, 'Gesamt: ', h('b', null, money(quote.total))),
+          h('div', { class: 'help' }, 'Du kannst direkt zu diesem Preis anbieten oder einen eigenen Preis vorschlagen – wir prüfen jedes Angebot.'),
+          button('Eigenen Preis vorschlagen', { size: 'sm', variant: 'ghost', icon: 'edit', onClick: () => { custom = true; draw(); price.focus(); } }));
+      } else if (quote && custom) {
+        mount(quoteBox, h('div', { class: 'qb-label' }, icon('tag'), `Unser Vorschlag: ${money(quote.unitPrice)} pro ${unit()}`),
+          q && Number(price.value) > 0 && h('div', { class: 'qb-total' }, 'Dein Angebot gesamt: ', h('b', null, money(Number(qty.value) * Number(price.value)))),
+          button('Zum Vorschlag zurück', { size: 'sm', variant: 'ghost', icon: 'refresh', onClick: () => { custom = false; draw(); } }));
+      } else mount(quoteBox, q && Number(price.value) > 0 ? h('div', { class: 'qb-total' }, 'Gesamt: ', h('b', null, money(Number(qty.value) * Number(price.value)))) : note('Für diesen Artikel gibt es keinen automatischen Vorschlag – bitte nenne deinen Preis.', 'info'));
+    };
+    const refresh = async () => {
+      const my = ++seq;
+      const item = catalog.items.find((i) => String(i.id) === itemSel.value);
+      quote = null;
+      if (item?.suggestedPrice != null) {
+        try { const r = await api.get(`/api/p/market/quote?itemId=${item.id}&quantity=${Math.max(1, Number(qty.value) || 1)}`); if (my === seq) quote = r.quote; } catch { /* kein Vorschlag */ }
+      }
+      if (my === seq) draw();
+    };
+    let t; const later = () => { clearTimeout(t); t = setTimeout(refresh, 250); };
+    itemSel.addEventListener('change', () => { custom = false; refresh(); });
+    qty.addEventListener('input', later); price.addEventListener('input', draw);
     const m = openModal({
       title: 'Angebot einstellen',
-      body: h('div', null, err, h('div', { class: 'form-row' }, field('Kategorie', catSel), field('Was bietest du an?', itemSel)),
-        h('div', { class: 'form-row' }, field('Menge', qty), field('Dein Preis pro Einheit', price)), total, h('div', { style: { height: '12px' } }), field('Hinweis', text)),
+      body: h('div', null, err, h('div', { class: 'form-row' }, field('Kategorie', catSel), field('Artikel', itemSel)),
+        field('Stückzahl', qty), quoteBox, field('Dein Preis pro Einheit', price), h('div', { style: { height: '12px' } }), field('Hinweis', text)),
       footer: [button('Abbrechen', { onClick: () => m.close() }), button('Angebot senden', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
         err.replaceChildren();
-        if (!itemSel.value) return err.replaceChildren(formError('Bitte wähle ein Item aus.'));
-        try { await api.post('/api/p/market/offers', { itemId: Number(itemSel.value), quantity: Number(qty.value), unitPrice: Number(price.value), note: text.value.trim() }); m.close(); toast('Angebot gesendet – wir prüfen es und melden uns.'); show('deals'); }
+        if (!itemSel.value) return err.replaceChildren(formError('Bitte wähle einen Artikel aus.'));
+        const body = { itemId: Number(itemSel.value), quantity: Number(qty.value), note: text.value.trim() };
+        if (custom || !quote) body.unitPrice = Number(price.value);
+        try { await api.post('/api/p/market/offers', body); m.close(); toast('Angebot gesendet – wir prüfen es und melden uns.'); show('deals'); }
         catch (ex) { err.replaceChildren(formError(ex.message)); }
       }) })],
     });
+    refresh();
   }
 
   ctx.live(['market', 'lookups', 'system', 'partners'], () => show(tab));

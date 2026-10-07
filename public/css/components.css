@@ -402,3 +402,18 @@ table.table { width: 100%; border-collapse: collapse; min-width: 640px; }
 .icon-opt { height: 40px; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg-2); color: var(--text-2); display: grid; place-items: center; cursor: pointer; } .icon-opt svg { width: 18px; height: 18px; }
 .icon-opt:hover { border-color: var(--accent-line); color: var(--text); } .icon-opt.on { background: var(--accent-soft); border-color: var(--accent); color: #fff; }
 @container (max-width: 760px) { .mapview { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); } .map-side { max-height: 40%; border-right: 0; border-bottom: 1px solid var(--line); } }
+
+/* ── Preisvorschlag (Partner-Angebot) ── */
+.quote-box { margin: 4px 0 14px; padding: 14px 16px; border-radius: var(--r-lg); background: var(--accent-soft); border: 1px solid var(--accent-line); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.quote-box .qb-label { display: flex; gap: 8px; align-items: center; font-weight: 700; font-size: 12.5px; color: var(--text-2); } .quote-box .qb-label svg { width: 15px; height: 15px; }
+.quote-box .qb-price { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+.quote-box .qb-total { color: var(--text-2); font-size: 13.5px; }
+
+/* ── Privatnachrichten ── */
+.chat-side-title.dm-title { display: flex; align-items: center; justify-content: space-between; padding-right: 8px; margin-top: 8px; }
+.chat-chan > svg { width: 14px; height: 14px; flex: none; color: var(--text-3); }
+.people-list { display: flex; flex-direction: column; max-height: 50vh; overflow-y: auto; }
+.people-row { width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); color: inherit; cursor: pointer; font: inherit; } .people-row:hover { background: rgba(255, 255, 255, 0.06); }
+.ch-name > svg { width: 15px; height: 15px; margin-right: 6px; vertical-align: -2px; }
+.people-row > svg { width: 16px; height: 16px; flex: none; color: var(--text-3); }
+.people-row .dot-icon svg { width: 16px; height: 16px; }

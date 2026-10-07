@@ -568,6 +568,90 @@ try {
   assert.equal((await admin.call('DELETE', `/api/vehicles/${veh2}`)).status, 200); ok('Löschen von Waypoints und Fahrzeugen');
   await setPerms([]);
 
+
+  // ══ Privatnachrichten ══
+  r = await admin.call('POST', '/api/roles', { name: 'Chatter', permissions: ['chat.view', 'chat.send'] }); const chatRole = r.role.id;
+  const third = new Client();
+  await third.call('POST', '/api/auth/register', { displayName: 'Dritter', username: 'privat3', password: 'passwort123' });
+  const privat3 = (await admin.call('GET', '/api/users')).users.find((u) => u.username === 'privat3');
+  await admin.call('POST', `/api/users/${privat3.id}/status`, { status: 'active', roleIds: [chatRole] });
+  await third.call('POST', '/api/auth/login', { username: 'privat3', password: 'passwort123' });
+  await admin.call('PATCH', `/api/roles/${modRole}`, { permissions: ['users.view', 'users.approve', 'users.edit', 'audit.view', 'chat.view', 'chat.send'] });
+  r = await admin.call('GET', '/api/chat/people'); assert.ok(r.people.length >= 2); assert.ok(r.people.every((p) => /^[A-Z]+-\d+$/.test(p.label)), JSON.stringify(r.people)); assert.equal(JSON.stringify(r).includes('Neuer'), false); ok('Empfängerliste: alle aktiven Mitglieder, nur als Personalnummer');
+  const sDmThird = await openSse(third.cookie, '/api/events'); const sDmMod = await openSse(mod.cookie, '/api/events');
+  r = await admin.call('POST', '/api/chat/dms', { userId: neuer.id }); assert.equal(r.status, 200); const dm = r.channel.id; assert.equal(r.channel.kind, 'dm'); assert.match(r.channel.name, /^[A-Z]+-\d+$/);
+  assert.equal((await admin.call('POST', '/api/chat/dms', { userId: neuer.id })).channel.id, dm);
+  assert.equal((await admin.call('POST', '/api/chat/dms', { userId: 1 })).status, 400); ok('Privatchat anlegen (je Paar genau einer, nicht mit sich selbst)');
+  r = await admin.call('POST', `/api/chat/channels/${dm}/messages`, { body: 'Hallo privat' }); assert.equal(r.status, 201); const dmMsg = r.message.id;
+  assert.ok(await sDmMod.waitFor((e) => e.event === 'change' && e.data.topic === 'chat')); ok('Privatnachricht senden – live beim Empfänger');
+  r = await mod.call('GET', '/api/chat/dms'); assert.equal(r.dms.length, 1); assert.equal(r.dms[0].unread, 1); assert.match(r.dms[0].name, /^[A-Z]+-\d+$/);
+  assert.equal((await mod.call('GET', '/api/chat/unread')).unread >= 1, true);
+  r = await mod.call('GET', '/api/notifications'); assert.ok(r.notifications.some((n) => n.title === 'Neue Privatnachricht')); ok('Empfänger sieht Ungelesen-Zähler und Benachrichtigung');
+  r = await mod.call('GET', `/api/chat/channels/${dm}/messages`); assert.equal(r.messages[0].body, 'Hallo privat'); assert.match(r.messages[0].sender, /^[A-Z]+-\d+$/);
+  r = await mod.call('POST', `/api/chat/channels/${dm}/messages`, { body: 'Antwort privat', replyTo: dmMsg }); assert.equal(r.status, 201); ok('Antworten im Privatchat (beide Richtungen)');
+  assert.equal((await third.call('GET', `/api/chat/channels/${dm}/messages`)).status, 404);
+  assert.equal((await third.call('POST', `/api/chat/channels/${dm}/messages`, { body: 'mitlesen' })).status, 404);
+  assert.equal((await third.call('GET', '/api/chat/dms')).dms.length, 0);
+  assert.equal((await admin.call('GET', '/api/chat/channels')).channels.every((c) => c.kind !== 'dm'), true);
+  await sleep(150); assert.equal(sDmThird.events.some((e) => e.event === 'change' && e.data.topic === 'chat' && e.data.entityId === String(dm)), false); ok('Dritte können Privatchats weder lesen noch schreiben noch live mitbekommen');
+  assert.equal((await admin.call('PATCH', `/api/chat/channels/${dm}`, { name: 'x' })).status, 404); sDmThird.close(); sDmMod.close(); ok('Privatchats sind keine Kanäle (nicht verwaltbar)');
+
+  // ══ Lager ══
+  assert.equal((await mod.call('GET', '/api/warehouses')).status, 403);
+  r = await admin.call('POST', '/api/lookups/warehouse.type', { label: 'Depot', color: '#f59e0b' }); const whType = r.entry.id;
+  r = await admin.call('POST', '/api/warehouse/items', { name: 'Eisenerz', unit: 'kg', space: 2, minPrice: 100, maxPrice: 200, targetStock: 1000 });
+  assert.equal(r.status, 201); const ore = r.item.id; assert.equal(r.item.suggestedPrice, 200); // leeres Lager ⇒ Höchstpreis
+  assert.equal((await admin.call('POST', '/api/warehouse/items', { name: 'Kaputt', minPrice: 300, maxPrice: 100 })).status, 400);
+  assert.equal((await admin.call('POST', '/api/warehouse/items', { name: 'Halb', minPrice: 300 })).status, 400); ok('Items mit Preisspanne (Min/Max) – ungültige Spannen werden abgelehnt');
+  r = await admin.call('POST', '/api/warehouses', { name: 'Hafen-Lager', typeId: whType, postal: '7085', capacity: 5000, sizeInfo: '120 m²', accessInfo: 'Tor-Code 1234', locationText: 'Hafen Süd', restricted: false });
+  assert.equal(r.status, 201); assert.match(r.warehouse.number, /^[A-Z]+-L-\d+$/); const wh = r.warehouse.id; assert.ok(r.warehouse.location.resolved); ok('Lager anlegen (Postleitzahl wird in Koordinaten aufgelöst, Nummer AZ-L-…)');
+  assert.equal((await admin.call('POST', '/api/warehouses', { name: 'Falsch', postal: '99999999' })).status, 400);
+  assert.equal((await admin.call('POST', '/api/warehouses', { name: 'Koordinaten', locX: 100, locY: -200 })).status, 201);
+  assert.equal((await admin.call('POST', '/api/warehouses', { name: 'Hafen-Lager' })).status, 409); ok('Validierung: unbekannte Postleitzahl, doppelter Name, Koordinaten');
+  r = await admin.call('POST', `/api/warehouses/${wh}/stock`, { itemId: ore, action: 'in', quantity: 600, note: 'Erstbestand' }); assert.equal(r.quantity, 600); assert.equal(r.used, 1200);
+  assert.equal((await admin.call('POST', `/api/warehouses/${wh}/stock`, { itemId: ore, action: 'out', quantity: 9999 })).status, 409);
+  assert.equal((await admin.call('POST', `/api/warehouses/${wh}/stock`, { itemId: ore, action: 'in', quantity: 2000 })).status, 409); ok('Einlagern/Auslagern mit Kapazitäts- und Bestandsprüfung');
+  r = await admin.call('POST', '/api/warehouses', { name: 'Zweitlager', capacity: 1000 }); const wh2 = r.warehouse.id;
+  assert.equal((await admin.call('POST', `/api/warehouses/${wh}/transfer`, { toId: wh2, itemId: ore, quantity: 100 })).status, 200);
+  r = await admin.call('GET', `/api/warehouses/${wh2}`); assert.equal(r.stock[0].quantity, 100); assert.ok(r.events.length >= 1); ok('Umlagern zwischen Lagern mit Verlauf');
+  r = await admin.call('GET', `/api/warehouses/${wh}`); assert.equal(r.stock[0].quantity, 500);
+  // Zugriffe
+  await admin.call('PATCH', `/api/roles/${modRole}`, { permissions: ['users.view', 'users.approve', 'users.edit', 'audit.view', 'chat.view', 'chat.send', 'warehouse.view'] });
+  r = await mod.call('GET', '/api/warehouses'); assert.ok(r.warehouses.length >= 2); assert.equal(r.warehouses.find((w) => w.id === wh).accessInfo, null); assert.equal(r.warehouses.find((w) => w.id === wh).canBook, false);
+  assert.equal((await mod.call('POST', `/api/warehouses/${wh}/stock`, { itemId: ore, action: 'in', quantity: 1 })).status, 403);
+  assert.equal((await mod.call('POST', '/api/warehouses', { name: 'Nope' })).status, 403);
+  r = await mod.call('GET', '/api/warehouse/items'); assert.equal(r.items.find((i) => i.id === ore).minPrice, undefined); ok('Nur-Ansehen: kein Zugangs-Code, keine Preisspannen, keine Buchungen');
+  await admin.call('PATCH', `/api/roles/${modRole}`, { permissions: ['users.view', 'users.approve', 'users.edit', 'audit.view', 'chat.view', 'chat.send', 'warehouse.view', 'warehouse.view_access', 'warehouse.stock', 'warehouse.prices'] });
+  r = await mod.call('GET', `/api/warehouses/${wh}`); assert.equal(r.warehouse.accessInfo, 'Tor-Code 1234');
+  assert.equal((await mod.call('POST', `/api/warehouses/${wh}/stock`, { itemId: ore, action: 'in', quantity: 1 })).status, 403); // nur view-Stufe im Lager? nein: offenes Lager = view
+  r = await admin.call('PATCH', `/api/warehouses/${wh}`, { restricted: true, access: [{ roleId: modRole, level: 'manage' }] }); assert.equal(r.warehouse.access.length, 1);
+  assert.equal((await mod.call('POST', `/api/warehouses/${wh}/stock`, { itemId: ore, action: 'in', quantity: 1 })).status, 200);
+  assert.equal((await mod.call('GET', '/api/warehouse/items')).items.find((i) => i.id === ore).minPrice, 100); ok('Rollenbasierte Zugriffe pro Lager (ansehen/verwalten) + Rechte für Zugang und Preise');
+  r = await admin.call('PATCH', `/api/warehouses/${wh2}`, { restricted: true, access: [] });
+  assert.equal((await mod.call('GET', `/api/warehouses/${wh2}`)).status, 404); assert.equal((await mod.call('GET', '/api/warehouses')).warehouses.some((w) => w.id === wh2), false); ok('Beschränkte Lager sind für andere unsichtbar');
+  await admin.call('PATCH', `/api/roles/${modRole}`, { permissions: ['users.view', 'users.approve', 'users.edit', 'audit.view', 'chat.view', 'chat.send'] });
+  assert.equal((await mod.call('GET', '/api/map/layers')).status, 403);
+  await admin.call('PATCH', `/api/roles/${modRole}`, { permissions: ['users.view', 'users.approve', 'users.edit', 'audit.view', 'chat.view', 'chat.send', 'map.view', 'warehouse.view'] });
+  r = await mod.call('GET', '/api/map/layers'); const lay = r.layers.find((l) => l.key === 'warehouses'); assert.ok(lay); assert.ok(lay.items.some((i) => i.name === 'Hafen-Lager')); assert.ok(lay.items.every((i) => i.name !== 'Zweitlager'));
+  r = await admin.call('GET', '/api/map/layers'); const lay2 = r.layers.find((l) => l.key === 'warehouses'); assert.ok(lay2.items.some((i) => i.name === 'Hafen-Lager' && Number.isFinite(i.x))); ok('Lager erscheinen als Kartenebene (per Postleitzahl/Koordinaten, nur wenn sichtbar)');
+  assert.equal((await admin.call('DELETE', `/api/warehouses/${wh}`)).status, 409); ok('Nicht leeres Lager kann nicht gelöscht werden');
+
+  // ══ Börse: automatischer Preisvorschlag aus der Preisspanne ══
+  const pcli = new Client(); r = await admin.call('POST', '/api/partners', { name: 'Händler Zwei', apps: ['market'] }); const ptok = r.partner.linkPath.split('/').pop(); assert.equal((await pcli.call('POST', `/api/p/${ptok}/login`, { code: r.code })).status, 200);
+  r = await admin.call('GET', `/api/warehouse/items`); const oreNow = r.items.find((i) => i.id === ore);
+  r = await pcli.call('GET', '/api/p/market/catalog'); const pItem = r.items.find((i) => i.id === ore); assert.ok(pItem); assert.equal(typeof pItem.suggestedPrice, 'number'); assert.equal(JSON.stringify(r).includes('minPrice'), false); assert.equal(JSON.stringify(r).includes('maxPrice'), false);
+  r = await pcli.call('GET', `/api/p/market/quote?itemId=${ore}&quantity=100`); assert.equal(r.status, 200); assert.ok(r.quote.unitPrice >= 100 && r.quote.unitPrice <= 200); assert.equal(r.quote.total, r.quote.unitPrice * 100); const qPrice = r.quote.unitPrice;
+  const bigger = (await pcli.call('GET', `/api/p/market/quote?itemId=${ore}&quantity=800`)).quote.unitPrice; assert.ok(bigger <= qPrice); ok('Partner sieht automatischen Preisvorschlag (fällt bei Menge/Bestand), aber nie die Spanne');
+  r = await pcli.call('POST', '/api/p/market/offers', { itemId: ore, quantity: 100 }); assert.equal(r.status, 201); assert.equal(r.deal.unitPrice, qPrice); assert.equal(r.deal.suggestedPrice, qPrice); const deal1 = r.deal.id; ok('Angebot ohne Preis → Vorschlagspreis wird automatisch übernommen (Genehmigung durch das Team)');
+  r = await pcli.call('POST', '/api/p/market/offers', { itemId: ore, quantity: 100, unitPrice: qPrice + 40 }); assert.equal(r.deal.unitPrice, qPrice + 40); assert.equal(r.deal.suggestedPrice, qPrice); ok('Eigener Preis → Gegenangebot, Vorschlag bleibt zum Vergleich gespeichert');
+  r = await admin.call('POST', '/api/market/items', { name: 'Ohne Spanne', unit: 'Stück' }); const plain = r.item.id;
+  assert.equal((await pcli.call('POST', '/api/p/market/offers', { itemId: plain, quantity: 5 })).status, 400); assert.equal((await pcli.call('POST', '/api/p/market/offers', { itemId: plain, quantity: 5, unitPrice: 10 })).status, 201); ok('Ohne Spanne muss der Partner selbst einen Preis nennen');
+  assert.equal((await admin.call('POST', `/api/market/deals/${deal1}/accept`, {})).status, 200);
+  assert.equal((await admin.call('POST', `/api/market/deals/${deal1}/handover`, { info: 'Hafen' })).status, 200);
+  const stockBefore = (await admin.call('GET', `/api/warehouses/${wh}`)).stock.find((s) => s.itemId === ore).quantity;
+  assert.equal((await admin.call('POST', `/api/market/deals/${deal1}/advance`, { warehouseId: wh })).status, 200);
+  assert.equal((await admin.call('GET', `/api/warehouses/${wh}`)).stock.find((s) => s.itemId === ore).quantity, stockBefore + 100); ok('Ware eingegangen → wird direkt ins gewählte Lager eingebucht');
+
   // ── Branding: eigenes Logo / Hintergrund ──
   const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
   assert.equal((await mod.call('POST', '/api/admin/branding/logo', { data: PNG })).status, 403);

@@ -22,7 +22,7 @@ function renderBody(text) {
 
 export default async function render(container, ctx) {
   const canSend = can('chat.send'), canPin = can('chat.pin'), canManage = can('chat.manage');
-  let channels = [];
+  let channels = [], dms = [];
   let current = Number(sessionStorage.getItem(CHANNEL_KEY)) || null;
   let data = { messages: [], pinned: [], hasMore: false, channel: null };
   let replyTo = null, editing = null, showPinned = false;
@@ -45,18 +45,50 @@ export default async function render(container, ctx) {
 
   // ── Kanäle ──
   async function loadChannels() {
-    ({ channels } = await api.get('/api/chat/channels'));
-    if (!channels.some((c) => c.id === current)) current = channels[0]?.id ?? null;
+    let fresh = [];
+    [{ channels }, { dms: fresh }] = await Promise.all([api.get('/api/chat/channels'), api.get('/api/chat/dms')]);
+    // noch leere, gerade geöffnete Privatchats in der Liste behalten, bis die erste Nachricht gesendet ist
+    const keep = dms.filter((d) => d.keep && !fresh.some((f) => f.id === d.id));
+    dms = [...fresh, ...keep];
+    if (!channels.some((c) => c.id === current) && !dms.some((c) => c.id === current)) current = channels[0]?.id ?? dms[0]?.id ?? null;
     drawSide();
   }
-  function drawSide() {
-    mount(side, h('div', { class: 'chat-side-title' }, 'Kanäle'),
-      channels.map((c) => {
-        const b = h('button', { class: `chat-chan ${c.id === current ? 'on' : ''}`, type: 'button', style: { '--c': c.color } },
-          h('span', { class: 'dot' }), h('span', { class: 'cn' }, c.restricted && icon('lockClosed'), c.name), c.unread > 0 && h('span', { class: 'count hot' }, c.unread));
-        b.addEventListener('click', () => { if (current !== c.id) { current = c.id; replyTo = editing = null; setBanner(); sessionStorage.setItem(CHANNEL_KEY, String(current)); drawSide(); loadMessages({ initial: true }); } });
+  const allChats = () => [...channels, ...dms];
+  async function openDm(userId) {
+    const { channel } = await api.post('/api/chat/dms', { userId });
+    if (!dms.some((d) => d.id === channel.id)) dms.unshift({ ...channel, keep: true });
+    current = channel.id; replyTo = editing = null; setBanner(); sessionStorage.setItem(CHANNEL_KEY, String(current));
+    drawSide(); await loadMessages({ initial: true }); ta.focus();
+  }
+  async function newDm() {
+    let people = [];
+    try { ({ people } = await api.get('/api/chat/people')); } catch (e) { return toast(e.message, 'err'); }
+    const q = input({ placeholder: 'Personalnummer suchen …' });
+    const list = h('div', { class: 'people-list' });
+    const draw = () => {
+      const f = q.value.trim().toLowerCase();
+      const rows = people.filter((p) => !f || p.label.toLowerCase().includes(f));
+      mount(list, rows.length ? rows.map((p) => {
+        const b = h('button', { type: 'button', class: 'list-row people-row' }, h('div', { class: 'dot-icon' }, icon('users')), h('div', { class: 'grow' }, h('div', { class: 't' }, p.label)), icon('chevronR'));
+        b.addEventListener('click', async () => { try { await openDm(p.id); m.close(); } catch (e) { toast(e.message, 'err'); } });
         return b;
-      }),
+      }) : empty('Niemand gefunden', people.length ? 'Prüfe die Personalnummer.' : 'Es gibt noch keine weiteren Mitglieder mit Chat-Zugang.', 'users'));
+    };
+    q.addEventListener('input', draw);
+    const m = openModal({ title: 'Neue Privatnachricht', body: h('div', null, h('div', { class: 'input-icon' }, icon('search'), q), h('div', { style: { height: '10px' } }), list), footer: [button('Abbrechen', { onClick: () => m.close() })] });
+    draw();
+  }
+  function drawSide() {
+    const row = (c, dm) => {
+      const b = h('button', { class: `chat-chan ${c.id === current ? 'on' : ''}`, type: 'button', style: { '--c': c.color } },
+        dm ? icon('users') : h('span', { class: 'dot' }), h('span', { class: 'cn' }, !dm && c.restricted && icon('lockClosed'), c.name), c.unread > 0 && h('span', { class: 'count hot' }, c.unread));
+      b.addEventListener('click', () => { if (current !== c.id) { current = c.id; replyTo = editing = null; setBanner(); sessionStorage.setItem(CHANNEL_KEY, String(current)); drawSide(); loadMessages({ initial: true }); } });
+      return b;
+    };
+    mount(side, h('div', { class: 'chat-side-title' }, 'Kanäle'),
+      channels.map((c) => row(c, false)),
+      h('div', { class: 'chat-side-title dm-title' }, 'Privatnachrichten', canSend && button('', { size: 'sm', variant: 'ghost', icon: 'plus', title: 'Neue Privatnachricht', onClick: newDm })),
+      dms.length ? dms.map((c) => row(c, true)) : h('div', { class: 'muted', style: { padding: '4px 14px 8px', fontSize: '12px' } }, 'Noch keine Unterhaltungen.'),
       canManage && h('div', { style: { padding: '8px' } }, button('Kanäle verwalten', { size: 'sm', icon: 'settings', onClick: manageChannels })));
   }
 
@@ -71,13 +103,14 @@ export default async function render(container, ctx) {
     if (stick) toBottom(); else scroller.scrollTop = prevTop + (scroller.scrollHeight - prevH) * 0;
     const last = data.messages.at(-1)?.id;
     if (last && document.visibilityState === 'visible') {
-      api.post(`/api/chat/channels/${current}/read`, { lastId: last }).then(() => { const c = channels.find((x) => x.id === current); if (c && c.unread) { c.unread = 0; drawSide(); ctx.refreshCounters?.(); } }).catch(() => {});
+      api.post(`/api/chat/channels/${current}/read`, { lastId: last }).then(() => { const c = allChats().find((x) => x.id === current); if (c && c.unread) { c.unread = 0; drawSide(); ctx.refreshCounters?.(); } }).catch(() => {});
     }
   }
 
   function drawHead() {
     const c = data.channel;
-    mount(head, h('div', { class: 'grow' }, h('div', { class: 'ch-name' }, h('span', { class: 'dot', style: { '--c': c.color } }), c.name), c.description && h('div', { class: 'muted', style: { fontSize: '12px' } }, c.description)),
+    const dm = c.kind === 'dm';
+    mount(head, h('div', { class: 'grow' }, h('div', { class: 'ch-name' }, dm ? icon('users') : h('span', { class: 'dot', style: { '--c': c.color } }), dm ? h('span', { class: 'member-no' }, c.name) : c.name), c.description && h('div', { class: 'muted', style: { fontSize: '12px' } }, c.description)),
       c.pinnedCount > 0 && button(`${c.pinnedCount} angepinnt`, { size: 'sm', variant: showPinned ? 'primary' : 'ghost', icon: 'pin', onClick: () => { showPinned = !showPinned; drawHead(); drawMessages(); } }));
     pinnedBar.hidden = !showPinned || !data.pinned.length;
     mount(pinnedBar, data.pinned.map((m) => h('div', { class: 'pin-item', onclick: () => jumpTo(m.id) }, icon('pin'), h('b', null, m.sender), ' ', m.body.slice(0, 110))));
@@ -98,7 +131,7 @@ export default async function render(container, ctx) {
       if (!lastDay || !sameDay(lastDay, d)) { nodes.push(h('div', { class: 'chat-day' }, h('span', null, dayLabel(d)))); lastDay = d; }
       nodes.push(messageEl(m));
     }
-    if (!data.messages.length) nodes.push(empty('Noch keine Nachrichten', canSend ? 'Schreibe die erste Nachricht in diesem Kanal.' : null, 'chat'));
+    if (!data.messages.length) nodes.push(empty('Noch keine Nachrichten', canSend ? (data.channel?.kind === 'dm' ? 'Schreibe die erste Privatnachricht.' : 'Schreibe die erste Nachricht in diesem Kanal.') : null, 'chat'));
     mount(scroller, nodes);
   }
 
@@ -209,7 +242,9 @@ export default async function render(container, ctx) {
   await loadChannels();
   await loadMessages({ initial: true });
   ctx.live(['chat'], async () => { await loadChannels(); await loadMessages(); }, { wait: 120 });
+  const onOpen = async () => { const id = Number(sessionStorage.getItem(CHANNEL_KEY)); if (id && id !== current) { current = id; await loadChannels(); await loadMessages({ initial: true }); } };
+  window.addEventListener('mdt:chat-open', onOpen);
   const onVis = () => { if (document.visibilityState === 'visible') loadMessages(); };
   document.addEventListener('visibilitychange', onVis);
-  return () => document.removeEventListener('visibilitychange', onVis);
+  return () => { document.removeEventListener('visibilitychange', onVis); window.removeEventListener('mdt:chat-open', onOpen); };
 }

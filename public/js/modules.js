@@ -21,6 +21,7 @@ export const NAV = [
     section: 'Einsatz',
     items: [
       { id: 'map', label: 'Karte', subtitle: 'Interaktive Karte mit Waypoints und Postleitzahlen', icon: 'map', path: '/map', perm: ['map.view'], win: { w: 1200, h: 720 }, view: () => import('./views/map.js') },
+      { id: 'warehouse', label: 'Lager', subtitle: 'Lagerstandorte, Bestand und Preisspannen', icon: 'storage', path: '/warehouse', perm: ['warehouse.view'], win: { w: 1120, h: 700 }, view: () => import('./views/warehouse.js') },
       { id: 'vehicles', label: 'Fahrzeuge', subtitle: 'Fuhrpark, Zustand und Standorte', icon: 'car', path: '/vehicles', perm: ['vehicles.view'], win: { w: 1120, h: 700 }, view: () => import('./views/vehicles.js') },
     ],
   },

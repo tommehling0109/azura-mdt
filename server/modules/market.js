@@ -8,6 +8,8 @@ import { registerWidget } from './dashboard.js';
 import { allocateNumber } from '../core/numbers.js';
 import { labelForUser } from '../core/identity.js';
 import { notify, staffWith } from '../core/notifications.js';
+import { quote, bookStock } from '../core/stock.js';
+import { assertCanBook } from './warehouses.js';
 
 /** Zustände eines Geschäfts. Die SCHLÜSSEL kennt der Code, Beschriftung und Farbe sind im Admin-Bereich änderbar. */
 const STATUS_FIXED = [
@@ -71,7 +73,7 @@ const dealDto = (d, partnerView, viewerId = null) => {
   const hasHandover = d.handover_place_id || d.handover_info || d.payout_info;
   return {
     id: d.id, number: d.deal_number, origin: d.origin, wantedId: d.wanted_id, status: d.status, statusLabel: d.status_label ?? d.status, statusColor: d.status_color ?? '#94a3b8',
-    turn: d.turn, quantity: d.quantity, unitPrice: d.unit_price, total: d.quantity * d.unit_price, proposedBy: d.proposed_by, note: d.note,
+    turn: d.turn, quantity: d.quantity, unitPrice: d.unit_price, suggestedPrice: d.suggested_price ?? null, total: d.quantity * d.unit_price, proposedBy: d.proposed_by, note: d.note,
     item: { id: d.item_id, name: d.item_name, unit: d.item_unit, category: d.cat_id ? { id: d.cat_id, label: d.cat_label, color: d.cat_color } : null },
     // Partner sehen weder den Namen der Gegenseite noch interne Zuständigkeiten – nur die AZ-Nummer des Geschäfts
     partner: partnerView ? undefined : { id: d.partner_id, name: d.partner_name, number: d.partner_number },
@@ -178,7 +180,14 @@ function applyAction(dealId, actor, action, b) {
         if (!to) throw conflict('Von diesem Zustand aus ist kein Fortschritt möglich.');
         if (b.to !== undefined && b.to !== to) throw bad('Ungültiger Zielzustand.');
         touch(dealId, { status: to, ...(to === 'completed' ? { closed_at: now() } : {}) });
-        ev(dealId, actor, 'status', { text: statusLabel(to) });
+        let stored = '';
+        if (to === 'delivered' && b.warehouseId != null && b.warehouseId !== '') {
+          const wh = get('SELECT id, name FROM warehouses WHERE id = ?', b.warehouseId);
+          if (!wh) throw bad('Unbekanntes Lager.');
+          bookStock({ warehouseId: wh.id, itemId: d.item_id, delta: d.quantity, kind: 'deal', userId: actor.id, note: `Geschäft ${d.deal_number}`, dealId });
+          stored = ` – eingelagert in ${wh.name}`;
+        }
+        ev(dealId, actor, 'status', { text: statusLabel(to) + stored });
         break;
       }
       case 'cancel': {
@@ -240,12 +249,12 @@ function fanout(dealId, actor, action, evId, b) {
 
 const PARTNER_ACTIONS = ['accept', 'counter', 'reject', 'withdraw', 'message'];
 
-function createDeal({ origin, partnerId, itemId, wantedId, quantity, unitPrice, note, actor }) {
+function createDeal({ origin, partnerId, itemId, wantedId, quantity, unitPrice, suggestedPrice = null, note, actor }) {
   return tx(() => {
     const t = now();
     const number = allocateNumber('deal_number', 'market.deal_prefix', 'market.deal_start');
-    const res = run(`INSERT INTO market_deals (deal_number,origin,partner_id,item_id,wanted_id,quantity,unit_price,proposed_by,turn,status,note,created_at,updated_at)
-                     VALUES (?,?,?,?,?,?,?,'partner','staff','submitted',?,?,?)`, number, origin, partnerId, itemId, wantedId ?? null, quantity, unitPrice, note, t, t);
+    const res = run(`INSERT INTO market_deals (deal_number,origin,partner_id,item_id,wanted_id,quantity,unit_price,suggested_price,proposed_by,turn,status,note,created_at,updated_at)
+                     VALUES (?,?,?,?,?,?,?,?,'partner','staff','submitted',?,?,?)`, number, origin, partnerId, itemId, wantedId ?? null, quantity, unitPrice, suggestedPrice, note, t, t);
     const id = Number(res.lastInsertRowid);
     const evId = addEvent(id, actor, origin === 'wanted' ? 'response' : 'offer', { quantity, unitPrice, text: note });
     const info = get('SELECT p.name pname, i.name iname FROM market_deals d JOIN partners p ON p.id = d.partner_id JOIN market_items i ON i.id = d.item_id WHERE d.id = ?', id);
@@ -349,6 +358,7 @@ export default {
       const id = Number(ctx.params.id);
       const before = loadDeal(id, false, ctx.user.id);
       if (!before) throw notFound('Geschäft nicht gefunden.');
+      if (ctx.params.action === 'advance' && ctx.body.warehouseId != null && ctx.body.warehouseId !== '') assertCanBook(ctx.user, ctx.body.warehouseId);
       const action = applyAction(id, { type: 'staff', id: ctx.user.id, name: null }, ctx.params.action, ctx.body);
       const deal = loadDeal(id, false, ctx.user.id);
       audit(ctx, { action: `market.deal_${action}`, module: 'market', targetType: 'deal', targetId: id, targetLabel: `${deal.item.name} · ${deal.partner.name}`,
@@ -475,8 +485,17 @@ export default {
     r.get('/api/p/market/catalog', P, () => ({
       currency: getConfig('market.currency'),
       categories: lookupEntries('market.item_category', { onlyActive: true }),
-      items: all(`${ITEM_SQL} WHERE i.is_active = 1 ORDER BY i.name`).map((i) => ({ ...itemDto(i), referencePrice: undefined })), // Richtpreis ist intern
+      items: all(`${ITEM_SQL} WHERE i.is_active = 1 ORDER BY i.name`).map((i) => ({ ...itemDto(i), referencePrice: undefined, suggestedPrice: quote(i.id, 1)?.unitPrice ?? null })), // Richtpreis/Spanne sind intern, nur der Vorschlag ist sichtbar
     }));
+
+    /** Automatischer Preisvorschlag für Item + Menge (aus Preisspanne und Lagerbestand). */
+    r.get('/api/p/market/quote', P, (ctx) => {
+      const itemId = Number(ctx.query.itemId);
+      const quantity = Math.min(Math.max(parseInt(ctx.query.quantity) || 1, 1), INT_MAX);
+      const item = get('SELECT id FROM market_items WHERE id = ? AND is_active = 1', itemId);
+      if (!item) throw notFound('Item nicht gefunden.');
+      return { quote: quote(itemId, quantity) };
+    });
 
     r.get('/api/p/market/wanted', P, (ctx) => {
       const rows = all(`${WANTED_SQL} WHERE w.status = 'open' AND (w.expires_at IS NULL OR w.expires_at > ?) ORDER BY w.created_at DESC`, now());
@@ -487,9 +506,12 @@ export default {
       const b = ctx.body;
       const item = get('SELECT id, is_active FROM market_items WHERE id = ?', b.itemId);
       if (!item || !item.is_active) throw bad('Dieses Item kann nicht angeboten werden.');
+      const quantity = posInt(b.quantity, 'Menge');
+      const q = quote(item.id, quantity);
+      if (b.unitPrice == null && !q) throw bad('Für dieses Item gibt es keinen automatischen Preisvorschlag – bitte nenne deinen Preis.');
       const id = createDeal({
-        origin: 'offer', partnerId: ctx.partner.id, itemId: item.id, quantity: posInt(b.quantity, 'Menge'),
-        unitPrice: posInt(b.unitPrice, 'Preis pro Einheit'), note: str(b.note, 'Hinweis', { max: 500, required: false }), actor: pActor(ctx),
+        origin: 'offer', partnerId: ctx.partner.id, itemId: item.id, quantity, suggestedPrice: q?.unitPrice ?? null,
+        unitPrice: b.unitPrice == null ? q.unitPrice : posInt(b.unitPrice, 'Preis pro Einheit'), note: str(b.note, 'Hinweis', { max: 500, required: false }), actor: pActor(ctx),
       });
       audit(ctx, { action: 'market.deal_created', module: 'market', targetType: 'deal', targetId: id, targetLabel: loadDeal(id).item.name });
       ctx.status = 201;

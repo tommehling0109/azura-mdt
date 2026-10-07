@@ -4,7 +4,7 @@ import { icon } from '../ui/icons.js';
 import { button, busy, field, input, select, formError, openModal, confirmDialog, toast, skeletons, note } from '../ui/kit.js';
 import { api } from '../api.js';
 import { subscribe } from '../realtime.js';
-import { state } from '../state.js';
+import { state, can } from '../state.js';
 
 export const money = (n) => `${Number(n ?? 0).toLocaleString('de-DE')} ${state.config['market.currency'] || '$'}`;
 export const dealBadge = (d) => h('span', { class: 'badge', style: { '--c': d.statusColor } }, d.statusLabel);
@@ -100,7 +100,8 @@ export function openDealModal({ side, base, id, onChange }) {
         h('div', { class: 'chips', style: { marginTop: '8px' } }, dealBadge(d), turnBadge(d, side), d.assignee && h('span', { class: 'badge no-dot b-info' }, `${side === 'staff' ? 'Zuständig' : 'Ansprechpartner'}: ${d.assignee.displayName}`))),
       h('div', { class: 'ds-price' },
         h('div', { class: 'dp-total' }, money(d.total)),
-        h('div', { class: 'dp-sub' }, `${d.quantity.toLocaleString('de-DE')} ${d.item.unit} × ${money(d.unitPrice)}`)));
+        h('div', { class: 'dp-sub' }, `${d.quantity.toLocaleString('de-DE')} ${d.item.unit} × ${money(d.unitPrice)}`),
+        d.suggestedPrice != null && h('div', { class: 'dp-sub', title: 'Automatischer Preisvorschlag aus der Preisspanne beim Eingang des Angebots' }, d.suggestedPrice === d.unitPrice && d.proposedBy === 'partner' && d.origin === 'offer' ? 'zum Vorschlagspreis' : `Vorschlag: ${money(d.suggestedPrice)}${d.suggestedPrice !== d.unitPrice ? ` (${d.unitPrice > d.suggestedPrice ? '+' : ''}${Math.round(((d.unitPrice - d.suggestedPrice) / d.suggestedPrice) * 100)} %)` : ''}`)));
 
     const handover = d.handover && h('div', { class: 'handover-card' },
       h('div', { class: 'hc-title' }, icon('server'), side === 'partner' ? 'So geht es weiter' : 'Übergabe'),
@@ -133,11 +134,28 @@ export function openDealModal({ side, base, id, onChange }) {
     if (side === 'staff') {
       if (['accepted', 'delivery'].includes(d.status)) bar.push(button(d.status === 'accepted' ? 'Übergabe festlegen' : 'Übergabe ändern', { variant: 'primary', icon: 'server', onClick: () => handoverDialog(d) }));
       const NEXT = { delivery: ['Ware eingegangen', 'delivered'], delivered: ['Zahlung ausstehend', 'payout'], payout: ['Als bezahlt abschließen', 'completed'] }[d.status];
-      if (NEXT) bar.push(button(`Weiter: ${NEXT[0]}`, { variant: 'primary', icon: 'chevronR', onClick: guard(() => act('advance', { to: NEXT[1] })) }));
+      if (NEXT) bar.push(button(`Weiter: ${NEXT[0]}`, { variant: 'primary', icon: 'chevronR', onClick: d.status === 'delivery' && can('warehouse.stock') ? () => deliveredDialog(d) : guard(() => act('advance', { to: NEXT[1] })) }));
       if (!FINAL.includes(d.status) && d.status !== 'submitted' && d.status !== 'negotiating') bar.push(button('Stornieren', { variant: 'danger', icon: 'x', onClick: () => confirmDialog({ title: 'Geschäft stornieren?', message: 'Das Geschäft wird beendet.', confirmLabel: 'Stornieren', withReason: true }).then((r) => r && act('cancel', { text: r.reason }).catch((ex) => toast(ex.message, 'err'))) }));
       if (!d.assignee || d.assignee.id !== state.user.id) bar.push(button('Mir zuweisen', { size: 'sm', variant: 'ghost', icon: 'userCheck', onClick: guard(() => act('assign', { userId: state.user.id })) }));
     }
     mount(footer, bar, h('span', { class: 'grow' }), button('Schließen', { onClick: () => m.close() }));
+  }
+
+  /** Wareneingang: optional direkt in ein Lager einbuchen. */
+  async function deliveredDialog(d) {
+    let whs = [];
+    try { whs = (await api.get('/api/warehouses')).warehouses.filter((w) => w.canBook && w.isActive); } catch { /* kein Lagerzugriff */ }
+    const err = h('div');
+    const sel = select([{ value: '', label: '— nicht einlagern —' }, ...whs.map((w) => ({ value: w.id, label: `${w.name}${w.capacity != null ? ` (frei: ${Math.max(0, w.capacity - w.used).toLocaleString('de-DE')})` : ''}` }))], whs.length === 1 ? whs[0].id : '');
+    const dm = openModal({
+      title: 'Ware eingegangen',
+      body: h('div', null, err, note(`${d.quantity.toLocaleString('de-DE')} ${d.item.unit} ${d.item.name} sind eingegangen. Wähle ein Lager, um sie direkt einzubuchen.`, 'info'), h('div', { style: { height: '12px' } }),
+        field('Einlagern in', sel, { help: whs.length ? '' : 'Du hast kein Lager mit Buchungsrecht – der Wareneingang wird ohne Einlagerung erfasst.' })),
+      footer: [button('Abbrechen', { onClick: () => dm.close() }), button('Wareneingang bestätigen', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
+        try { await act('advance', { to: 'delivered', warehouseId: sel.value ? Number(sel.value) : undefined }); dm.close(); toast(sel.value ? 'Eingegangen und eingelagert.' : 'Wareneingang erfasst.'); }
+        catch (ex) { err.replaceChildren(formError(ex.message)); }
+      }) })],
+    });
   }
 
   function handoverDialog(d) {

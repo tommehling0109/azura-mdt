@@ -365,4 +365,61 @@ export const SCHEMA_MIGRATIONS = [
     updated_at  TEXT NOT NULL
   );
   `,
+  /* v7 – Privatnachrichten + Lager + Preisspannen */ `
+  ALTER TABLE chat_channels ADD COLUMN kind TEXT NOT NULL DEFAULT 'channel';
+  ALTER TABLE chat_channels ADD COLUMN dm_a INTEGER REFERENCES users(id) ON DELETE CASCADE;
+  ALTER TABLE chat_channels ADD COLUMN dm_b INTEGER REFERENCES users(id) ON DELETE CASCADE;
+  CREATE UNIQUE INDEX idx_chat_dm ON chat_channels(dm_a, dm_b) WHERE kind = 'dm';
+  ALTER TABLE market_items ADD COLUMN min_price INTEGER;
+  ALTER TABLE market_items ADD COLUMN max_price INTEGER;
+  ALTER TABLE market_items ADD COLUMN target_stock INTEGER;
+  ALTER TABLE market_items ADD COLUMN space INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE market_deals ADD COLUMN suggested_price INTEGER;
+  CREATE TABLE warehouses (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    warehouse_number TEXT UNIQUE,
+    name             TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    type_id          INTEGER REFERENCES lookups(id) ON DELETE SET NULL,
+    description      TEXT NOT NULL DEFAULT '',
+    location_text    TEXT NOT NULL DEFAULT '',
+    postal           TEXT,
+    loc_x            REAL,
+    loc_y            REAL,
+    capacity         INTEGER,
+    size_info        TEXT NOT NULL DEFAULT '',
+    access_info      TEXT NOT NULL DEFAULT '',
+    restricted       INTEGER NOT NULL DEFAULT 0,
+    department_id    INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+    notes            TEXT NOT NULL DEFAULT '',
+    is_active        INTEGER NOT NULL DEFAULT 1,
+    created_by       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
+  );
+  CREATE TABLE warehouse_access (
+    warehouse_id INTEGER NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
+    role_id      INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    level        TEXT NOT NULL DEFAULT 'view' CHECK (level IN ('view','manage')),
+    PRIMARY KEY (warehouse_id, role_id)
+  );
+  CREATE TABLE warehouse_stock (
+    warehouse_id INTEGER NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
+    item_id      INTEGER NOT NULL REFERENCES market_items(id) ON DELETE RESTRICT,
+    quantity     INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+    PRIMARY KEY (warehouse_id, item_id)
+  );
+  CREATE TABLE warehouse_events (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    warehouse_id   INTEGER NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
+    item_id        INTEGER REFERENCES market_items(id) ON DELETE SET NULL,
+    user_id        INTEGER,
+    kind           TEXT NOT NULL,
+    delta          INTEGER,
+    quantity_after INTEGER,
+    note           TEXT NOT NULL DEFAULT '',
+    deal_id        INTEGER,
+    created_at     TEXT NOT NULL
+  );
+  CREATE INDEX idx_wh_events ON warehouse_events(warehouse_id, id);
+  `,
 ];
