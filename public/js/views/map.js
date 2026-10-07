@@ -23,11 +23,13 @@ export default async function render(container, ctx) {
   let L, cfg, postals;
   try { [L, cfg] = await Promise.all([loadLeaflet(), api.get('/api/map/config')]); } catch (e) { return mount(container, empty('Karte nicht verfügbar', e.message, 'alert')); }
   if (!ctx.isCurrent()) return;
-  const { calib, minZoom, maxZoom } = cfg;
+  const imageMode = cfg.base === 'image' && cfg.image?.url;
+  // Bild-Modus: 1 Karteneinheit = 1 Bildpixel (Zoom 0 = Originalgröße, bis 8-fach hineinzoomen); Kachel-Modus wie bisher
+  const calib = imageMode ? cfg.image.calib : cfg.calib, minZoom = imageMode ? -3 : cfg.minZoom, maxZoom = imageMode ? 0 : cfg.maxZoom, maxView = imageMode ? 3 : cfg.maxZoom + 1;
   const toLL = (x, y) => L.latLng(calib.y - calib.scale * y, calib.x + calib.scale * x);
   const toGame = (ll) => ({ x: (ll.lng - calib.x) / calib.scale, y: (calib.y - ll.lat) / calib.scale });
   const SIZE = 256 * 2 ** maxZoom;
-  const bounds = L.latLngBounds([[0, 0], [SIZE, SIZE]]);
+  const bounds = imageMode ? L.latLngBounds([[0, 0], [cfg.image.height, cfg.image.width]]) : L.latLngBounds([[0, 0], [SIZE, SIZE]]);
 
   const state = { points: [], vehicles: [], hidden: new Set(), q: '', showPostals: cfg.showPostals, showVeh: true, layers: [], offLayers: new Set(), placing: false, moving: false };
   const side = h('aside', { class: 'map-side' });
@@ -37,18 +39,20 @@ export default async function render(container, ctx) {
   mount(container, h('div', { class: 'mapview' }, side, stage));
 
   const crs = L.extend({}, L.CRS.Simple, { transformation: new L.Transformation(1, 0, 1, 0), scale: (z) => 2 ** (z - maxZoom), zoom: (s) => Math.log2(s) + maxZoom });
-  const map = L.map(mapEl, { crs, minZoom, maxZoom: maxZoom + 1, zoomSnap: 0.5, zoomDelta: 0.5, attributionControl: false, maxBounds: bounds.pad(0.1), maxBoundsViscosity: 0.8 });
-  const tiles = L.tileLayer(cfg.tileUrl, { minZoom, maxNativeZoom: maxZoom, maxZoom: maxZoom + 1, tileSize: 256, noWrap: true, bounds, errorTileUrl: '' }).addTo(map);
+  const map = L.map(mapEl, { crs, minZoom, maxZoom: maxView, zoomSnap: 0.5, zoomDelta: 0.5, attributionControl: false, maxBounds: bounds.pad(0.1), maxBoundsViscosity: 0.8 });
+  const tiles = imageMode ? L.imageOverlay(cfg.image.url, bounds).addTo(map) : L.tileLayer(cfg.tileUrl, { minZoom, maxNativeZoom: maxZoom, maxZoom: maxZoom + 1, tileSize: 256, noWrap: true, bounds, errorTileUrl: '' }).addTo(map);
   const pointLayer = L.layerGroup().addTo(map);
   const vehLayer = L.layerGroup().addTo(map);
   const postalLayer = L.layerGroup();
   map.fitBounds(bounds, { animate: false });
-  const startView = () => map.setView(toLL(0, 0), Math.max(minZoom, maxZoom - 2.5), { animate: false });
+  const startView = () => (imageMode ? map.fitBounds(bounds, { animate: false }) : map.setView(toLL(0, 0), Math.max(minZoom, maxZoom - 2.5), { animate: false }));
   startView();
-  const ro = new ResizeObserver(() => map.invalidateSize());
+  let touched = false; for (const ev of ['pointerdown', 'wheel', 'keydown']) mapEl.addEventListener(ev, () => { touched = true; }, { passive: true });
+  const ro = new ResizeObserver(() => { map.invalidateSize(); if (imageMode && !touched) startView(); }); // in den ersten Sekunden (Fenster-Öffnen, Layout) die Gesamtansicht nachführen
   ro.observe(mapEl);
   let tileErr = 0;
-  tiles.on('tileerror', () => { if (++tileErr === 6) toast('Kartenkacheln konnten nicht geladen werden. Prüfe die Kachel-URL unter Konfiguration → Karte.', 'err'); });
+  if (imageMode) tiles.getElement?.()?.addEventListener('error', () => toast('Das Kartenbild konnte nicht geladen werden. Prüfe die URL unter Konfiguration → Karte.', 'err'));
+  else tiles.on('tileerror', () => { if (++tileErr === 6) toast('Kartenkacheln konnten nicht geladen werden. Prüfe die Kachel-URL unter Konfiguration → Karte.', 'err'); });
 
   const pinIcon = (p, cls = '') => L.divIcon({ className: '', iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -14],
     html: `<div class="map-pin ${cls}" style="--c:${esc(p.color)};width:30px;height:30px">${icon(p.icon).outerHTML}</div>` });
@@ -176,7 +180,8 @@ export default async function render(container, ctx) {
   const list = h('div', { class: 'ms-list' });
   mount(side, h('div', { class: 'ms-head' }, h('div', { class: 'input-icon' }, icon('search'), search), catBox), list);
 
-  function goto(x, y, zoom) { map.setView(toLL(x, y), zoom ?? maxZoom - 1, { animate: true }); }
+  const zoomMid = imageMode ? 1.5 : maxZoom - 1, zoomClose = imageMode ? 2 : maxZoom; // passende Zoomstufen je Kartengrundlage
+  function goto(x, y, zoom) { map.setView(toLL(x, y), zoom ?? zoomMid, { animate: true }); }
   search.addEventListener('keydown', async (e) => {
     if (e.key !== 'Enter') return;
     const m = /^(?:postal|plz|p)?\s*(\d{1,5})$/i.exec(search.value.trim());
@@ -244,7 +249,7 @@ export default async function render(container, ctx) {
       if (!raw) return;
       sessionStorage.removeItem('mdt:map:focus');
       const f = JSON.parse(raw);
-      if (Number.isFinite(f.x) && Number.isFinite(f.y)) { goto(f.x, f.y, maxZoom); setTimeout(() => markers.get(f.type === 'vehicle' ? `v${f.id}` : `${f.type}s:${f.id}`)?.openPopup(), 300); }
+      if (Number.isFinite(f.x) && Number.isFinite(f.y)) { goto(f.x, f.y, zoomClose); setTimeout(() => markers.get(f.type === 'vehicle' ? `v${f.id}` : `${f.type}s:${f.id}`)?.openPopup(), 300); }
     } catch { /* egal */ }
   };
   window.addEventListener('mdt:map-focus', applyFocus);
