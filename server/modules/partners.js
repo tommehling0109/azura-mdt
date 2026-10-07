@@ -23,9 +23,9 @@ const linkPath = (token) => `/p/${token}`;
 const dto = (p, { withLink }) => ({
   id: p.id, number: p.partner_number, name: p.name, note: p.note, status: p.status, apps: parseApps(p),
   lastLoginAt: p.last_login_at, createdAt: p.created_at,
-  type: p.partner_type, typeLabel: TYPES[p.partner_type], firstName: p.first_name, lastName: p.last_name, birthDate: p.birth_date, postalCode: p.postal_code, street: p.street,
-  umail: p.umail_local ? `${p.umail_local}@umail.com` : '', umailLocal: p.umail_local, phone: p.phone, accountNumber: p.account_number, weaponRequired: !!p.weapon_required,
-  docs: { id: !!p.id_doc_ext, weapon: !!p.weapon_doc_ext },
+  type: typeOf(p), typeLabel: TYPES[typeOf(p)], contactName: p.contact_name, firstName: p.first_name, lastName: p.last_name, birthDate: p.birth_date, postalCode: p.postal_code, street: p.street,
+  umail: p.umail_local ? `${p.umail_local}@umail.com` : '', umailLocal: p.umail_local, phone: p.phone, accountNumber: p.account_number, 
+  docs: { id: !!p.id_doc_ext, license: !!p.license_doc_ext, weapon: !!p.weapon_doc_ext, clearance: !!p.clearance_doc_ext },
   locked: !!(p.locked_until && p.locked_until > now()), lockedUntil: p.locked_until && p.locked_until > now() ? p.locked_until : null,
   dealCount: p.deal_count ?? 0,
   linkPath: withLink ? linkPath(p.link_token) : undefined,
@@ -33,7 +33,9 @@ const dto = (p, { withLink }) => ({
 /** Format-Regeln für die Stammdaten externer Zugänge */
 const docDir = () => join(dirname(DB_PATH), 'partner-docs');
 const docFile = (id, kind, ext) => join(docDir(), `${id}-${kind}.${ext}`);
-const TYPES = { customer: 'Kunde / Partner', supplier: 'Lieferant' };
+/** Art des Zugangs: Lieferant (liefert uns Ware, alle Personendaten + Dokumente) oder Ankäufer (kauft von uns, nur Name/Ansprechpartner). In der Datenbank steht „customer“ für Ankäufer. */
+const TYPES = { buyer: 'Ankäufer', supplier: 'Lieferant' };
+const typeOf = (p) => (p.partner_type === 'supplier' ? 'supplier' : 'buyer');
 const formatPhone = (v) => { const d = String(v ?? '').replace(/\D/g, ''); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : String(v ?? '').trim(); };
 const PROFILE_FIELDS = ['first_name', 'last_name', 'birth_date', 'postal_code', 'street', 'umail_local', 'phone', 'account_number'];
 
@@ -59,19 +61,18 @@ function profileFromBody(b, cur = {}) {
   }
   if (b.phone !== undefined) { const ph = formatPhone(b.phone); if (ph && !/^\(\d{3}\) \d{3}-\d{4}$/.test(ph)) throw bad('Telefonnummer: Format (555) 123-4567.'); set('phone', ph); }
   if (b.accountNumber !== undefined) { const a = String(b.accountNumber ?? '').trim().toUpperCase(); if (a && !/^[A-Z0-9-]{3,20}$/.test(a)) throw bad('Kontonummer: 3–20 Zeichen (Buchstaben/Ziffern), z. B. LS28180705.'); set('account_number', a); }
-  if (b.type !== undefined) { if (!TYPES[b.type]) throw bad('Art: Kunde/Partner oder Lieferant.'); set('partner_type', b.type); }
-  if (b.weaponRequired !== undefined) set('weapon_required', b.weaponRequired ? 1 : 0);
+  if (b.type !== undefined) { const t = b.type === 'customer' ? 'buyer' : b.type; if (!TYPES[t]) throw bad('Art: Lieferant oder Ankäufer.'); set('partner_type', t === 'supplier' ? 'supplier' : 'customer'); }
+  if (b.contactName !== undefined) set('contact_name', str(b.contactName, 'Ansprechpartner', { max: 80, required: false }));
   void pick; void v;
   return out;
 }
-function requireComplete(merged, hasId, hasWeapon) {
+function requireComplete(merged, has, strictBuyer = true) {
   const miss = [];
   if (merged.partner_type === 'supplier') {
-    for (const [col, label] of [['first_name', 'Vorname'], ['last_name', 'Nachname'], ['birth_date', 'Geburtsdatum'], ['postal_code', 'Postal Code'], ['street', 'Straße'], ['umail_local', 'UMail'], ['phone', 'Telefonnummer'], ['account_number', 'Kontonummer']]) if (!merged[col]) miss.push(label);
-    if (!hasId) miss.push('Ausweis (Upload)');
-  }
-  if (merged.weapon_required && !hasWeapon) miss.push('Waffenschein (Upload)');
-  if (miss.length) throw bad(`${merged.partner_type === 'supplier' ? 'Bei Lieferanten sind' : 'Für diesen Zugang sind'} folgende Angaben Pflicht: ${miss.join(', ')}.`);
+    for (const [col, label] of [['first_name', 'Vorname'], ['last_name', 'Nachname'], ['street', 'Straße'], ['postal_code', 'Postal Code'], ['phone', 'Telefonnummer'], ['umail_local', 'UMail'], ['account_number', 'Kontonummer']]) if (!merged[col]) miss.push(label);
+    for (const [k, label] of [['id', 'Ausweis'], ['license', 'Führerschein'], ['weapon', 'Waffenschein']]) if (!has[k]) miss.push(`${label} (Upload)`); // Führungszeugnis ist optional
+    if (miss.length) throw bad(`Bei Lieferanten sind folgende Angaben Pflicht: ${miss.join(', ')}.`);
+  } else if (strictBuyer && !merged.contact_name) throw bad('Bei Ankäufern ist der Ansprechpartner Pflicht (zusätzlich zum Namen bzw. der Bezeichnung).');
 }
 function saveDoc(id, kind, data) {
   const { buf, ext } = decodeDocument(data, 6 * 1024 * 1024, bad);
@@ -81,6 +82,8 @@ function saveDoc(id, kind, data) {
   return ext;
 }
 
+const DOC_KINDS = { id: 'id_doc_ext', license: 'license_doc_ext', weapon: 'weapon_doc_ext', clearance: 'clearance_doc_ext' };
+const DOC_LABEL = { id: 'Ausweis', license: 'Führerschein', weapon: 'Waffenschein', clearance: 'Führungszeugnis' };
 const LIST_SQL = 'SELECT p.*, (SELECT COUNT(*) FROM market_deals d WHERE d.partner_id = p.id) deal_count FROM partners p';
 const cleanApps = (v) => {
   const apps = strList(v, 'Apps');
@@ -118,10 +121,12 @@ export default {
     r.post('/api/partners', { perm: 'partners.manage', bodyLimit: 14 * 1024 * 1024 }, (ctx) => {
       const b = ctx.body;
       const prof = profileFromBody(b);
-      const name = [prof.first_name, prof.last_name].filter(Boolean).join(' ') || str(b.name, 'Name', { min: 2, max: 60 });
+      const supplier = prof.partner_type === 'supplier';
+      const name = supplier ? ([prof.first_name, prof.last_name].filter(Boolean).join(' ') || str(b.name, 'Name', { min: 2, max: 60 })) : str(b.name, 'Name oder Bezeichnung', { min: 2, max: 60 });
       const merged = { partner_type: 'customer', ...prof };
-      if ((b.idDoc || b.weaponDoc) && !ctx.user.perms.has('partners.documents')) throw forbidden('Für Dokument-Uploads fehlt dir das Recht „partners.documents“.');
-      requireComplete(merged, !!b.idDoc, !!b.weaponDoc);
+      const docBodies = { id: b.idDoc, license: b.licenseDoc, weapon: b.weaponDoc, clearance: b.clearanceDoc };
+      if (Object.values(docBodies).some(Boolean) && !ctx.user.perms.has('partners.documents')) throw forbidden('Für Dokument-Uploads fehlt dir das Recht „partners.documents“.');
+      requireComplete(merged, Object.fromEntries(Object.entries(docBodies).map(([k, v]) => [k, !!v])), prof.partner_type !== undefined); // ohne ausdrückliche Art gilt „Ankäufer“ (Altbestand/API)
       const note = str(b.note, 'Notiz', { max: 300, required: false });
       const apps = cleanApps(b.apps);
       let code = randomCode();
@@ -137,8 +142,7 @@ export default {
         const pid = Number(res.lastInsertRowid);
         const cols = Object.keys(prof);
         if (cols.length) run(`UPDATE partners SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`, ...cols.map((c) => prof[c]), pid);
-        if (b.idDoc) run('UPDATE partners SET id_doc_ext = ? WHERE id = ?', saveDoc(pid, 'id', b.idDoc), pid);
-        if (b.weaponDoc) run('UPDATE partners SET weapon_doc_ext = ? WHERE id = ?', saveDoc(pid, 'weapon', b.weaponDoc), pid);
+        for (const [k, v] of Object.entries(docBodies)) if (v) run(`UPDATE partners SET ${DOC_KINDS[k]} = ? WHERE id = ?`, saveDoc(pid, k, v), pid);
         return pid;
       });
       audit(ctx, { action: 'partner.created', module: 'partners', targetType: 'partner', targetId: id, targetLabel: name, after: { name, apps } });
@@ -153,7 +157,7 @@ export default {
       const b = ctx.body;
       const before = dto(cur, { withLink: false });
       const prof = profileFromBody(b, cur);
-      requireComplete({ ...cur, ...prof }, !!cur.id_doc_ext, !!cur.weapon_doc_ext);
+      requireComplete({ ...cur, ...prof }, { id: !!cur.id_doc_ext, license: !!cur.license_doc_ext, weapon: !!cur.weapon_doc_ext }, prof.partner_type !== undefined || prof.contact_name !== undefined);
       tx(() => {
         const pc = Object.keys(prof);
         if (pc.length) run(`UPDATE partners SET ${pc.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`, ...pc.map((c) => prof[c]), id);
@@ -203,14 +207,13 @@ export default {
     });
 
     // Dokumente (Ausweis / Waffenschein)
-    const DOC_KINDS = { id: 'id_doc_ext', weapon: 'weapon_doc_ext' };
     r.post('/api/partners/:id/docs/:kind', { perm: 'partners.documents', bodyLimit: 8 * 1024 * 1024 }, (ctx) => {
       const id = Number(ctx.params.id), col = DOC_KINDS[ctx.params.kind];
       if (!col) throw notFound('Unbekanntes Dokument.');
       const cur = get('SELECT name FROM partners WHERE id = ?', id);
       if (!cur) throw notFound('Zugang nicht gefunden.');
       run(`UPDATE partners SET ${col} = ?, updated_at = ? WHERE id = ?`, saveDoc(id, ctx.params.kind, ctx.body.data), now(), id);
-      audit(ctx, { action: 'partner.document_uploaded', module: 'partners', targetType: 'partner', targetId: id, targetLabel: `${cur.name} · ${ctx.params.kind === 'id' ? 'Ausweis' : 'Waffenschein'}` });
+      audit(ctx, { action: 'partner.document_uploaded', module: 'partners', targetType: 'partner', targetId: id, targetLabel: `${cur.name} · ${DOC_LABEL[ctx.params.kind]}` });
       return { partner: dto(get(`${LIST_SQL} WHERE p.id = ?`, id), { withLink: true }) };
     });
     r.get('/api/partners/:id/docs/:kind', { perm: 'partners.documents' }, (ctx) => {
@@ -221,7 +224,7 @@ export default {
       ctx.raw = { contentType: DOC_MIME[p.e], body: readFileSync(file), inline: true, cache: 'no-store' };
     });
 
-    r.delete('/api/partners/:id', { perm: 'partners.manage' }, (ctx) => {
+    r.delete('/api/partners/:id', { perm: ['partners.manage', 'partners.delete'] }, (ctx) => {
       const id = Number(ctx.params.id);
       const cur = get(`${LIST_SQL} WHERE p.id = ?`, id);
       if (!cur) throw notFound('Zugang nicht gefunden.');
@@ -230,6 +233,8 @@ export default {
         const parts = [cur.deal_count > 0 && `${cur.deal_count} Börsen-Geschäft(e)`, loans > 0 && `${loans} Kredit(e)`].filter(Boolean).join(' und ');
         if (ctx.query.force !== '1') throw conflict(`Zu diesem Zugang gibt es ${parts}. Deaktiviere ihn, damit der Verlauf erhalten bleibt – oder lösche ihn samt aller Daten (nur mit dem Recht „partners.delete“).`);
         if (!ctx.user.perms.has('partners.delete')) throw forbidden('Zum Löschen samt aller Daten fehlt dir das Recht „partners.delete“.');
+      } else if (!ctx.user.perms.has('partners.manage') && !ctx.user.perms.has('partners.delete')) {
+        throw forbidden();
       }
       tx(() => purgePartner(id));
       audit(ctx, { action: 'partner.deleted', module: 'partners', targetType: 'partner', targetId: id, targetLabel: cur.name, before: { deals: cur.deal_count, loans } });

@@ -28,6 +28,7 @@ export async function chatApp(container, ctx, o = {}) {
   const A = (p) => (PARTNER ? '/api/p/chat' : '/api/chat') + p;
   const canSend = PARTNER || can('chat.send'), canPin = !PARTNER && can('chat.pin'), canManage = !PARTNER && can('chat.manage');
   let partnerOptions = [];
+  let myTickets = [];
   let channels = [], dms = [];
   let current = Number(sessionStorage.getItem(CHANNEL_KEY)) || null;
   let data = { messages: [], pinned: [], hasMore: false, channel: null };
@@ -100,6 +101,10 @@ export async function chatApp(container, ctx, o = {}) {
       channels.map((c) => row(c, false)),
       h('div', { class: 'chat-side-title dm-title' }, 'Privatnachrichten', canSend && button('', { size: 'sm', variant: 'ghost', icon: 'plus', title: 'Neue Privatnachricht', onClick: newDm })),
       dms.length ? dms.map((c) => row(c, true)) : h('div', { class: 'muted', style: { padding: '4px 14px 8px', fontSize: '12px' } }, 'Noch keine Unterhaltungen.'),
+      !PARTNER && h('div', { class: 'chat-side-title dm-title' }, 'Meine Tickets', button('', { size: 'sm', variant: 'ghost', icon: 'plus', title: 'Fehler melden', onClick: () => import('./tickets.js').then((m) => m.openReportDialog({ app: 'Chat', onDone: loadTickets })) })),
+      !PARTNER && (myTickets.length ? myTickets.slice(0, 8).map((t) => h('button', { class: 'chat-chan', type: 'button', style: { '--c': t.statusColor }, title: t.title,
+        onclick: () => import('./tickets.js').then((m) => m.openTicketModal({ id: t.id, onChange: loadTickets })) }, h('span', { class: 'dot' }), h('span', { class: 'cn' }, `${t.number} · ${t.title}`), h('span', { class: 'muted', style: { fontSize: '11px' } }, t.statusLabel)))
+        : h('div', { class: 'muted', style: { padding: '4px 14px 8px', fontSize: '12px' } }, 'Keine Tickets – mit + meldest du einen Fehler.')),
       canManage && h('div', { style: { padding: '8px' } }, button('Kanäle verwalten', { size: 'sm', icon: 'settings', onClick: manageChannels })));
   }
 
@@ -254,6 +259,9 @@ export async function chatApp(container, ctx, o = {}) {
   mount(scroller, skeletons(4, 56));
   await loadChannels();
   await loadMessages({ initial: true });
+  async function loadTickets() { if (PARTNER) return; try { myTickets = (await api.get('/api/tickets?mine=1')).tickets; drawSide(); } catch { /* ohne Tickets */ } }
+  ctx.live(['tickets'], loadTickets, { wait: 300 });
+  loadTickets();
   ctx.live(['chat', 'profile'], async () => { await loadChannels(); await loadMessages(); }, { wait: 120 });
   const onOpen = async () => { const id = Number(sessionStorage.getItem(CHANNEL_KEY)); if (id && id !== current) { current = id; await loadChannels(); await loadMessages({ initial: true }); } };
   window.addEventListener('mdt:chat-open', onOpen);

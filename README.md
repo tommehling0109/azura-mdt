@@ -121,13 +121,27 @@ App „Kredit“ (Finanzen) für Mitarbeiter und – als Partner-App – für ex
 
 ## Superadmin, Rechte & Hierarchie
 
-- **Superadmin:** Der erste Benutzer (Einrichtung) ist Superadmin. Er hat alle Rechte, darf **alles endgültig löschen** (Kredite in jedem Status, Börsen-Geschäfte/Angebote, Deckel-Abrechnungen und -Firmen, externe Zugänge samt aller Geschäfte/Kredite/Dokumente, Lager samt Bestand, Journal-Einträge …) und das Panel zurücksetzen. Weitere Superadmins vergibt nur ein Superadmin; einer bleibt immer erhalten. Löschen anderer geht ohne Superadmin nur mit den jeweiligen Rechten (`credit.delete`, `market.delete`, `tab.delete`, `partners.delete`, `finance.delete`).
+- **Superadmin:** Die feste Rolle „Superadmin“ entsteht bei der Einrichtung des Systems (erster Benutzer) und ist **weder veränderbar noch vergebbar**. Sie darf wirklich **alles**, auch alles endgültig löschen – egal in welchem Status: Kredite (auch abgeschlossene), Börsen-Geschäfte/Angebote, Deckel-Abrechnungen und -Firmen, externe Zugänge samt Geschäften/Krediten/Dokumenten, Artikel samt Geschäften und Beständen, Lager samt Inhalt, Tickets, Journal-Einträge – und das Panel zurücksetzen. Daneben gibt es frei vergebbare Rollen wie **Administrator**. Andere löschen nur mit den jeweiligen Rechten (`credit.delete`, `market.delete`, `tab.delete`, `partners.delete`, `finance.delete`, `tickets.delete`); `partners.delete` genügt dafür allein (auch ohne `partners.manage`).
+- **Personalnummern** (z. B. AZ-221) kann nur der Superadmin ändern und beim Anlegen vergeben (eindeutig).
 - **Namen nach Hierarchie:** Den echten Namen eines Mitglieds sieht man bei sich selbst, als Superadmin und bei allen, die in der Hierarchie **unter** einem stehen (übergeordneter Rang oder Vorgesetzten-Kette). Alle anderen sehen nur die Personalnummer.
 - **Genaue Rechte:** Jede Route verlangt ein eindeutiges Recht; Rechte lassen sich nur vergeben, wenn man sie selbst besitzt. Die vollständige, **aus dem Code erzeugte** Matrix aller Rechte und Routen steht in [docs/RECHTE.md](docs/RECHTE.md) (`node scripts/gen-rights.mjs` aktualisiert sie). Neu: `users.password_reset`, `audit.export`, `stats.view`, `finance.manual`/`finance.export`/`finance.delete`, `partners.documents`/`partners.delete`, `users.avatar_edit`.
 
-## Externe Zugänge: Stammdaten
+## Externe Zugänge: Lieferant oder Ankäufer
 
-Beim Anlegen eines Zugangs: **Art** (Kunde/Partner oder **Lieferant**), Vorname, Nachname, Geburtsdatum, Postal Code, Straße, **UMail** (RP-interne Mail, die Endung `@umail.com` ist fest), **Telefonnummer** (wird schon beim Tippen ins Format `(555) 123-4567` gebracht), Kontonummer sowie **Ausweis** (Upload) und – wenn nötig – **Waffenschein** (Upload; PDF/PNG/JPEG/WebP, Typ per Dateikopf geprüft, max. 5 MB). Bei Kunden sind alle Angaben optional, bei **Lieferanten Pflicht** (inkl. Ausweis). Dokumente sieht und ändert nur, wer `partners.documents` hat. Löschen eines Zugangs mit Geschäften/Krediten: erst Hinweis, dann (mit `partners.delete`/Superadmin) samt aller Daten.
+Beim Anlegen wird zuerst die **Art** gewählt – davon hängt ab, welche Angaben nötig sind:
+
+- **Lieferant** (liefert uns Ware): Vorname, Nachname, Street/Straße, Postal Code, Telefonnummer, UMail (Endung `@umail.com` fest), Kontonummer – alles Pflicht – sowie die Dokumente **Ausweis, Führerschein, Waffenschein** (Pflicht) und **Führungszeugnis** (optional). Die Telefonnummer wird schon beim Tippen ins Format `(555) 123-4567` gebracht.
+- **Ankäufer** (kauft von uns): Name oder Bezeichnung, Ansprechpartner, Tel (optional).
+
+Dokumente (PDF/PNG/JPEG/WebP, Typ per Dateikopf geprüft, max. 5 MB) sieht und ändert nur, wer `partners.documents` hat. Löschen eines Zugangs mit Geschäften/Krediten: erst Hinweis, dann (mit `partners.delete` oder als Superadmin) samt aller Daten.
+
+## Personalakte der Mitglieder
+
+Beim Anlegen/Bearbeiten eines Benutzers: Vorname, Nachname, Street/Straße, Postal Code, Telefonnummer, UMail, Kontonummer sowie die Dokumente **Ausweis, Führerschein, Waffenschein, Führungszeugnis (optional)**. Die Akte sieht das Mitglied selbst und wer `users.personnel_view` hat (frei zuweisbar); ändern/hochladen mit `users.personnel_edit`. Die Angaben erscheinen nirgends sonst – die Anonymität (Personalnummer) bleibt bestehen.
+
+## Tickets (Fehler melden)
+
+Jedes Mitglied meldet über den Käfer-Button in der Kopfzeile, die App „Tickets“ oder den Chat (Seitenleiste „Meine Tickets“) einen Fehler, eine Idee oder Frage – mit **Screenshot** (Datei oder Einfügen per Strg+V). Der Melder verfolgt Status und Antworten (auch im Chat), das Team (`tickets.manage`) sieht alle Tickets, setzt Status/Priorität/Zuständigkeit und antwortet; Benachrichtigungen laufen in beide Richtungen. Löschen: `tickets.delete` bzw. Superadmin.
 
 ## Finanzen & Statistik
 

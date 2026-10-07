@@ -622,4 +622,47 @@ export const SCHEMA_MIGRATIONS = [
   ALTER TABLE partners ADD COLUMN weapon_required INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE partners ADD COLUMN weapon_doc_ext TEXT;
   `,
+  /* v14 – Personalakte, Dokumente (Führerschein/Führungszeugnis), Ankäufer-Felder, Ticketsystem */ `
+  ALTER TABLE users ADD COLUMN first_name TEXT NOT NULL DEFAULT '';
+  ALTER TABLE users ADD COLUMN last_name TEXT NOT NULL DEFAULT '';
+  ALTER TABLE users ADD COLUMN street TEXT NOT NULL DEFAULT '';
+  ALTER TABLE users ADD COLUMN postal_code TEXT NOT NULL DEFAULT '';
+  ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT '';
+  ALTER TABLE users ADD COLUMN umail_local TEXT NOT NULL DEFAULT '';
+  ALTER TABLE users ADD COLUMN account_number TEXT NOT NULL DEFAULT '';
+  ALTER TABLE users ADD COLUMN doc_id_ext TEXT;
+  ALTER TABLE users ADD COLUMN doc_license_ext TEXT;
+  ALTER TABLE users ADD COLUMN doc_weapon_ext TEXT;
+  ALTER TABLE users ADD COLUMN doc_clearance_ext TEXT;
+  ALTER TABLE partners ADD COLUMN contact_name TEXT NOT NULL DEFAULT '';
+  ALTER TABLE partners ADD COLUMN license_doc_ext TEXT;
+  ALTER TABLE partners ADD COLUMN clearance_doc_ext TEXT;
+  CREATE TABLE tickets (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_number TEXT UNIQUE,
+    user_id       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    title         TEXT NOT NULL,
+    description   TEXT NOT NULL DEFAULT '',
+    category      TEXT NOT NULL DEFAULT 'bug' CHECK (category IN ('bug','idea','question','other')),
+    priority      TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low','normal','high')),
+    status        TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','in_progress','resolved','closed')),
+    app           TEXT NOT NULL DEFAULT '',
+    shot_ext      TEXT,
+    assignee_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    closed_at     TEXT
+  );
+  CREATE INDEX idx_tickets_user ON tickets(user_id);
+  CREATE INDEX idx_tickets_status ON tickets(status);
+  CREATE TABLE ticket_comments (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id  INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    body       TEXT NOT NULL,
+    shot_ext   TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_ticket_comments ON ticket_comments(ticket_id, id);
+  `,
 ];

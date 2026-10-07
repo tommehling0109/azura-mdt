@@ -17,6 +17,14 @@ export function purgeDeal(id) {
   run('DELETE FROM finance_ledger WHERE deal_id = ?', id);
   run('DELETE FROM market_deals WHERE id = ?', id);
 }
+/** Artikel samt aller Geschäfte, Gesuche, Bestände und Verläufe (nur Superadmin). */
+export function purgeItem(id) {
+  for (const d of all('SELECT id FROM market_deals WHERE item_id = ?', id)) purgeDeal(d.id);
+  run('DELETE FROM market_wanted WHERE item_id = ?', id);
+  run('DELETE FROM warehouse_stock WHERE item_id = ?', id);
+  run('DELETE FROM warehouse_events WHERE item_id = ?', id);
+  run('DELETE FROM market_items WHERE id = ?', id);
+}
 export function purgeStatement(id) {
   const s = get('SELECT invoice_file_ext e FROM tab_statements WHERE id = ?', id);
   if (s?.e) rm(data('tab-invoices', `${id}.${s.e}`));
@@ -28,13 +36,16 @@ export function purgeCompany(id) {
   run('DELETE FROM tab_entries WHERE company_id = ?', id); // (alte Buchungen aus früheren Versionen)
   run('DELETE FROM tab_companies WHERE id = ?', id);
 }
+/** Dateien eines Mitglieds (Profilbild, Personalakte-Dokumente) entfernen. */
+export function purgeUserFiles(id) {
+  for (const e of ['png', 'jpg', 'webp']) rm(data('avatars', `${id}.${e}`));
+  for (const k of ['id', 'license', 'weapon', 'clearance']) for (const e of ['pdf', 'png', 'jpg', 'webp']) rm(data('user-docs', `${id}-${k}.${e}`));
+}
 export function purgePartner(id) {
   for (const l of all('SELECT id FROM credit_loans WHERE partner_id = ?', id)) purgeLoan(l.id);
   for (const d of all('SELECT id FROM market_deals WHERE partner_id = ?', id)) purgeDeal(d.id);
   run('DELETE FROM finance_ledger WHERE partner_id = ?', id);
   run("DELETE FROM notifications WHERE recipient_type = 'partner' AND recipient_id = ?", id);
-  const p = get('SELECT id_doc_ext i, weapon_doc_ext w FROM partners WHERE id = ?', id);
-  if (p?.i) rm(data('partner-docs', `${id}-id.${p.i}`));
-  if (p?.w) rm(data('partner-docs', `${id}-weapon.${p.w}`));
+  for (const k of ['id', 'license', 'weapon', 'clearance']) for (const e of ['pdf', 'png', 'jpg', 'webp']) rm(data('partner-docs', `${id}-${k}.${e}`));
   run('DELETE FROM partners WHERE id = ?', id); // Zugangs-Sitzungen, Chats und Lesemarken folgen per Cascade
 }

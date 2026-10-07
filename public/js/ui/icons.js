@@ -56,6 +56,7 @@ const P = {
   boat: '<path d="M3 17l2 3h14l2-3zM12 3v10M12 5l6 7h-6M12 5l-6 7h6"/>',
   plane: '<path d="M2 15l8-2 3-9 2 1v8l7 2v2l-8-1-2 3-2-3-8 1z"/>',
   medical: '<path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z"/>',
+  bug: '<path d="M8 9h8v5a4 4 0 0 1-8 0zM9 4l1.6 2.2M15 4l-1.6 2.2M4 11h4M16 11h4M4 18h4M16 18h4M12 12v8"/>',
   chart: '<path d="M4 20V11M10 20V4M16 20v-6M22 20H2"/>',
   wallet: '<path d="M3 7a2 2 0 0 1 2-2h13v4M3 7v11a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2zM16 14.5h2"/>',
   dollar: '<path d="M12 3v18M16 7.5C16 6 14.5 5 12 5S8 6.2 8 8c0 4 8 2.5 8 7 0 1.8-1.8 3-4 3s-4-1-4-2.5"/>',

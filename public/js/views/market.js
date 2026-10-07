@@ -4,7 +4,7 @@ import {
   button, busy, card, field, input, select, tabs, table, badge, formError, openModal, confirmDialog, toast, skeletons, empty, note, toggle,
 } from '../ui/kit.js';
 import { api } from '../api.js';
-import { can } from '../state.js';
+import { can, state } from '../state.js';
 import { money, dealBadge, catBadge, turnBadge, dirBadge, openDealModal } from './market-shared.js';
 
 export default async function render(container, ctx) {
@@ -214,7 +214,11 @@ export default async function render(container, ctx) {
     if (item) footer.push(button('Löschen', { variant: 'danger', icon: 'trash', onClick: async () => {
       const r = await confirmDialog({ title: 'Item löschen?', message: `„${item.name}“ wird aus dem Katalog entfernt. Items mit Geschäften können nur deaktiviert werden.`, confirmLabel: 'Löschen' });
       if (!r) return;
-      try { await api.del(`/api/market/items/${item.id}`); m.close(); toast('Item gelöscht.'); showTab('catalog'); } catch (e) { toast(e.message, 'err'); }
+      try { await api.del(`/api/market/items/${item.id}`); m.close(); toast('Item gelöscht.'); showTab('catalog'); } catch (e) {
+        if (e.status === 409 && state.user.isSuperadmin && await confirmDialog({ title: 'Samt allem löschen?', message: `${e.message.split(' (Superadmins')[0]} Als Superadmin kannst du den Artikel samt Geschäften, Gesuchen und Beständen endgültig löschen.`, confirmLabel: 'Alles endgültig löschen' })) {
+          try { await api.del(`/api/market/items/${item.id}` + '?force=1'); m.close(); toast('Item gelöscht.'); showTab('catalog'); } catch (e2) { toast(e2.message, 'err'); }
+        } else if (e.status !== 409 || !state.user.isSuperadmin) toast(e.message, 'err');
+      }
     } }));
     footer.push(h('span', { class: 'grow' }), button('Abbrechen', { onClick: () => m.close() }), button(item ? 'Speichern' : 'Anlegen', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
       err.replaceChildren();

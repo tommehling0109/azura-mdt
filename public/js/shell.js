@@ -61,10 +61,12 @@ export async function openTarget(target) {
   window.focus?.();
   if (target.app === 'chat' && target.channelId) { try { sessionStorage.setItem('mdt:chat:channel', String(target.channelId)); } catch { /* egal */ } }
   if (target.app === 'tab' && target.statementId) { try { sessionStorage.setItem('mdt:tab:open', String(target.statementId)); } catch { /* egal */ } }
+  if (target.app === 'tickets' && target.ticketId) { try { sessionStorage.setItem('mdt:tickets:open', String(target.ticketId)); } catch { /* egal */ } }
   if (target.app === 'credit' && target.loanId) { try { sessionStorage.setItem('mdt:credit:open', String(target.loanId)); } catch { /* egal */ } }
   if (target.app) ui.open(target.app);
   if (target.app === 'credit' && target.loanId) window.dispatchEvent(new Event('mdt:credit-open'));
   if (target.app === 'tab' && target.statementId) window.dispatchEvent(new Event('mdt:tab-open'));
+  if (target.app === 'tickets' && target.ticketId) window.dispatchEvent(new Event('mdt:tickets-open'));
   if (target.app === 'chat' && target.channelId) window.dispatchEvent(new Event('mdt:chat-open'));
   if (target.app === 'market' && target.dealId) {
     const { openDealModal } = await import('./views/market-shared.js');
@@ -134,6 +136,7 @@ export function showApp(onLogout, opts = {}) {
   const liveDot = h('span', { class: 'panel-btn', title: 'Live verbunden' }, pulse);
   onStatus((v) => { pulse.classList.toggle('off', !v); liveDot.title = v ? 'Live verbunden – Änderungen erscheinen sofort' : 'Verbindung unterbrochen – verbinde automatisch neu …'; });
   let lockCtl = null;
+  const reportBtn = h('button', { class: 'panel-btn', type: 'button', title: 'Fehler melden / Ticket eröffnen', 'aria-label': 'Fehler melden', onclick: () => import('./views/tickets.js').then((m) => m.openReportDialog({ app: document.querySelector('.win.active .wt')?.textContent ?? '' })) }, icon('bug'));
   const lockBtn = h('button', { class: 'panel-btn', type: 'button', title: 'Bildschirm sperren', 'aria-label': 'Bildschirm sperren', onclick: () => lockCtl?.lock() }, icon('lockClosed'));
   const bellBadge = h('span', { class: 'bell-badge', hidden: true });
   const bell = h('button', { class: 'panel-btn', type: 'button', title: 'Benachrichtigungen', 'aria-label': 'Benachrichtigungen', 'aria-haspopup': 'true' }, icon('bell'), bellBadge);
@@ -164,7 +167,7 @@ export function showApp(onLogout, opts = {}) {
     h('div', { class: 'panel-left' }, startBtn),
     h('div', { class: 'panel-center' }, clock),
     h('div', { class: 'panel-right' },
-      liveDot, bell, lockBtn,
+      liveDot, bell, !opts.partner && reportBtn, lockBtn,
       h('button', { class: 'panel-btn panel-user', type: 'button', title: opts.partner ? state.user.displayName : 'Konto & Sicherheit', onclick: opts.partner ? undefined : () => openAccountDialog() },
         opts.partner ? icon('users') : (panelAvatar = userAvatar(state.user, 'sm')), h('span', null, state.user.displayName)),
       h('button', { class: 'panel-btn', type: 'button', title: 'Abmelden', 'aria-label': 'Abmelden', onclick: () => { clearLockState(); lockCtl?.destroy(); onLogout(); } }, icon('logout'))));

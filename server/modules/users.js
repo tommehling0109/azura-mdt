@@ -5,6 +5,10 @@ import { loadAccess, permissionExists } from '../core/permissions.js';
 import { audit } from '../core/audit.js';
 import { assignMemberNumber } from '../core/members.js';
 import { memberLabel } from '../core/identity.js';
+import { purgeUserFiles } from '../core/purge.js';
+
+const SUPERADMIN_ROLE = { id: -1, name: 'Superadmin', color: '#f59e0b', isSystem: true };
+const MEMBER_NO_RE = /^[A-Za-z0-9-]{2,20}$/;
 
 const STATUSES = ['pending', 'active', 'blocked', 'rejected'];
 const USERNAME_RE = /^[\p{L}\p{N}._-]+$/u;
@@ -45,7 +49,7 @@ function detail(id, viewerId = null) {
   if (!u) return null;
   const acc = loadAccess(id);
   return {
-    ...listDto(u, viewerId), roles: acc.roles, isAdmin: acc.isAdmin,
+    ...listDto(u, viewerId), roles: u.is_superadmin ? [SUPERADMIN_ROLE, ...acc.roles] : acc.roles, isAdmin: acc.isAdmin,
     directPermissions: all('SELECT permission_key k FROM user_permissions WHERE user_id = ?', id).map((r) => r.k),
     effectivePermissions: [...acc.perms],
   };
@@ -139,7 +143,7 @@ export default {
       const counts = Object.fromEntries(all('SELECT status, COUNT(*) c FROM users GROUP BY status').map((x) => [x.status, x.c]));
       return {
         counts,
-        users: rows.map((u) => ({ ...listDto(u, ctx.user), roles: roles.filter((x) => x.user_id === u.id).map(({ id, name, color }) => ({ id, name, color })) })),
+        users: rows.map((u) => ({ ...listDto(u, ctx.user), roles: [...(u.is_superadmin ? [SUPERADMIN_ROLE] : []), ...roles.filter((x) => x.user_id === u.id).map(({ id, name, color }) => ({ id, name, color }))] })),
       };
     });
 
@@ -163,12 +167,20 @@ export default {
       const departmentId = optId(b.departmentId, 'departments', 'Abteilung');
       assertCanAssignRank(ctx.user, rankId);
       if (get('SELECT 1 x FROM users WHERE username = ?', username)) throw conflict('Dieser Benutzername ist bereits vergeben.');
+      let memberNo = null;
+      if (b.memberNumber != null && String(b.memberNumber).trim() !== '') {
+        if (!ctx.user.isSuperadmin) throw forbidden('Personalnummern vergibt nur der Superadmin.');
+        memberNo = String(b.memberNumber).trim().toUpperCase();
+        if (!MEMBER_NO_RE.test(memberNo)) throw bad('Personalnummer: 2–20 Zeichen (Buchstaben, Ziffern, Bindestrich).');
+        if (get('SELECT 1 x FROM users WHERE member_number = ?', memberNo)) throw conflict('Diese Personalnummer ist bereits vergeben.');
+      }
       const id = tx(() => {
         const t = now();
         const res = run('INSERT INTO users (username,display_name,password_hash,status,rank_id,department_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)',
           username, displayName, hashPassword(b.password), status, rankId, departmentId, t, t);
         const uid = Number(res.lastInsertRowid);
         setRoles(uid, roleIds);
+        if (memberNo) run('UPDATE users SET member_number = ? WHERE id = ?', memberNo, uid);
         if (status === 'active') assignMemberNumber(uid);
         return uid;
       });
@@ -188,11 +200,13 @@ export default {
       if (target.isSuperadmin && !ctx.user.isSuperadmin) throw forbidden('Superadmins dürfen nur von Superadmins bearbeitet werden.');
 
       tx(() => {
-        if (b.isSuperadmin !== undefined) {
-          if (!ctx.user.isSuperadmin) throw forbidden('Nur Superadmins können den Superadmin-Status vergeben oder entziehen.');
-          const v = b.isSuperadmin ? 1 : 0;
-          if (!v && cur.is_superadmin && get('SELECT COUNT(*) c FROM users WHERE is_superadmin = 1').c <= 1) throw conflict('Es muss mindestens ein Superadmin bleiben.');
-          run('UPDATE users SET is_superadmin = ? WHERE id = ?', v, id);
+        if (b.isSuperadmin !== undefined) throw forbidden('Die Rolle „Superadmin“ entsteht bei der Einrichtung des Systems und kann weder vergeben noch entzogen werden.');
+        if (b.memberNumber !== undefined) {
+          if (!ctx.user.isSuperadmin) throw forbidden('Personalnummern ändert nur der Superadmin.');
+          const mn = String(b.memberNumber ?? '').trim().toUpperCase();
+          if (!MEMBER_NO_RE.test(mn)) throw bad('Personalnummer: 2–20 Zeichen (Buchstaben, Ziffern, Bindestrich).');
+          if (get('SELECT 1 x FROM users WHERE member_number = ? AND id != ?', mn, id)) throw conflict('Diese Personalnummer ist bereits vergeben.');
+          run('UPDATE users SET member_number = ?, updated_at = ? WHERE id = ?', mn, now(), id);
         }
         if (b.displayName !== undefined) {
           if (id !== ctx.user.id) throw forbidden('Namen anderer Mitglieder sind nicht einsehbar und werden hier nicht geändert.');
@@ -279,6 +293,7 @@ export default {
       if (isActiveAdmin(id) && otherActiveAdmins(id) === 0) throw conflict('Der letzte aktive Administrator kann nicht gelöscht werden.');
       const before = snapshot(id);
       run('DELETE FROM users WHERE id = ?', id);
+      purgeUserFiles(id);
       audit(ctx, { action: 'user.deleted', module: 'users', targetType: 'user', targetId: id, targetLabel: memberLabel(cur), before });
       return { ok: true };
     });

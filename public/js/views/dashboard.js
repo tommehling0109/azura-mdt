@@ -137,6 +137,11 @@ const RENDERERS = {
         h('div', { class: 'grow' }, h('div', { class: 't' }, x.company), h('div', { class: 's' }, x.period)), h('b', null, cents(x.amountCents)), h('span', { class: 'badge', style: { '--c': x.statusColor } }, x.statusLabel))))), { icon: 'dollar' });
   },
 
+  'tickets-open': (w) => {
+    const d = w.data;
+    return card(w.title, h('div', { class: 'tile-row' }, tile(d.open, 'Offen', { ic: 'bug', tone: d.open ? 'warn' : '', onClick: () => openApp('tickets') }), tile(d.inProgress, 'In Arbeit', { ic: 'activity', tone: 'info', onClick: () => openApp('tickets') }), tile(d.high, 'Hohe Priorität', { ic: 'alert', tone: d.high ? 'err' : '', onClick: () => openApp('tickets') })), { icon: 'bug' });
+  },
+
   'credit-overview': (w) => {
     const d = w.data;
     const cents = (c) => money(c / 100);

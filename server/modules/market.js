@@ -10,7 +10,7 @@ import { labelForUser } from '../core/identity.js';
 import { notify, staffWith } from '../core/notifications.js';
 import { quote, bookStock } from '../core/stock.js';
 import { expectDealPayment, settleDeal, voidDeal } from '../core/ledger.js';
-import { purgeDeal } from '../core/purge.js';
+import { purgeDeal, purgeItem } from '../core/purge.js';
 import { assertCanBook } from './warehouses.js';
 
 /** Zustände eines Geschäfts. Die SCHLÜSSEL kennt der Code, Beschriftung und Farbe sind im Admin-Bereich änderbar. */
@@ -486,8 +486,9 @@ export default {
       const cur = loadItem(id);
       if (!cur) throw notFound('Item nicht gefunden.');
       const n = get('SELECT COUNT(*) c FROM market_deals WHERE item_id = ?', id).c;
-      if (n > 0) throw conflict(`Das Item wird in ${n} Geschäft(en) verwendet. Deaktiviere es stattdessen.`);
-      run('DELETE FROM market_items WHERE id = ?', id);
+      const force = ctx.query.force === '1' && ctx.user.isSuperadmin;
+      if (n > 0 && !force) throw conflict(`Das Item wird in ${n} Geschäft(en) verwendet. Deaktiviere es stattdessen. (Superadmins können es samt Geschäften löschen.)`);
+      tx(() => purgeItem(id));
       audit(ctx, { action: 'market.item_deleted', module: 'market', targetType: 'item', targetId: id, targetLabel: cur.name, before: cur });
       return { ok: true };
     });

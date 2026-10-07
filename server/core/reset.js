@@ -13,7 +13,7 @@ let reinit = () => {};
 export const setReinit = (fn) => { reinit = fn; };
 
 /** Ordner mit hochgeladenen Dateien (Backups und Kartenkacheln bleiben bewusst unberührt). */
-const FILE_DIRS = ['avatars', 'partner-docs', 'tab-invoices', 'branding', 'vehicles'];
+const FILE_DIRS = ['avatars', 'partner-docs', 'user-docs', 'tab-invoices', 'tickets', 'branding', 'vehicles'];
 
 export function factoryReset() {
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all().map((r) => r.name);

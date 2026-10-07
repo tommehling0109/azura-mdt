@@ -37,6 +37,7 @@ export const NAV = [
   {
     section: 'Kommunikation',
     items: [
+      { id: 'tickets', label: 'Tickets', subtitle: 'Fehler melden und verfolgen', icon: 'bug', path: '/tickets', win: { w: 1000, h: 640 }, view: () => import('./views/tickets.js') },
       { id: 'chat', label: 'Chat', subtitle: 'Kanäle, Nachrichten und Pinnwand', icon: 'chat', path: '/chat', perm: ['chat.view'], win: { w: 1000, h: 640 }, view: () => import('./views/chat.js'), badge: 'chatUnread' },
     ],
   },

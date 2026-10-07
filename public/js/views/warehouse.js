@@ -268,7 +268,11 @@ export default async function render(container, ctx) {
     const footer = [];
     if (i) footer.push(button('Löschen', { variant: 'danger', icon: 'trash', onClick: async () => {
       if (!await confirmDialog({ title: 'Artikel löschen?', message: `${i.name} wird entfernt. Das geht nur ohne Bestand und ohne Börsen-Geschäfte.`, confirmLabel: 'Löschen' })) return;
-      try { await api.del(`/api/warehouse/items/${i.id}`); m.close(); toast('Artikel gelöscht.'); } catch (e) { toast(e.message, 'err'); }
+      try { await api.del(`/api/warehouse/items/${i.id}`); m.close(); toast('Artikel gelöscht.'); } catch (e) {
+        if (e.status === 409 && state.user.isSuperadmin && await confirmDialog({ title: 'Samt allem löschen?', message: `${e.message.split(' (Superadmins')[0]} Als Superadmin kannst du den Artikel samt Geschäften, Gesuchen und Beständen endgültig löschen.`, confirmLabel: 'Alles endgültig löschen' })) {
+          try { await api.del(`/api/warehouse/items/${i.id}` + '?force=1'); m.close(); toast('Artikel gelöscht.'); } catch (e2) { toast(e2.message, 'err'); }
+        } else if (e.status !== 409 || !state.user.isSuperadmin) toast(e.message, 'err');
+      }
     } }));
     footer.push(h('span', { class: 'grow' }), button('Abbrechen', { onClick: () => m.close() }), button(i ? 'Speichern' : 'Anlegen', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
       err.replaceChildren();

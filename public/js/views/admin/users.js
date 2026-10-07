@@ -7,6 +7,26 @@ import {
 import { api } from '../../api.js';
 import { can, state } from '../../state.js';
 import { prepareAvatar } from '../account.js';
+import { phoneInput, readFile, filePicker } from './partners.js';
+
+/** Dokumente der Personalakte: Schlüssel, Beschriftung, Pflicht (Pflicht gilt nur für Lieferanten – bei Mitgliedern sind alle freiwillig) */
+const PERS_DOCS = [['id', 'Ausweis'], ['license', 'Führerschein'], ['weapon', 'Waffenschein'], ['clearance', 'Führungszeugnis (optional)']];
+/** Persönliche Angaben eines Mitglieds: Vorname, Nachname, Straße, Postal Code, Telefonnummer, UMail (Endung fest), Kontonummer */
+function personFields(a = {}, disabled = false) {
+  const first = input({ value: a.firstName ?? '', maxLength: 40, disabled, autocomplete: 'off' }), last = input({ value: a.lastName ?? '', maxLength: 40, disabled, autocomplete: 'off' });
+  const street = input({ value: a.street ?? '', maxLength: 80, disabled, autocomplete: 'off' }), postal = input({ value: a.postalCode ?? '', maxLength: 12, disabled, placeholder: 'z. B. 1234', autocomplete: 'off' });
+  const phone = phoneInput(a.phone); phone.disabled = disabled;
+  const umail = input({ value: a.umailLocal ?? '', maxLength: 40, disabled, placeholder: 'name', autocomplete: 'off' });
+  umail.addEventListener('input', () => { umail.value = umail.value.toLowerCase().replace(/@.*$/, '').replace(/[^a-z0-9._-]/g, ''); });
+  const account = input({ value: a.accountNumber ?? '', maxLength: 20, disabled, placeholder: 'z. B. LS28180705', autocomplete: 'off' });
+  account.addEventListener('input', () => { account.value = account.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''); });
+  return {
+    el: h('div', null, h('div', { class: 'form-row' }, field('Vorname', first), field('Nachname', last)), h('div', { class: 'form-row' }, field('Street / Straße', street), field('Postal Code', postal)),
+      h('div', { class: 'form-row' }, field('Telefonnummer', phone), field('Kontonummer', account)),
+      field('UMail', h('div', { class: 'input-group' }, umail, h('span', { class: 'addon' }, '@umail.com')), { help: 'RP-interne Mail – die Endung ist fest.' })),
+    values: () => ({ firstName: first.value.trim(), lastName: last.value.trim(), street: street.value.trim(), postalCode: postal.value.trim(), phone: phone.value.trim(), umail: umail.value.trim(), accountNumber: account.value.trim() }),
+  };
+}
 
 let permCatalog = null;
 const loadCatalog = async () => (permCatalog ??= (await api.get('/api/permissions')).permissions);
@@ -122,7 +142,10 @@ export default async function render(container, ctx) {
       catch (e) { toast(e.message || 'Das Bild konnte nicht verarbeitet werden.', 'err'); }
       avatarFile.value = '';
     });
-    const superBox = user && state.user.isSuperadmin ? checkbox(h('span', null, 'Superadmin'), user.isSuperadmin, { desc: 'Uneingeschränkter Zugriff, darf alles endgültig löschen und das Panel zurücksetzen. Mindestens ein Superadmin muss bleiben.' }) : null;
+    const noInput = state.user.isSuperadmin ? input({ value: user?.memberNumber ?? '', maxLength: 20, placeholder: user ? 'Personalnummer' : 'leer = automatisch die nächste Nummer', autocomplete: 'off' }) : null;
+    if (noInput) noInput.addEventListener('input', () => { noInput.value = noInput.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''); });
+    const personNew = !user && can('users.personnel_edit') ? personFields() : null;
+    const docPickers = personNew ? Object.fromEntries(PERS_DOCS.map(([k, label]) => [k, filePicker(`${label.replace(' (optional)', '')} hochladen`)])) : null;
     const general = h('div', null, err,
       user && h('div', { class: 'member-card' }, userAvatar(user, 'lg'),
         h('div', { class: 'grow' }, h('div', { class: 'mc-name' }, user.displayName), h('div', { class: 'mc-sub' }, user.username ? `@${user.username}` : (user.memberNumber ? 'Personalnummer' : '')),
@@ -137,21 +160,25 @@ export default async function render(container, ctx) {
       (!user || user.isSelf) ? h('div', { class: 'form-row' }, field('Anzeigename', dn), field('Benutzername', un))
         : user.nameVisible ? note(`Du siehst den Namen, weil dieses Mitglied in der Hierarchie unter dir steht (oder du Superadmin bist): ${user.displayName}${user.username ? ' (@' + user.username + ')' : ''}.`, 'shield')
           : note('Namen von Mitgliedern auf gleicher oder höherer Ebene werden aus Datenschutzgründen nicht angezeigt – die Identifikation läuft über die Personalnummer.', 'shield'),
-      superBox,
+      noInput && field('Personalnummer', noInput, { help: 'Nur der Superadmin kann Personalnummern ändern oder vergeben (eindeutig, z. B. AZ-221).' }),
       h('div', { class: 'form-row' }, field('Rang', rankSel), field('Abteilung', deptSel)),
       supSel && field('Vorgesetzter', supSel, { help: 'Direkter Vorgesetzter dieses Mitglieds.' }),
       !user && field('Passwort', pw),
+      personNew && h('div', null, h('div', { class: 'sep' }), h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Persönliche Angaben (Personalakte)'), personNew.el, PERS_DOCS.map(([k, label]) => field(label, docPickers[k].el))),
       !user && h('div', { class: 'help' }, 'Der Benutzer wird sofort aktiv geschaltet und erhält automatisch die nächste Mitgliedsnummer.'),
       user && h('dl', { class: 'details-dl' },
         h('dt', null, 'Erstellt'), h('dd', null, fmtDateTime(user.createdAt)),
         h('dt', null, 'Letzte Anmeldung'), h('dd', null, user.lastLoginAt ? fmtDateTime(user.lastLoginAt) : 'nie'),
         user.statusReason && [h('dt', null, 'Begründung'), h('dd', null, user.statusReason)]));
 
-    const panes = { general, roles: roleBody, perms: permBody, eff: effBody };
+    const showPersonnel = !!user && (user.isSelf || can('users.personnel_view'));
+    const personnelBody = h('div');
+    const panes = { general, roles: roleBody, perms: permBody, eff: effBody, personnel: personnelBody };
     const body = h('div');
-    const show = (k) => mount(body, panes[k]);
+    let personnelLoaded = false;
+    const show = (k) => { mount(body, panes[k]); if (k === 'personnel' && !personnelLoaded) { personnelLoaded = true; loadPersonnel(); } };
     show('general');
-    const tabBar = user ? tabs([{ id: 'general', label: 'Allgemein' }, { id: 'roles', label: 'Rollen' }, { id: 'perms', label: 'Direkte Rechte' }, { id: 'eff', label: 'Effektiv' }], 'general', show) : null;
+    const tabBar = user ? tabs([{ id: 'general', label: 'Allgemein' }, { id: 'roles', label: 'Rollen' }, { id: 'perms', label: 'Direkte Rechte' }, { id: 'eff', label: 'Effektiv' }, showPersonnel && { id: 'personnel', label: 'Personalakte' }].filter(Boolean), 'general', show) : null;
     if (tabBar) tabBar.style.marginBottom = '16px';
 
     const footer = [];
@@ -165,18 +192,45 @@ export default async function render(container, ctx) {
     footer.push(button('Schließen', { onClick: () => m.close() }));
     if (!user || can('users.edit')) footer.push(button(user ? 'Speichern' : 'Anlegen', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, save) }));
 
+    /** Personalakte: Angaben + Dokumente (ansehen mit users.personnel_view, ändern mit users.personnel_edit) */
+    async function loadPersonnel() {
+      mount(personnelBody, skeletons(2, 60));
+      let d; try { d = await api.get(`/api/users/${user.id}/personnel`); } catch (e) { mount(personnelBody, note(e.message, 'alert')); personnelLoaded = false; return; }
+      const canEdit = d.canEdit; let pf = personFields(d.personnel, !canEdit);
+      const docsEl = h('div');
+      const drawDocs = (docs) => mount(docsEl, PERS_DOCS.map(([k, label]) => {
+        const has = docs[k]; const f = h('input', { type: 'file', accept: 'application/pdf,image/png,image/jpeg,image/webp', hidden: true });
+        f.addEventListener('change', async () => { if (!f.files[0]) return; try { const r = await api.post(`/api/users/${user.id}/docs/${k}`, { data: await readFile(f.files[0]) }); drawDocs(r.personnel.docs); toast('Dokument gespeichert.'); } catch (ex) { toast(ex.message, 'err'); } });
+        return h('div', { class: 'row', style: { alignItems: 'center', marginBottom: '6px' } }, h('b', { style: { minWidth: '170px' } }, label), has ? h('span', { class: 'badge b-ok' }, 'liegt vor') : h('span', { class: 'badge b-mute' }, 'fehlt'),
+          has && h('a', { class: 'btn btn-sm', href: `/api/users/${user.id}/docs/${k}`, target: '_blank', rel: 'noopener' }, icon('search'), 'Ansehen'), canEdit && f,
+          canEdit && button(has ? 'Ersetzen' : 'Hochladen', { size: 'sm', icon: 'download', onClick: () => f.click() }),
+          canEdit && has && button('', { size: 'sm', variant: 'ghost', icon: 'trash', title: 'Dokument entfernen', onClick: async () => { try { const r = await api.del(`/api/users/${user.id}/docs/${k}`); drawDocs(r.personnel.docs); } catch (ex) { toast(ex.message, 'err'); } } }));
+      }));
+      drawDocs(d.personnel.docs);
+      mount(personnelBody, note('Die Personalakte sehen nur das Mitglied selbst und Berechtigte (users.personnel_view). Die Angaben erscheinen nirgends sonst im System.', 'shield'), h('div', { style: { height: '12px' } }), pf.el,
+        canEdit && h('div', { style: { margin: '8px 0 14px' } }, button('Angaben speichern', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => { try { await api.put(`/api/users/${user.id}/personnel`, pf.values()); toast('Personalakte gespeichert.'); } catch (ex) { toast(ex.message, 'err'); } }) })),
+        h('div', { class: 'sep' }), h('div', { class: 'label', style: { marginBottom: '8px' } }, 'Dokumente'), docsEl);
+    }
+
     async function save() {
       err.replaceChildren();
       try {
         if (!user) {
-          await api.post('/api/users', { displayName: dn.value, username: un.value, password: pw.value, rankId: idOrNull(rankSel), departmentId: idOrNull(deptSel), roleIds: roleBoxes.filter(([, c]) => c.input.checked).map(([r]) => r.id) });
+          const { user: made } = await api.post('/api/users', { displayName: dn.value, username: un.value, password: pw.value, memberNumber: noInput?.value.trim() || undefined, rankId: idOrNull(rankSel), departmentId: idOrNull(deptSel), roleIds: roleBoxes.filter(([, c]) => c.input.checked).map(([r]) => r.id) });
+          if (personNew) { // Personalakte direkt mit anlegen (Benutzer existiert bereits – Fehler hier verhindern ihn nicht)
+            try {
+              const v = personNew.values();
+              if (Object.values(v).some(Boolean)) await api.put(`/api/users/${made.id}/personnel`, v);
+              for (const [k] of PERS_DOCS) { const f = docPickers[k].file(); if (f) await api.post(`/api/users/${made.id}/docs/${k}`, { data: await readFile(f) }); }
+            } catch (ex) { toast(`Benutzer angelegt – die Personalakte konnte nicht vollständig gespeichert werden: ${ex.message}`, 'warn'); load(); m.close(); return; }
+          }
         } else {
           await api.patch(`/api/users/${user.id}`, {
             displayName: user.isSelf ? dn.value : undefined,
             rankId: idOrNull(rankSel), departmentId: idOrNull(deptSel), supervisorId: supSel ? idOrNull(supSel) : undefined,
             roleIds: roleBoxes.filter(([, c]) => c.input.checked).map(([r]) => r.id),
             permissions: permBoxes.filter(([, c]) => c.input.checked).map(([p]) => p.key),
-            isSuperadmin: superBox ? superBox.input.checked : undefined,
+            memberNumber: noInput && noInput.value.trim() && noInput.value.trim() !== user.memberNumber ? noInput.value.trim() : undefined,
           });
         }
         m.close(); toast(user ? 'Änderungen gespeichert.' : 'Benutzer angelegt.'); load();

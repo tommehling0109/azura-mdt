@@ -4,14 +4,14 @@
 
 ## Grundregeln
 
-- **Superadmin** (`is_superadmin`): uneingeschränkt, hat automatisch **alle** Rechte, darf alles endgültig löschen und das Panel zurücksetzen. Der erste Benutzer (Setup) ist Superadmin; weitere vergibt nur ein Superadmin. Es muss immer mindestens ein Superadmin bleiben.
+- **Superadmin**: feste Rolle, entsteht bei der Einrichtung (erster Benutzer), **nicht veränderbar und nicht vergebbar**. Hat automatisch **alle** Rechte und darf alles endgültig löschen (jeder Status) sowie das Panel zurücksetzen. Nur der Superadmin ändert Personalnummern.
 - **Administrator-Rollen** (`is_admin`): haben automatisch alle fachlichen Rechte, dürfen aber nur von Administratoren/Superadmins vergeben und bearbeitet werden. Superadmins dürfen nur von Superadmins verwaltet werden.
 - Alle anderen: ausschließlich die Rechte aus **Rolle(n)**, **Rang** und **direkten Rechten**. Rechte vergeben darf nur, wer sie selbst besitzt (keine Rechteausweitung).
 - Mehrere Rechte bei einer Route (`a | b`) bedeuten: **eines davon genügt** (z. B. Lesezugriff für verschiedene Rollen). Schreibende Routen verlangen immer genau das Recht der Aktion.
 - Namen von Mitgliedern sieht man nur bei sich selbst, als Superadmin und bei Mitgliedern **unterhalb** der eigenen Hierarchie (übergeordneter Rang / Vorgesetzten-Kette); sonst nur die Personalnummer.
 - Statistik: `stats.view` öffnet die App, jeder Abschnitt erscheint zusätzlich nur mit dem Ansichtsrecht des jeweiligen Bereichs.
 
-## Rechte (64)
+## Rechte (68)
 
 ### audit
 
@@ -90,6 +90,13 @@
 | `partners.manage` | Externe Zugänge erstellen, bearbeiten, Links und Codes verwalten |
 | `partners.view` | Externe Zugänge ansehen |
 
+### personnel
+
+| Recht | Bedeutung |
+|---|---|
+| `users.personnel_edit` | Personalakte bearbeiten (Angaben ändern, Dokumente hochladen) |
+| `users.personnel_view` | Personalakte ansehen (persönliche Angaben und Dokumente der Mitglieder) |
+
 ### profile
 
 | Recht | Bedeutung |
@@ -128,6 +135,13 @@
 | `tab.manage_companies` | Deckel: Firmen anlegen/bearbeiten und Portal-Links verwalten |
 | `tab.statements` | Deckel: Abrechnungen prüfen, bestätigen und Zahlungen abwickeln (Finanz) |
 | `tab.view` | Deckel: Firmen und Abrechnungen ansehen |
+
+### tickets
+
+| Recht | Bedeutung |
+|---|---|
+| `tickets.delete` | Tickets: endgültig löschen |
+| `tickets.manage` | Tickets: alle Tickets sehen, Status/Priorität/Zuständigkeit ändern und antworten |
 
 ### users
 
@@ -254,7 +268,12 @@
 | POST | `/api/partners/:id/link` | `partners.manage` |
 | POST | `/api/partners/:id/docs/:kind` | `partners.documents` |
 | GET | `/api/partners/:id/docs/:kind` | `partners.documents` |
-| DELETE | `/api/partners/:id` | `partners.manage` |
+| DELETE | `/api/partners/:id` | `partners.manage` \| `partners.delete` |
+| GET | `/api/users/:id/personnel` | *angemeldet (eigene Daten)* |
+| PUT | `/api/users/:id/personnel` | `users.personnel_edit` |
+| POST | `/api/users/:id/docs/:kind` | `users.personnel_edit` |
+| GET | `/api/users/:id/docs/:kind` | *angemeldet (eigene Daten)* |
+| DELETE | `/api/users/:id/docs/:kind` | `users.personnel_edit` |
 | GET | `/api/avatars/:id` | *angemeldet (eigene Daten)* |
 | POST | `/api/account/avatar` | *angemeldet (eigene Daten)* |
 | DELETE | `/api/account/avatar` | *angemeldet (eigene Daten)* |
@@ -296,6 +315,15 @@
 | GET | `/api/tab/statements/:id/invoice-file` | `tab.statements` \| `tab.view` |
 | DELETE | `/api/tab/statements/:id` | `tab.delete` |
 | POST | `/api/tab/statements/:id/:action` | `tab.statements` |
+| GET | `/api/tickets/options` | *angemeldet (eigene Daten)* |
+| GET | `/api/tickets` | *angemeldet (eigene Daten)* |
+| POST | `/api/tickets` | *angemeldet (eigene Daten)* |
+| GET | `/api/tickets/:id` | *angemeldet (eigene Daten)* |
+| GET | `/api/tickets/:id/screenshot` | *angemeldet (eigene Daten)* |
+| GET | `/api/tickets/:id/comments/:cid/screenshot` | *angemeldet (eigene Daten)* |
+| POST | `/api/tickets/:id/comments` | *angemeldet (eigene Daten)* |
+| PATCH | `/api/tickets/:id` | *angemeldet (eigene Daten)* |
+| DELETE | `/api/tickets/:id` | `tickets.delete` |
 | GET | `/api/users` | `users.view` |
 | GET | `/api/users/:id` | `users.view` |
 | POST | `/api/users` | `users.create` |

@@ -951,9 +951,9 @@ try {
   // ══ Superadmin, Hierarchie, Stammdaten externer Zugänge, Finanzen, Statistik ══
   const adminId = users.find((u) => u.username === 'admin').id;
   r = await admin.call('GET', '/api/auth/me'); assert.equal(r.user.isSuperadmin, true); assert.equal((await mod.call('GET', '/api/auth/me')).user.isSuperadmin, false);
-  assert.equal((await admin.call('PATCH', `/api/users/${adminId}`, { isSuperadmin: false })).status, 409); // der letzte Superadmin bleibt
+  assert.equal((await admin.call('PATCH', `/api/users/${adminId}`, { isSuperadmin: false })).status, 403); assert.equal((await admin.call('PATCH', `/api/users/${neuer.id}`, { isSuperadmin: true })).status, 403); // die Rolle „Superadmin“ ist fest: weder vergeb- noch entziehbar
   await setPerms(['users.edit', 'users.view']); assert.equal((await mod.call('PATCH', `/api/users/${neuer.id}`, { isSuperadmin: true })).status, 403); assert.equal((await mod.call('POST', `/api/users/${adminId}/password`, { password: 'neuesPasswort123' })).status, 403); await setPerms([]);
-  assert.ok((await admin.call('GET', '/api/permissions')).permissions.some((p) => p.key === 'users.password_reset')); ok('Superadmin-Flag: nur Superadmins vergeben ihn, der letzte bleibt; Passwort-Reset hat ein eigenes Recht');
+  assert.ok((await admin.call('GET', '/api/permissions')).permissions.some((p) => p.key === 'users.password_reset')); ok('Rolle „Superadmin“ ist fest (nicht vergeb-/entziehbar); Passwort-Reset hat ein eigenes Recht');
 
   // Namen nach Hierarchie: Superadmin sieht alle Namen; sonst nur bei sich selbst und bei Untergebenen
   await setPerms(['users.view']);
@@ -968,21 +968,26 @@ try {
   await setPerms(['users.avatar_edit']); r = await mod.call('POST', `/api/users/${adminId}/avatar`, { data: PNGAV }); assert.equal(r.status, 200); assert.match(r.avatarUrl, /^\/api\/avatars\/\d+\?v=\d+$/);
   assert.equal((await mod.call('POST', `/api/users/${adminId}/avatar`, { data: 'AAAA' })).status, 400); await setPerms([]); ok('Profilbilder anderer ändern mit users.avatar_edit (nur echte Bilder)');
 
-  // Externe Zugänge: Stammdaten, Pflichtfelder bei Lieferanten, Dokumente
-  const sup = { type: 'supplier', firstName: 'Max', lastName: 'Muster', birthDate: '1990-05-17', postalCode: '1234', street: 'Test Drive 5', umail: 'Max.Muster@umail.com', phone: '5551234567', accountNumber: 'ls28180705', apps: ['market'] };
-  r = await admin.call('POST', '/api/partners', sup); assert.equal(r.status, 400); assert.match(r.error, /Ausweis/); // Ausweis fehlt
-  r = await admin.call('POST', '/api/partners', { ...sup, idDoc: 'data:image/png;base64,' + PNGAV, umail: 'x y' }); assert.equal(r.status, 400); assert.match(r.error, /UMail/);
-  r = await admin.call('POST', '/api/partners', { ...sup, idDoc: 'data:image/png;base64,' + PNGAV, phone: '123' }); assert.equal(r.status, 400); assert.match(r.error, /Telefon/);
-  r = await admin.call('POST', '/api/partners', { ...sup, idDoc: 'data:text/html;base64,' + Buffer.from('<b>x</b>').toString('base64') }); assert.equal(r.status, 400);
-  r = await admin.call('POST', '/api/partners', { ...sup, weaponRequired: true, idDoc: 'data:image/png;base64,' + PNGAV }); assert.equal(r.status, 400); assert.match(r.error, /Waffenschein/);
-  r = await admin.call('POST', '/api/partners', { ...sup, weaponRequired: true, idDoc: 'data:image/png;base64,' + PNGAV, weaponDoc: 'data:image/png;base64,' + PNGAV }); assert.equal(r.status, 201);
-  const supP = r.partner; assert.equal(supP.type, 'supplier'); assert.equal(supP.umail, 'max.muster@umail.com'); assert.equal(supP.phone, '(555) 123-4567'); assert.equal(supP.accountNumber, 'LS28180705'); assert.equal(supP.docs.id, true); assert.equal(supP.docs.weapon, true); assert.equal(supP.name, 'Max Muster');
-  const docRes = await fetch(`${base}/api/partners/${supP.id}/docs/id`, { headers: { cookie: admin.cookie } }); assert.equal(docRes.status, 200); assert.equal(docRes.headers.get('content-type'), 'image/png');
-  await mod.call('PATCH', `/api/users/${neuer.id}`, {}); assert.equal((await fetch(`${base}/api/partners/${supP.id}/docs/id`, { headers: { cookie: mod.cookie } })).status, 403);
-  r = await admin.call('POST', '/api/partners', { name: 'Kunde Ohne Daten', apps: ['market'] }); assert.equal(r.status, 201); assert.equal(r.partner.type, 'customer'); const custP = r.partner.id; // Kunden: alles optional
+  // Externe Zugänge: Lieferant (viele Daten + Dokumente) oder Ankäufer (Name, Ansprechpartner, Tel optional)
+  const IMG = 'data:image/png;base64,' + PNGAV;
+  const sup = { type: 'supplier', firstName: 'Max', lastName: 'Muster', street: 'Test Drive 5', postalCode: '1234', phone: '5551234567', umail: 'Max.Muster@umail.com', accountNumber: 'ls28180705', apps: ['market'] };
+  r = await admin.call('POST', '/api/partners', sup); assert.equal(r.status, 400); assert.match(r.error, /Ausweis/); assert.match(r.error, /Führerschein/); assert.match(r.error, /Waffenschein/); assert.doesNotMatch(r.error, /Führungszeugnis/);
+  const docs3 = { idDoc: IMG, licenseDoc: IMG, weaponDoc: IMG };
+  r = await admin.call('POST', '/api/partners', { ...sup, ...docs3, umail: 'x y' }); assert.equal(r.status, 400); assert.match(r.error, /UMail/);
+  r = await admin.call('POST', '/api/partners', { ...sup, ...docs3, phone: '123' }); assert.equal(r.status, 400); assert.match(r.error, /Telefon/);
+  r = await admin.call('POST', '/api/partners', { ...sup, ...docs3, idDoc: 'data:text/html;base64,' + Buffer.from('<b>x</b>').toString('base64') }); assert.equal(r.status, 400);
+  r = await admin.call('POST', '/api/partners', { ...sup, ...docs3, street: '' }); assert.equal(r.status, 400); assert.match(r.error, /Straße/);
+  r = await admin.call('POST', '/api/partners', { ...sup, ...docs3, clearanceDoc: IMG }); assert.equal(r.status, 201);
+  const supP = r.partner; assert.equal(supP.type, 'supplier'); assert.equal(supP.typeLabel, 'Lieferant'); assert.equal(supP.umail, 'max.muster@umail.com'); assert.equal(supP.phone, '(555) 123-4567'); assert.equal(supP.accountNumber, 'LS28180705'); assert.deepEqual(supP.docs, { id: true, license: true, weapon: true, clearance: true }); assert.equal(supP.name, 'Max Muster');
+  for (const k of ['id', 'license', 'weapon', 'clearance']) { const dr = await fetch(`${base}/api/partners/${supP.id}/docs/${k}`, { headers: { cookie: admin.cookie } }); assert.equal(dr.status, 200); assert.equal(dr.headers.get('content-type'), 'image/png'); }
+  assert.equal((await fetch(`${base}/api/partners/${supP.id}/docs/id`, { headers: { cookie: mod.cookie } })).status, 403);
+  r = await admin.call('POST', '/api/partners', { type: 'buyer', name: 'Ankauf AG', apps: ['market'] }); assert.equal(r.status, 400); assert.match(r.error, /Ansprechpartner/);
+  r = await admin.call('POST', '/api/partners', { type: 'buyer', name: 'Ankauf AG', contactName: 'Frau Muster', phone: '5559876543', apps: ['market'] }); assert.equal(r.status, 201); assert.equal(r.partner.type, 'buyer'); assert.equal(r.partner.typeLabel, 'Ankäufer'); assert.equal(r.partner.contactName, 'Frau Muster'); assert.equal(r.partner.phone, '(555) 987-6543'); const custP = r.partner.id; // Tel ist optional
+  r = await admin.call('POST', '/api/partners', { type: 'buyer', name: 'Ohne Tel', contactName: 'Herr X', apps: ['market'] }); assert.equal(r.status, 201); assert.equal(r.partner.phone, '');
   assert.equal((await admin.call('PATCH', `/api/partners/${custP}`, { type: 'supplier' })).status, 400); // würde unvollständig
   assert.equal((await admin.call('PATCH', `/api/partners/${supP.id}`, { street: 'Neue Straße 9' })).partner.street, 'Neue Straße 9');
-  assert.equal((await admin.call('POST', `/api/partners/${supP.id}/docs/weapon`, { data: 'data:image/png;base64,' + PNGAV })).status, 200); ok('Externe Zugänge: Stammdaten, Lieferanten-Pflichtfelder, UMail/Telefon-Format, Ausweis/Waffenschein-Upload mit Rechtepflicht');
+  assert.equal((await admin.call('POST', `/api/partners/${supP.id}/docs/clearance`, { data: IMG })).status, 200);
+  ok('Externe Zugänge: Lieferant (alle Daten + Ausweis/Führerschein/Waffenschein, Führungszeugnis optional) und Ankäufer (Name, Ansprechpartner, Tel optional)');
 
   // Löschen (Superadmin: alles)
   r = await admin.call('GET', '/api/credit/loans?partner=' + borId); assert.ok(r.loans.length >= 2); const delLoan = r.loans[0].id, delLoanNo = r.loans[0].number;
@@ -993,7 +998,8 @@ try {
   assert.equal((await mod.call('DELETE', `/api/market/deals/${delDeal}`)).status, 403); assert.equal((await admin.call('DELETE', `/api/market/deals/${delDeal}`)).status, 200); assert.equal((await admin.call('GET', `/api/market/deals/${delDeal}`)).status, 404);
   assert.equal((await mod.call('DELETE', `/api/partners/${borId}`)).status, 403);
   assert.equal((await admin.call('DELETE', `/api/partners/${borId}`)).status, 409); // hat noch Kredite
-  assert.equal((await admin.call('DELETE', `/api/partners/${borId}?force=1`)).status, 200); // Superadmin: samt allem – kein „Interner Serverfehler“
+  await setPerms(['partners.delete']); assert.equal((await mod.call('DELETE', `/api/partners/${borId}`)).status, 409); assert.equal((await mod.call('DELETE', `/api/partners/${custP}`)).status, 200); // partners.delete allein reicht (auch ohne partners.manage)
+  assert.equal((await mod.call('DELETE', `/api/partners/${borId}?force=1`)).status, 200); await setPerms([]); ok('partners.delete funktioniert eigenständig');
   assert.equal((await admin.call('GET', '/api/credit/loans?partner=' + borId)).loans.length, 0);
   assert.equal((await admin.call('DELETE', `/api/partners/${supP.id}`)).status, 200); ok('Superadmin kann Kredite, Börsen-Geschäfte und externe Zugänge samt aller Daten löschen (ohne 500er)');
 
@@ -1022,6 +1028,50 @@ try {
   r = await admin.call('GET', '/api/stats'); assert.equal(r.status, 200); for (const k of ['users', 'market', 'credit', 'tab', 'warehouse', 'vehicles', 'chat', 'finance', 'activity']) assert.ok(r.sections[k], k); assert.equal(r.sections.users.byStatus.some((x) => x.key === 'active'), true);
   await setPerms(['stats.view']); let sk = Object.keys((await mod.call('GET', '/api/stats')).sections); assert.ok(!sk.includes('finance') && !sk.includes('tab') && !sk.includes('credit') && !sk.includes('market'));
   await setPerms(['stats.view', 'finance.view', 'tab.statements']); sk = Object.keys((await mod.call('GET', '/api/stats')).sections); assert.ok(sk.includes('finance') && sk.includes('tab') && !sk.includes('credit')); await setPerms([]); ok('Statistik: je Bereich nur mit zusätzlichem Ansichtsrecht, nur aggregierte Zahlen');
+
+  // ══ Personalakte, Personalnummern, Tickets, Artikel löschen ══
+  const IMG2 = 'data:image/png;base64,' + PNGAV;
+  assert.equal((await mod.call('GET', `/api/users/${adminId}/personnel`)).status, 403); assert.equal((await mod.call('GET', `/api/users/${neuer.id}/personnel`)).status, 200); // die eigene Akte sieht man immer
+  await setPerms(['users.personnel_view']); assert.equal((await mod.call('GET', `/api/users/${adminId}/personnel`)).status, 200);
+  assert.equal((await mod.call('PUT', `/api/users/${adminId}/personnel`, { firstName: 'Anna' })).status, 403);
+  await setPerms(['users.personnel_view', 'users.personnel_edit']);
+  r = await mod.call('PUT', `/api/users/${adminId}/personnel`, { firstName: 'Anna', lastName: 'Test', street: 'Weg 1', postalCode: '1234', phone: '5551112222', umail: 'Anna@umail.com', accountNumber: 'ls111222' });
+  assert.equal(r.status, 200); assert.equal(r.personnel.phone, '(555) 111-2222'); assert.equal(r.personnel.umail, 'anna@umail.com'); assert.equal(r.personnel.accountNumber, 'LS111222');
+  assert.equal((await mod.call('PUT', `/api/users/${adminId}/personnel`, { phone: '12' })).status, 400); assert.equal((await mod.call('PUT', `/api/users/${adminId}/personnel`, { umail: 'a b' })).status, 400);
+  for (const k of ['id', 'license', 'weapon', 'clearance']) assert.equal((await mod.call('POST', `/api/users/${adminId}/docs/${k}`, { data: IMG2 })).status, 200);
+  assert.equal((await mod.call('POST', `/api/users/${adminId}/docs/passport`, { data: IMG2 })).status, 404); assert.equal((await mod.call('POST', `/api/users/${adminId}/docs/id`, { data: 'AAAA' })).status, 400);
+  r = await mod.call('GET', `/api/users/${adminId}/personnel`); assert.deepEqual(r.personnel.docs, { id: true, license: true, weapon: true, clearance: true });
+  assert.equal((await fetch(`${base}/api/users/${adminId}/docs/license`, { headers: { cookie: mod.cookie } })).status, 200);
+  assert.equal(JSON.stringify((await mod.call('GET', '/api/users'))).includes('Anna'), false); // erscheint nirgends sonst
+  assert.equal((await mod.call('DELETE', `/api/users/${adminId}/docs/clearance`)).status, 200); await setPerms([]);
+  assert.equal((await fetch(`${base}/api/users/${adminId}/docs/license`, { headers: { cookie: mod.cookie } })).status, 403); ok('Personalakte: Angaben + 4 Dokumente, nur mit users.personnel_view/edit (eigene Akte immer), nirgends sonst sichtbar');
+
+  assert.equal((await admin.call('GET', '/api/users')).users.find((u) => u.id === adminId).roles.some((x) => x.name === 'Superadmin'), true);
+  await setPerms(['users.edit']); assert.equal((await mod.call('PATCH', `/api/users/${neuer.id}`, { memberNumber: 'AZ-555' })).status, 403); await setPerms([]);
+  assert.equal((await admin.call('PATCH', `/api/users/${neuer.id}`, { memberNumber: 'AZ-777' })).user.memberNumber, 'AZ-777');
+  assert.equal((await admin.call('PATCH', `/api/users/${adminId}`, { memberNumber: 'az-777' })).status, 409); assert.equal((await admin.call('PATCH', `/api/users/${adminId}`, { memberNumber: 'x' })).status, 400);
+  r = await admin.call('POST', '/api/users', { displayName: 'Hand Nummer', username: 'handnr', password: 'passwort123', memberNumber: 'az-900' }); assert.equal(r.status, 201); assert.equal(r.user.memberNumber, 'AZ-900');
+  assert.equal((await admin.call('POST', '/api/users', { displayName: 'Doppelt', username: 'doppelt', password: 'passwort123', memberNumber: 'AZ-900' })).status, 409); ok('Superadmin kann Personalnummern ändern und beim Anlegen zuweisen (eindeutig, nur er)');
+
+  // Tickets
+  assert.equal((await mod.call('POST', '/api/tickets', { title: 'x', description: 'kurz' })).status, 400); assert.equal((await mod.call('POST', '/api/tickets', { title: 'Seite hängt', description: 'Beim Öffnen passiert nichts', screenshot: 'AAAA' })).status, 400);
+  r = await mod.call('POST', '/api/tickets', { title: 'Deckel lädt nicht', description: 'Beim Klick auf Abrechnungen bleibt die Liste leer.', category: 'bug', app: 'tab', screenshot: IMG2 }); assert.equal(r.status, 201); assert.match(r.ticket.number, /^AZ-T-\d+$/); assert.equal(r.ticket.hasScreenshot, true); assert.equal(r.ticket.status, 'open'); const tk = r.ticket.id;
+  assert.equal(JSON.stringify(r).includes('Neuer'), false);  assert.ok((await admin.call('GET', '/api/notifications')).notifications.some((n) => /Neues Ticket/.test(n.title) && n.target.ticketId === tk));
+  assert.equal((await mod.call('GET', '/api/tickets')).tickets.length >= 1, true); assert.equal((await admin.call('GET', '/api/tickets')).tickets.some((x) => x.id === tk), true);
+  assert.equal((await fetch(`${base}/api/tickets/${tk}/screenshot`, { headers: { cookie: mod.cookie } })).status, 200); assert.equal((await fetch(`${base}/api/tickets/${tk}/screenshot`)).status, 401);
+  assert.equal((await mod.call('PATCH', `/api/tickets/${tk}`, { priority: 'high' })).status, 403); assert.equal((await mod.call('PATCH', `/api/tickets/${tk}`, { status: 'resolved' })).status, 403); assert.equal((await mod.call('DELETE', `/api/tickets/${tk}`)).status, 403);
+  r = await admin.call('PATCH', `/api/tickets/${tk}`, { status: 'in_progress', priority: 'high', assigneeId: adminId }); assert.equal(r.ticket.status, 'in_progress'); assert.equal(r.ticket.priority, 'high'); assert.ok(r.ticket.assignee);
+  assert.ok((await mod.call('GET', '/api/notifications')).notifications.some((n) => /In Arbeit/.test(n.title)));
+  assert.equal((await admin.call('POST', `/api/tickets/${tk}/comments`, { body: 'Wir schauen es uns an.' })).status, 200); const cm = await mod.call('POST', `/api/tickets/${tk}/comments`, { body: 'Hier noch ein Bild', screenshot: IMG2 }); assert.equal(cm.status, 200);
+  r = await mod.call('GET', `/api/tickets/${tk}`); assert.equal(r.comments.length, 2); assert.equal(r.comments[0].staff, true); assert.equal(r.comments[1].mine, true); assert.equal(r.canManage, false);
+  assert.equal((await fetch(`${base}/api/tickets/${tk}/comments/${cm.id}/screenshot`, { headers: { cookie: mod.cookie } })).status, 200);
+  assert.equal((await mod.call('PATCH', `/api/tickets/${tk}`, { status: 'closed' })).ticket.status, 'closed'); assert.equal((await mod.call('POST', `/api/tickets/${tk}/comments`, { body: 'noch was' })).status, 400);
+  await setPerms(['tickets.manage']); assert.equal((await mod.call('GET', '/api/tickets?mine=1')).tickets.every((x) => x.mine), true); await setPerms([]);
+  assert.equal((await admin.call('DELETE', `/api/tickets/${tk}`)).status, 200); assert.equal((await admin.call('GET', `/api/tickets/${tk}`)).status, 404); ok('Tickets: melden mit Screenshot, Melder sieht nur eigene, Team bearbeitet/antwortet, Benachrichtigungen, Löschen');
+
+  // Superadmin: Artikel samt Geschäften/Bestand löschen
+  assert.equal((await admin.call('DELETE', `/api/warehouse/items/${ore}`)).status, 409); assert.equal((await mod.call('DELETE', `/api/warehouse/items/${ore}?force=1`)).status, 403);
+  assert.equal((await admin.call('DELETE', `/api/warehouse/items/${ore}?force=1`)).status, 200); assert.equal((await admin.call('GET', '/api/market/deals')).deals.some((d) => d.item?.id === ore), false); ok('Superadmin löscht Artikel samt Geschäften, Gesuchen und Beständen');
 
   // Audit-Export hat ein eigenes Recht
   await setPerms(['audit.view']); assert.equal((await fetch(`${base}/api/audit/export`, { headers: { cookie: mod.cookie } })).status, 403); await setPerms(['audit.view', 'audit.export']); assert.equal((await fetch(`${base}/api/audit/export`, { headers: { cookie: mod.cookie } })).status, 200); await setPerms([]); ok('Audit-Export braucht audit.export');

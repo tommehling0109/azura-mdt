@@ -8,6 +8,7 @@ import { registerLookup, lookupEntries, isActiveEntry } from '../core/lookups.js
 import { bookStock, usedSpace, totalStock, quote } from '../core/stock.js';
 import { registerMapLayer, postalCoords } from './map.js';
 import { registerWidget } from './dashboard.js';
+import { purgeItem } from '../core/purge.js';
 
 /**
  * Lagersystem: mehrere Lagerstandorte (Koordinaten oder Postleitzahl), Größe/Kapazität, Zugangsinfo, rollenbasierte Zugriffe
@@ -358,10 +359,12 @@ export default {
       const id = Number(ctx.params.id);
       const cur = get('SELECT * FROM market_items WHERE id = ?', id);
       if (!cur) throw notFound('Item nicht gefunden.');
-      if (totalStock(id) > 0) throw conflict('Vom Item liegt noch Bestand in Lagern.');
-      if (get('SELECT COUNT(*) c FROM market_deals WHERE item_id = ?', id).c > 0 || get('SELECT COUNT(*) c FROM market_wanted WHERE item_id = ?', id).c > 0) throw conflict('Das Item wird in der Börse verwendet. Deaktiviere es stattdessen.');
-      run('DELETE FROM warehouse_stock WHERE item_id = ?', id);
-      run('DELETE FROM market_items WHERE id = ?', id);
+      const force = ctx.query.force === '1' && ctx.user.isSuperadmin;
+      if (!force) {
+        if (totalStock(id) > 0) throw conflict('Vom Item liegt noch Bestand in Lagern. (Superadmins können es samt Bestand löschen.)');
+        if (get('SELECT COUNT(*) c FROM market_deals WHERE item_id = ?', id).c > 0 || get('SELECT COUNT(*) c FROM market_wanted WHERE item_id = ?', id).c > 0) throw conflict('Das Item wird in der Börse verwendet. Deaktiviere es stattdessen.');
+      }
+      tx(() => purgeItem(id));
       audit(ctx, { action: 'warehouse.item_deleted', module: 'warehouse', targetType: 'item', targetId: id, targetLabel: cur.name });
       return { ok: true };
     });
