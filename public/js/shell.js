@@ -180,8 +180,9 @@ export function showApp(onLogout, opts = {}) {
   const loadPos = () => { try { return JSON.parse(localStorage.getItem(POS_KEY)) || {}; } catch { return {}; } };
   const savePos = (p) => { try { localStorage.setItem(POS_KEY, JSON.stringify(p)); } catch { /* egal */ } };
   const GRID = { w: 96, h: 102, pad: 10 };
+  const dockH = () => document.querySelector('.dock-row')?.offsetHeight ?? 0; // der Desktop reicht bis zum unteren Rand; Symbole bleiben oberhalb der Leiste
   function defaultSlot(idx) {
-    const rows = Math.max(1, Math.floor((area.clientHeight - 24) / GRID.h) || 1);
+    const rows = Math.max(1, Math.floor((area.clientHeight - dockH() - 24) / GRID.h) || 1);
     return { x: GRID.pad + Math.floor(idx / rows) * GRID.w, y: 12 + (idx % rows) * GRID.h };
   }
   function placeIcon(b, id, idx, pos) {
@@ -196,7 +197,7 @@ export function showApp(onLogout, opts = {}) {
         const dx = ev.clientX - sx, dy = ev.clientY - sy;
         if (!moved && Math.hypot(dx, dy) < 6) return;
         if (!moved) { moved = true; b.classList.add('dragging'); b.setPointerCapture?.(ev.pointerId); }
-        const maxX = iconsEl.clientWidth - b.offsetWidth, maxY = iconsEl.clientHeight - b.offsetHeight;
+        const maxX = iconsEl.clientWidth - b.offsetWidth, maxY = iconsEl.clientHeight - dockH() - b.offsetHeight;
         b.style.left = `${Math.max(0, Math.min(maxX, ox + dx))}px`; b.style.top = `${Math.max(0, Math.min(maxY, oy + dy))}px`;
       };
       const up = () => {
@@ -371,7 +372,8 @@ export function showApp(onLogout, opts = {}) {
     if (existing) { restore(id); focus(id); return; }
 
     const a = area.getBoundingClientRect();
-    const width = Math.min(item.win?.w ?? 960, Math.round(a.width * 0.94)), height = Math.min(item.win?.h ?? 620, Math.round(a.height * 0.92));
+    const usableH = a.height - dockH(); // neue Fenster öffnen oberhalb der Leiste (verschieben darf man sie bis ganz nach unten)
+    const width = Math.min(item.win?.w ?? 960, Math.round(a.width * 0.94)), height = Math.min(item.win?.h ?? 620, Math.round(usableH * 0.92));
     const n = opened++ % 6;
     const w = { id, item, min: false, max: false, token: 0, closed: false, cleanup: null };
     const actions = h('div', { class: 'header-actions' });
@@ -388,7 +390,7 @@ export function showApp(onLogout, opts = {}) {
     titlebar.addEventListener('dblclick', (e) => { if (!e.target.closest('.win-btn') && !compact()) toggleMax(id); });
 
     w.el = h('section', { class: 'win', role: 'dialog', 'aria-label': item.label, onscroll: (e) => { e.currentTarget.scrollTop = 0; e.currentTarget.scrollLeft = 0; },
-      style: { width: `${width}px`, height: `${height}px`, left: `${clamp((a.width > 1000 ? 120 : 40) + n * 30, 0, Math.max(0, a.width - width))}px`, top: `${clamp(24 + n * 30, 0, Math.max(0, a.height - height))}px` } },
+      style: { width: `${width}px`, height: `${height}px`, left: `${clamp((a.width > 1000 ? 120 : 40) + n * 30, 0, Math.max(0, a.width - width))}px`, top: `${clamp(24 + n * 30, 0, Math.max(0, usableH - height))}px` } },
     titlebar, h('div', { class: 'win-bar' }, subtitle, actions), content);
     for (const dir of ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']) {
       const hd = h('div', { class: `win-resize ${dir}` });
