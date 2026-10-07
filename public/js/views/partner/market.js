@@ -2,7 +2,7 @@ import { h, mount, timeAgo, fmtDate } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import { button, busy, card, field, input, select, tabs, formError, openModal, toast, skeletons, empty, note, badge } from '../../ui/kit.js';
 import { api } from '../../api.js';
-import { money, dealBadge, catBadge, turnBadge, openDealModal, priceDialog } from '../market-shared.js';
+import { money, dealBadge, catBadge, turnBadge, dirBadge, openDealModal, priceDialog } from '../market-shared.js';
 
 /** Börse aus Sicht des externen Partners: Gesuche einsehen, Angebote einstellen, eigene Geschäfte verfolgen. */
 export default async function render(container, ctx) {
@@ -55,7 +55,7 @@ export default async function render(container, ctx) {
       const el = h('article', { class: `card hoverable deal-card ${mine ? 'attention' : ''}`, tabindex: 0 },
         h('div', { class: 'dc-main' }, h('div', { class: 'dc-title' }, h('span', { class: 'member-no' }, d.number), ' ', d.item.name, ' ', catBadge(d.item.category)),
           h('div', { class: 'dc-sub' }, `${d.quantity.toLocaleString('de-DE')} ${d.item.unit} × ${money(d.unitPrice)} · ${timeAgo(d.updatedAt)}`),
-          h('div', { class: 'chips', style: { marginTop: '8px' } }, dealBadge(d), turnBadge(d, 'partner'))),
+          h('div', { class: 'chips', style: { marginTop: '8px' } }, d.direction === 'sell' && h('span', { class: 'badge no-dot b-info' }, 'Angebot vom Team'), dealBadge(d), turnBadge(d, 'partner'))),
         h('div', { class: 'dc-price' }, money(d.total)), icon('chevronR'));
       const open = () => openDealModal({ side: 'partner', base: '/api/p/market', id: d.id, onChange: () => show('deals') });
       el.addEventListener('click', open);

@@ -4,7 +4,7 @@ import { button, busy, card, field, input, checkbox, formError, openModal, confi
 import { api } from '../../api.js';
 import { can, state } from '../../state.js';
 
-const MODULE_LABELS = { system: 'System', users: 'Benutzer', roles: 'Rollen', audit: 'Audit-Log', org: 'Organisation', chat: 'Chat', market: 'Börse', partners: 'Externe Zugänge', lookups: 'Kategorien', permissions: 'Eigene Rechte', vehicles: 'Fahrzeuge', warehouse: 'Lager', map: 'Karte' };
+const MODULE_LABELS = { system: 'System', users: 'Benutzer', roles: 'Rollen', audit: 'Audit-Log', org: 'Organisation', chat: 'Chat', market: 'Börse', partners: 'Externe Zugänge', lookups: 'Kategorien', permissions: 'Eigene Rechte', vehicles: 'Fahrzeuge', warehouse: 'Lager', finance: 'Finanzen', map: 'Karte' };
 const COLORS = ['#f5a524', '#4f8cff', '#22c4a8', '#a78bfa', '#f472b6', '#f87171', '#84cc16', '#94a3b8'];
 
 /** Eigene Rechte anlegen/löschen (Systemrechte aus dem Code bleiben unverändert). */

@@ -438,4 +438,29 @@ export const SCHEMA_MIGRATIONS = [
     PRIMARY KEY (channel_id, partner_id)
   );
   `,
+  /* v9 – Verkauf an Partner (Lagerabbuchung) + Finanz-Journal */ `
+  ALTER TABLE market_deals ADD COLUMN direction TEXT NOT NULL DEFAULT 'buy' CHECK (direction IN ('buy','sell'));
+  ALTER TABLE market_deals ADD COLUMN warehouse_id INTEGER REFERENCES warehouses(id) ON DELETE SET NULL;
+  ALTER TABLE market_deals ADD COLUMN stock_booked INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE finance_ledger (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_type   TEXT NOT NULL DEFAULT 'deal',
+    direction    TEXT NOT NULL CHECK (direction IN ('in','out')),
+    amount       INTEGER NOT NULL,
+    currency     TEXT NOT NULL DEFAULT '$',
+    status       TEXT NOT NULL DEFAULT 'expected' CHECK (status IN ('expected','settled','cancelled')),
+    deal_id      INTEGER REFERENCES market_deals(id) ON DELETE SET NULL,
+    partner_id   INTEGER REFERENCES partners(id) ON DELETE SET NULL,
+    item_id      INTEGER REFERENCES market_items(id) ON DELETE SET NULL,
+    quantity     INTEGER,
+    unit_price   INTEGER,
+    warehouse_id INTEGER REFERENCES warehouses(id) ON DELETE SET NULL,
+    note         TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL,
+    settled_at   TEXT,
+    cancelled_at TEXT
+  );
+  CREATE INDEX idx_ledger_deal ON finance_ledger(deal_id);
+  CREATE INDEX idx_ledger_status ON finance_ledger(status, direction);
+  `,
 ];

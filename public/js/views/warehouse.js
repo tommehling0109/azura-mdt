@@ -6,7 +6,7 @@ import { can } from '../state.js';
 
 const nf = (n) => Number(n ?? 0).toLocaleString('de-DE');
 const num = (el) => (el.value === '' ? null : Number(el.value));
-const KIND = { in: 'Eingelagert', out: 'Ausgelagert', adjust: 'Korrigiert', transfer_in: 'Umlagerung (Eingang)', transfer_out: 'Umlagerung (Ausgang)', deal: 'Wareneingang (Börse)' };
+const KIND = { in: 'Eingelagert', out: 'Ausgelagert', adjust: 'Korrigiert', transfer_in: 'Umlagerung (Eingang)', transfer_out: 'Umlagerung (Ausgang)', deal: 'Wareneingang (Börse)', deal_out: 'Verkauf an Partner (Börse)', deal_return: 'Rückbuchung (Storno)' };
 const chip = (o) => h('span', { class: 'badge', style: { '--c': o.color } }, o.label);
 const fillBar = (used, cap) => {
   const pct = cap ? Math.min(100, Math.round((used / cap) * 100)) : 0;

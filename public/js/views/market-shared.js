@@ -8,6 +8,8 @@ import { state, can } from '../state.js';
 
 export const money = (n) => `${Number(n ?? 0).toLocaleString('de-DE')} ${state.config['market.currency'] || '$'}`;
 export const dealBadge = (d) => h('span', { class: 'badge', style: { '--c': d.statusColor } }, d.statusLabel);
+/** Richtung: Ankauf (Partner verkauft uns etwas) oder Verkauf (wir bieten dem Partner etwas aus dem Lager an). */
+export const dirBadge = (d) => (d.direction === 'sell' ? h('span', { class: 'badge no-dot b-info' }, 'Verkauf') : h('span', { class: 'badge no-dot b-mute' }, 'Ankauf'));
 export const catBadge = (c) => (c ? h('span', { class: 'badge no-dot', style: { '--c': c.color } }, c.label) : null);
 const OPEN = ['submitted', 'negotiating'];
 const FINAL = ['completed', 'rejected', 'withdrawn', 'cancelled'];
@@ -96,8 +98,8 @@ export function openDealModal({ side, base, id, onChange }) {
     const summary = h('div', { class: 'deal-summary' },
       h('div', { class: 'ds-main' },
         h('div', { class: 'ds-title' }, d.number && h('span', { class: 'member-no' }, d.number), d.item.name, ' ', catBadge(d.item.category)),
-        h('div', { class: 'ds-sub' }, side === 'staff' ? `${d.partner.number ?? ''} · ${partnerName} · ` : '', d.origin === 'wanted' ? 'Antwort auf Gesuch' : 'Angebot des Partners', ' · ', timeAgo(d.createdAt)),
-        h('div', { class: 'chips', style: { marginTop: '8px' } }, dealBadge(d), turnBadge(d, side), d.assignee && h('span', { class: 'badge no-dot b-info' }, `${side === 'staff' ? 'Zuständig' : 'Ansprechpartner'}: ${d.assignee.displayName}`))),
+        h('div', { class: 'ds-sub' }, side === 'staff' ? `${d.partner.number ?? ''} · ${partnerName} · ` : '', d.direction === 'sell' ? (side === 'staff' ? 'Unser Angebot an den Partner' : 'Angebot vom Team') : d.origin === 'wanted' ? 'Antwort auf Gesuch' : 'Angebot des Partners', ' · ', timeAgo(d.createdAt)),
+        h('div', { class: 'chips', style: { marginTop: '8px' } }, dirBadge(d), dealBadge(d), turnBadge(d, side), side === 'staff' && d.warehouse && h('span', { class: 'badge no-dot b-mute', title: 'Quelle der Ware' }, `Lager: ${d.warehouse.name}`), d.assignee && h('span', { class: 'badge no-dot b-info' }, `${side === 'staff' ? 'Zuständig' : 'Ansprechpartner'}: ${d.assignee.displayName}`))),
       h('div', { class: 'ds-price' },
         h('div', { class: 'dp-total' }, money(d.total)),
         h('div', { class: 'dp-sub' }, `${d.quantity.toLocaleString('de-DE')} ${d.item.unit} × ${money(d.unitPrice)}`),
@@ -108,8 +110,8 @@ export function openDealModal({ side, base, id, onChange }) {
       d.handover.place && h('div', { class: 'hc-row' }, h('span', { class: 'muted' }, 'Ort'), h('b', null, d.handover.place.label)),
       d.handover.place?.description && h('div', { class: 'hc-text' }, d.handover.place.description),
       d.handover.info && h('div', { class: 'hc-text' }, d.handover.info),
-      d.handover.payoutInfo && h('div', { class: 'hc-row' }, h('span', { class: 'muted' }, 'Auszahlung'), h('span', null, d.handover.payoutInfo)),
-      h('div', { class: 'hc-row' }, h('span', { class: 'muted' }, side === 'partner' ? 'Du erhältst' : 'Auszahlungsbetrag'), h('b', null, money(d.total))));
+      d.handover.payoutInfo && h('div', { class: 'hc-row' }, h('span', { class: 'muted' }, d.direction === 'sell' ? 'Zahlung' : 'Auszahlung'), h('span', null, d.handover.payoutInfo)),
+      h('div', { class: 'hc-row' }, h('span', { class: 'muted' }, d.direction === 'sell' ? (side === 'partner' ? 'Du zahlst' : 'Zahlungseingang') : (side === 'partner' ? 'Du erhältst' : 'Auszahlungsbetrag')), h('b', null, money(d.total))));
 
     mount(body, summary,
       myTurn && h('div', { style: { margin: '14px 0' } }, note(side === 'staff' ? 'Der Partner wartet auf unsere Antwort.' : 'Wir warten auf deine Antwort: annehmen, ablehnen oder ein Gegenangebot machen.', 'alert')),
@@ -123,7 +125,7 @@ export function openDealModal({ side, base, id, onChange }) {
     // Aktionsleiste
     const bar = [];
     const prompt = (label, variant, action, title, askQty = true) => button(label, { variant, icon: action === 'accept' ? 'check' : action === 'counter' ? 'refresh' : 'x', onClick: () => {
-      if (action === 'accept') return confirmDialog({ title: 'Angebot annehmen?', message: `${d.quantity.toLocaleString('de-DE')} ${d.item.unit} ${d.item.name} für ${money(d.total)} (${money(d.unitPrice)} pro Einheit).`, confirmLabel: 'Annehmen', variant: 'ok' }).then((r) => r && act('accept').then(() => toast('Angenommen.')).catch((ex) => toast(ex.message, 'err')));
+      if (action === 'accept') return confirmDialog({ title: 'Angebot annehmen?', message: `${d.quantity.toLocaleString('de-DE')} ${d.item.unit} ${d.item.name} für ${money(d.total)} (${money(d.unitPrice)} pro Einheit).${d.direction === 'sell' ? (side === 'staff' ? ' Die Ware wird automatisch aus dem Lager abgebucht.' : ' Die Ware wird dir bereitgestellt, du zahlst den Betrag.') : ''}`, confirmLabel: 'Annehmen', variant: 'ok' }).then((r) => r && act('accept').then(() => toast('Angenommen.')).catch((ex) => toast(ex.message, 'err')));
       if (action === 'counter') return priceDialog({ title: 'Gegenangebot', item: `${d.item.name} · aktuell ${money(d.unitPrice)} × ${d.quantity.toLocaleString('de-DE')}`, quantity: d.quantity, unitPrice: d.unitPrice, askQuantity: true, submitLabel: 'Gegenangebot senden',
         onSubmit: async (v) => { await act('counter', v); toast('Gegenangebot gesendet.'); } });
       return confirmDialog({ title, message: 'Dies kann nicht rückgängig gemacht werden.', confirmLabel: label, withReason: true }).then((r) => r && act(action, { text: r.reason }).catch((ex) => toast(ex.message, 'err')));
@@ -133,8 +135,10 @@ export function openDealModal({ side, base, id, onChange }) {
     if (side === 'partner' && open && !myTurn) bar.push(prompt('Zurückziehen', 'danger', 'withdraw', 'Angebot zurückziehen?'));
     if (side === 'staff') {
       if (['accepted', 'delivery'].includes(d.status)) bar.push(button(d.status === 'accepted' ? 'Übergabe festlegen' : 'Übergabe ändern', { variant: 'primary', icon: 'server', onClick: () => handoverDialog(d) }));
-      const NEXT = { delivery: ['Ware eingegangen', 'delivered'], delivered: ['Zahlung ausstehend', 'payout'], payout: ['Als bezahlt abschließen', 'completed'] }[d.status];
-      if (NEXT) bar.push(button(`Weiter: ${NEXT[0]}`, { variant: 'primary', icon: 'chevronR', onClick: d.status === 'delivery' && can('warehouse.stock') ? () => deliveredDialog(d) : guard(() => act('advance', { to: NEXT[1] })) }));
+      const NEXT = (d.direction === 'sell'
+        ? { delivery: ['Ware übergeben', 'delivered'], delivered: ['Zahlung ausstehend', 'payout'], payout: ['Zahlung eingegangen – abschließen', 'completed'] }
+        : { delivery: ['Ware eingegangen', 'delivered'], delivered: ['Zahlung ausstehend', 'payout'], payout: ['Als bezahlt abschließen', 'completed'] })[d.status];
+      if (NEXT) bar.push(button(`Weiter: ${NEXT[0]}`, { variant: 'primary', icon: 'chevronR', onClick: d.status === 'delivery' && d.direction !== 'sell' && can('warehouse.stock') ? () => deliveredDialog(d) : guard(() => act('advance', { to: NEXT[1] })) }));
       if (!FINAL.includes(d.status) && d.status !== 'submitted' && d.status !== 'negotiating') bar.push(button('Stornieren', { variant: 'danger', icon: 'x', onClick: () => confirmDialog({ title: 'Geschäft stornieren?', message: 'Das Geschäft wird beendet.', confirmLabel: 'Stornieren', withReason: true }).then((r) => r && act('cancel', { text: r.reason }).catch((ex) => toast(ex.message, 'err'))) }));
       if (!d.assignee || d.assignee.id !== state.user.id) bar.push(button('Mir zuweisen', { size: 'sm', variant: 'ghost', icon: 'userCheck', onClick: guard(() => act('assign', { userId: state.user.id })) }));
     }
@@ -169,7 +173,7 @@ export function openDealModal({ side, base, id, onChange }) {
     const hm = openModal({
       title: 'Übergabe festlegen',
       body: h('div', null, err, note(`Der Partner sieht diese Angaben. Betrag: ${money(d.total)}.`, 'info'), h('div', { style: { height: '12px' } }),
-        field('Übergabeort', place, { help: 'Orte pflegst du unter „Kategorien & Status“.' }), hint, field('Anweisung', info), field('Auszahlung', payout)),
+        field('Übergabeort', place, { help: 'Orte pflegst du unter „Kategorien & Status“.' }), hint, field('Anweisung', info), field(d.direction === 'sell' ? 'Zahlung (wie und wann zahlt der Partner?)' : 'Auszahlung', payout)),
       footer: [button('Abbrechen', { onClick: () => hm.close() }), button('Speichern', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
         try { await act('handover', { placeId: place.value ? Number(place.value) : null, info: info.value.trim(), payoutInfo: payout.value.trim() }); hm.close(); toast('Übergabe gespeichert.'); }
         catch (ex) { err.replaceChildren(formError(ex.message)); }

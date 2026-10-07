@@ -5,7 +5,7 @@ import {
 } from '../ui/kit.js';
 import { api } from '../api.js';
 import { can } from '../state.js';
-import { money, dealBadge, catBadge, turnBadge, openDealModal } from './market-shared.js';
+import { money, dealBadge, catBadge, turnBadge, dirBadge, openDealModal } from './market-shared.js';
 
 export default async function render(container, ctx) {
   const canDeals = can('market.deals.manage'), canWanted = can('market.wanted.manage'), canCatalog = can('market.catalog.manage');
@@ -24,7 +24,7 @@ export default async function render(container, ctx) {
       { id: 'catalog', label: 'Katalog' },
     ], tab, (id) => showTab(id)));
     ctx.refreshCounters?.();
-    ctx.setActions(tab === 'wanted' && canWanted ? button('Gesuch erstellen', { variant: 'primary', icon: 'plus', onClick: () => wantedEditor(null) })
+    ctx.setActions(tab === 'deals' && canDeals && can('warehouse.stock') ? button('Angebot an Partner', { variant: 'primary', icon: 'storage', onClick: () => sellDialog() }) : tab === 'wanted' && canWanted ? button('Gesuch erstellen', { variant: 'primary', icon: 'plus', onClick: () => wantedEditor(null) })
       : tab === 'catalog' && canCatalog ? button('Item anlegen', { variant: 'primary', icon: 'plus', onClick: () => itemEditor(null) }) : '');
     if (!silent) mount(host, skeletons(4, 54));
     try { await ({ deals: () => deals(sum), wanted, catalog })[tab](); } catch (e) { mount(host, empty('Fehler beim Laden', e.message, 'alert')); }
@@ -82,7 +82,7 @@ export default async function render(container, ctx) {
       }));
     mount(host, h('div', { class: 'toolbar' }, groups, h('div', { class: 'grow' }), h('div', { class: 'input-icon' }, icon('search'), search)), catChips, statusChips,
       table([
-        { label: 'Nr.', style: { width: '1%' }, render: (d) => h('span', { class: 'member-no' }, d.number) },
+        { label: 'Nr.', style: { width: '1%' }, render: (d) => h('div', null, h('span', { class: 'member-no' }, d.number), h('div', { style: { marginTop: '4px' } }, dirBadge(d))) },
         { label: 'Partner', render: (d) => h('div', null, h('b', null, d.partner.number), h('div', { class: 'muted', style: { fontSize: '12px' } }, d.partner.name)) },
         { label: 'Item', render: (d) => h('div', null, d.item.name, ' ', catBadge(d.item.category)) },
         { label: 'Menge', render: (d) => `${d.quantity.toLocaleString('de-DE')} ${d.item.unit}` },
@@ -93,6 +93,52 @@ export default async function render(container, ctx) {
       ], rows, { onRowClick: (d) => openDealModal({ side: 'staff', base: '/api/market', id: d.id, onChange: () => showTab('deals', true) }),
         empty: empty(f.group === 'staff' && !f.status ? 'Nichts zu tun' : 'Keine Geschäfte', f.group === 'staff' && !f.status ? 'Aktuell wartet kein Partner auf eine Antwort.' : 'Passe Filter oder Suche an – Partner stellen Angebote über ihren Zugang ein.', 'tag') }));
     if (hadFocus) { search.focus(); search.setSelectionRange(search.value.length, search.value.length); }
+  }
+
+  // ── Angebot an einen Partner: Items aus unseren Lagern ──
+  async function sellDialog() {
+    let partners = [], whs = [];
+    try {
+      [{ partners }, { warehouses: whs }] = await Promise.all([api.get('/api/market/partners'), api.get('/api/warehouses')]);
+    } catch (e) { return toast(e.message, 'err'); }
+    whs = whs.filter((w) => w.canBook && w.isActive).sort((a, b) => (b.itemCount > 0) - (a.itemCount > 0)); // Lager mit Bestand zuerst
+    if (!partners.length) return toast('Es gibt keinen aktiven Partner mit Börsen-Zugang.', 'warn');
+    if (!whs.length) return toast('Du hast kein Lager, aus dem du verkaufen darfst (Lager-Verwaltung + Buchungsrecht nötig).', 'warn');
+    const err = h('div');
+    const partner = select(partners.map((p) => ({ value: p.id, label: `${p.number} · ${p.name}` })), '');
+    const wh = select(whs.map((w) => ({ value: w.id, label: w.name })), whs[0].id);
+    const item = h('select', { class: 'select' });
+    const qty = input({ type: 'number', min: 1, inputmode: 'numeric', placeholder: 'Menge' });
+    const price = input({ type: 'number', min: 1, inputmode: 'numeric', placeholder: 'Preis pro Einheit' });
+    const text = h('textarea', { class: 'textarea', maxLength: 500, placeholder: 'Hinweis für den Partner (optional)' });
+    const info = h('div', { class: 'help' });
+    const total = h('div', { class: 'total-line' }, 'Gesamt: –');
+    let stock = [];
+    const sel = () => stock.find((s) => String(s.itemId) === item.value);
+    const upd = () => {
+      const s = sel();
+      info.textContent = s ? `Im Lager verfügbar: ${s.quantity.toLocaleString('de-DE')} ${s.unit}${s.minPrice != null ? ` · Ankaufs-Spanne: ${money(s.minPrice)} – ${money(s.maxPrice)}` : ''}` : '';
+      mount(total, 'Gesamt: ', h('b', null, Number(qty.value) > 0 && Number(price.value) > 0 ? money(Number(qty.value) * Number(price.value)) : '–'));
+    };
+    const loadStock = async () => {
+      mount(item, h('option', { value: '' }, 'Lade …'));
+      try { stock = (await api.get(`/api/warehouses/${wh.value}`)).stock; } catch { stock = []; }
+      mount(item, stock.length ? stock.map((s) => h('option', { value: s.itemId }, `${s.name} (${s.quantity.toLocaleString('de-DE')} ${s.unit})`)) : h('option', { value: '' }, 'Dieses Lager ist leer'));
+      upd();
+    };
+    wh.addEventListener('change', loadStock); item.addEventListener('change', upd); qty.addEventListener('input', upd); price.addEventListener('input', upd);
+    const m = openModal({
+      title: 'Angebot an Partner',
+      body: h('div', null, err, note('Der Partner sieht dein Angebot in seiner Börse und kann annehmen, ablehnen oder ein Gegenangebot machen. Bei Annahme wird die Ware automatisch aus dem gewählten Lager abgebucht und die Zahlung im Finanz-Journal vorgemerkt.', 'info'), h('div', { style: { height: '12px' } }),
+        field('Partner', partner), h('div', { class: 'form-row' }, field('Aus Lager', wh), field('Artikel', item)), info, h('div', { class: 'form-row' }, field('Menge', qty), field('Preis pro Einheit', price)), total, h('div', { style: { height: '10px' } }), field('Hinweis', text)),
+      footer: [button('Abbrechen', { onClick: () => m.close() }), button('Angebot senden', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
+        err.replaceChildren();
+        if (!item.value) return err.replaceChildren(formError('Bitte wähle einen Artikel aus dem Lager.'));
+        try { await api.post('/api/market/offers', { partnerId: Number(partner.value), warehouseId: Number(wh.value), itemId: Number(item.value), quantity: Number(qty.value), unitPrice: Number(price.value), note: text.value.trim() }); m.close(); toast('Angebot gesendet.'); showTab('deals', true); }
+        catch (ex) { err.replaceChildren(formError(ex.message)); }
+      }) })],
+    });
+    loadStock();
   }
 
   // ── Gesuche ──

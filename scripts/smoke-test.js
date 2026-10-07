@@ -690,6 +690,54 @@ try {
   await admin.call('PATCH', `/api/partners/${chatPartnerId}`, { apps: ['market'] });
   assert.equal((await cp.call('GET', '/api/p/chat/channels')).status, 403); sP.close(); ok('Chat-App für Partner jederzeit entziehbar');
 
+
+  // ══ Börse: Angebote an Partner (Verkauf aus dem Lager) + Finanz-Journal ══
+  const buyer = new Client(); r = await admin.call('POST', '/api/partners', { name: 'Käufer GmbH', apps: ['market'] }); const buyerId = r.partner.id;
+  assert.equal((await buyer.call('POST', `/api/p/${r.partner.linkPath.split('/').pop()}/login`, { code: r.code })).status, 200);
+  const stockOf = async () => (await admin.call('GET', `/api/warehouses/${wh}`)).stock.find((s) => s.itemId === ore)?.quantity ?? 0;
+  const s0 = await stockOf();
+  assert.equal((await mod.call('POST', '/api/market/offers', { partnerId: buyerId, warehouseId: wh, itemId: ore, quantity: 5, unitPrice: 90 })).status, 403);
+  assert.equal((await admin.call('POST', '/api/market/offers', { partnerId: buyerId, warehouseId: wh, itemId: ore, quantity: s0 + 1, unitPrice: 90 })).status, 409);
+  const onlyChat = (await admin.call('POST', '/api/partners', { name: 'Nur Chat', apps: ['chat'] })).partner.id;
+  assert.equal((await admin.call('POST', '/api/market/offers', { partnerId: onlyChat, warehouseId: wh, itemId: ore, quantity: 5, unitPrice: 90 })).status, 400); ok('Angebot an Partner: Rechte, Bestandsprüfung und Börsen-Zugang des Partners werden geprüft');
+  r = await admin.call('POST', '/api/market/offers', { partnerId: buyerId, warehouseId: wh, itemId: ore, quantity: 50, unitPrice: 90, note: 'Frisch eingetroffen' });
+  assert.equal(r.status, 201); assert.equal(r.deal.direction, 'sell'); assert.equal(r.deal.status, 'submitted'); assert.equal(r.deal.turn, 'partner'); const sell1 = r.deal.id;
+  assert.equal(await stockOf(), s0); ok('Angebot an einen Partner senden – Bestand bleibt bis zur Annahme unverändert');
+  r = await buyer.call('GET', `/api/p/market/deals/${sell1}`); assert.equal(r.deal.direction, 'sell'); assert.equal(r.deal.warehouse, undefined); assert.equal(JSON.stringify(r).includes('Hafen-Lager'), false);
+  r = await buyer.call('GET', '/api/notifications'); void r;
+  assert.equal((await buyer.call('POST', `/api/p/market/deals/${sell1}/accept`)).status, 200); ok('Partner nimmt das Angebot an (ohne das Lager zu sehen)');
+  assert.equal(await stockOf(), s0 - 50);
+  r = await admin.call('GET', `/api/warehouses/${wh}`); const ev1 = r.events.find((e) => e.kind === 'deal_out'); assert.ok(ev1); assert.equal(ev1.delta, -50); assert.equal(ev1.dealId, sell1);
+  r = await admin.call('GET', `/api/market/deals/${sell1}`); assert.equal(r.deal.stockBooked, true); assert.ok(r.events.some((e) => e.kind === 'stock' && e.internal && /Ausgebucht: 50/.test(e.text)));
+  r = await buyer.call('GET', `/api/p/market/deals/${sell1}`); assert.equal(r.events.some((e) => e.kind === 'stock'), false); ok('Annahme bucht die Ware automatisch aus dem Lager ab – nachvollziehbar im Lager-Verlauf und im Geschäft (intern)');
+  r = await admin.call('GET', '/api/finance/ledger'); const le = r.entries.find((e) => e.dealId === sell1); assert.ok(le); assert.equal(le.direction, 'in'); assert.equal(le.amount, 50 * 90); assert.equal(le.status, 'expected');
+  assert.equal((await mod.call('GET', '/api/finance/ledger')).status, 403);
+  r = await admin.call('GET', '/api/finance/summary'); assert.ok(r.summary.expectedIn >= 4500); ok('Geldbewegung wird für das Finanzsystem vorgemerkt (erwartet, Eingang) – nur mit finance.view sichtbar');
+  assert.equal((await admin.call('POST', `/api/market/deals/${sell1}/handover`, { info: 'Übergabe am Hafen' })).status, 200);
+  assert.equal((await admin.call('POST', `/api/market/deals/${sell1}/advance`, {})).status, 200); assert.equal((await admin.call('POST', `/api/market/deals/${sell1}/advance`, {})).deal.statusLabel, 'Zahlung ausstehend');
+  assert.equal(await stockOf(), s0 - 50); assert.equal((await admin.call('POST', `/api/market/deals/${sell1}/advance`, {})).deal.status, 'completed');
+  assert.equal((await admin.call('GET', '/api/finance/ledger')).entries.find((e) => e.dealId === sell1).status, 'settled'); assert.ok((await admin.call('GET', '/api/finance/summary')).summary.settledIn >= 4500); ok('Abschluss verbucht die Zahlung im Journal (bezahlt)');
+  // Verhandlung: Partner macht Gegenangebot, Team nimmt an
+  r = await admin.call('POST', '/api/market/offers', { partnerId: buyerId, warehouseId: wh, itemId: ore, quantity: 20, unitPrice: 100 }); const sell2 = r.deal.id;
+  assert.equal((await admin.call('POST', `/api/market/deals/${sell2}/accept`)).status, 409);
+  assert.equal((await buyer.call('POST', `/api/p/market/deals/${sell2}/counter`, { unitPrice: 85 })).deal.turn, 'staff');
+  assert.equal((await admin.call('POST', `/api/market/deals/${sell2}/accept`)).status, 200); assert.equal(await stockOf(), s0 - 70);
+  assert.equal((await admin.call('GET', '/api/finance/ledger')).entries.find((e) => e.dealId === sell2).amount, 20 * 85); ok('Gegenangebot des Partners → Team nimmt an → Abbuchung zum verhandelten Preis');
+  // Storno gibt die Ware zurück
+  assert.equal((await admin.call('POST', `/api/market/deals/${sell2}/cancel`, { text: 'Doch nicht' })).status, 200); assert.equal(await stockOf(), s0 - 50);
+  assert.equal((await admin.call('GET', '/api/finance/ledger')).entries.find((e) => e.dealId === sell2).status, 'cancelled');
+  assert.ok((await admin.call('GET', `/api/warehouses/${wh}`)).events.some((e) => e.kind === 'deal_return' && e.dealId === sell2)); ok('Storno vor der Übergabe bucht die Ware zurück ins Lager und storniert die Geldbewegung');
+  // Ware zwischenzeitlich weg → Annahme scheitert, ohne Bestandszahlen zu verraten
+  const left = await stockOf(); r = await admin.call('POST', '/api/market/offers', { partnerId: buyerId, warehouseId: wh, itemId: ore, quantity: left, unitPrice: 70 }); const sell3 = r.deal.id;
+  await admin.call('POST', `/api/warehouses/${wh}/stock`, { itemId: ore, action: 'out', quantity: 10 });
+  r = await buyer.call('POST', `/api/p/market/deals/${sell3}/accept`); assert.equal(r.status, 409); assert.equal(/\d{2,}/.test(r.error ?? r.message ?? ''), false);
+  assert.equal((await admin.call('GET', `/api/market/deals/${sell3}`)).deal.status, 'submitted'); assert.equal(await stockOf(), left - 10); ok('Reicht der Bestand bei Annahme nicht mehr, bleibt alles unverändert (Partner erfährt keine Bestandszahlen)');
+  // Ankauf (Partner verkauft an uns): Annahme bucht Geld „Ausgang“ vor
+  r = await admin.call('GET', '/api/finance/ledger?direction=out'); const outBefore = r.entries.length;
+  r = await buyer.call('POST', '/api/p/market/offers', { itemId: ore, quantity: 10, unitPrice: 120 }); const buy1 = r.deal.id;
+  assert.equal((await admin.call('POST', `/api/market/deals/${buy1}/accept`)).status, 200);
+  r = await admin.call('GET', '/api/finance/ledger?direction=out'); assert.equal(r.entries.length, outBefore + 1); assert.equal(r.entries[0].amount, 1200); assert.equal(r.entries[0].status, 'expected'); ok('Ankäufe werden als erwartete Ausgabe vorgemerkt');
+
   // ── Branding: eigenes Logo / Hintergrund ──
   const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
   assert.equal((await mod.call('POST', '/api/admin/branding/logo', { data: PNG })).status, 403);

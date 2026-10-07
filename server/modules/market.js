@@ -9,6 +9,7 @@ import { allocateNumber } from '../core/numbers.js';
 import { labelForUser } from '../core/identity.js';
 import { notify, staffWith } from '../core/notifications.js';
 import { quote, bookStock } from '../core/stock.js';
+import { expectDealPayment, settleDeal, voidDeal } from '../core/ledger.js';
 import { assertCanBook } from './warehouses.js';
 
 /** Zustände eines Geschäfts. Die SCHLÜSSEL kennt der Code, Beschriftung und Farbe sind im Admin-Bereich änderbar. */
@@ -30,6 +31,8 @@ const FINAL = ['completed', 'rejected', 'withdrawn', 'cancelled'];
 const NEXT = { delivery: 'delivered', delivered: 'payout', payout: 'completed' };
 const HANDOVER_VISIBLE = ['delivery', 'delivered', 'payout', 'completed'];
 const INT_MAX = 100_000_000;
+/** Bei Verkäufen an Partner heißen die Schritte anders (Ware geht an den Partner, Geld kommt von ihm). */
+const SELL_LABELS = { delivery: 'Übergabe ausstehend', delivered: 'Ware übergeben', payout: 'Zahlung ausstehend', completed: 'Abgeschlossen' };
 
 registerLookup({
   key: 'market.item_category', module: 'Börse', label: 'Item-Kategorien',
@@ -63,8 +66,8 @@ const loadItem = (id) => { const i = get(`${ITEM_SQL} WHERE i.id = ?`, id); retu
 
 // ── Geschäfte ──
 const DEAL_SQL = `SELECT d.*, p.name partner_name, p.partner_number partner_number, i.name item_name, i.unit item_unit, ic.id cat_id, ic.label cat_label, ic.color cat_color,
-  sl.label status_label, sl.color status_color, u.member_number assignee_number, hp.label place_label, hp.description place_desc
-  FROM market_deals d JOIN partners p ON p.id = d.partner_id JOIN market_items i ON i.id = d.item_id
+  sl.label status_label, sl.color status_color, u.member_number assignee_number, hp.label place_label, hp.description place_desc, wh.name warehouse_name
+  FROM market_deals d LEFT JOIN warehouses wh ON wh.id = d.warehouse_id JOIN partners p ON p.id = d.partner_id JOIN market_items i ON i.id = d.item_id
   LEFT JOIN lookups ic ON ic.id = i.category_id
   LEFT JOIN lookups sl ON sl.list_key = 'market.deal_status' AND sl.key = d.status
   LEFT JOIN users u ON u.id = d.assignee_id LEFT JOIN lookups hp ON hp.id = d.handover_place_id`;
@@ -72,7 +75,8 @@ const DEAL_SQL = `SELECT d.*, p.name partner_name, p.partner_number partner_numb
 const dealDto = (d, partnerView, viewerId = null) => {
   const hasHandover = d.handover_place_id || d.handover_info || d.payout_info;
   return {
-    id: d.id, number: d.deal_number, origin: d.origin, wantedId: d.wanted_id, status: d.status, statusLabel: d.status_label ?? d.status, statusColor: d.status_color ?? '#94a3b8',
+    id: d.id, number: d.deal_number, origin: d.origin, direction: d.direction, warehouse: partnerView || !d.warehouse_id ? undefined : { id: d.warehouse_id, name: d.warehouse_name }, stockBooked: partnerView ? undefined : !!d.stock_booked,
+    wantedId: d.wanted_id, status: d.status, statusLabel: (d.direction === 'sell' && SELL_LABELS[d.status]) || d.status_label || d.status, statusColor: d.status_color ?? '#94a3b8',
     turn: d.turn, quantity: d.quantity, unitPrice: d.unit_price, suggestedPrice: d.suggested_price ?? null, total: d.quantity * d.unit_price, proposedBy: d.proposed_by, note: d.note,
     item: { id: d.item_id, name: d.item_name, unit: d.item_unit, category: d.cat_id ? { id: d.cat_id, label: d.cat_label, color: d.cat_color } : null },
     // Partner sehen weder den Namen der Gegenseite noch interne Zuständigkeiten – nur die AZ-Nummer des Geschäfts
@@ -106,7 +110,7 @@ const touch = (id, fields = {}) => {
   const cols = Object.keys(fields);
   run(`UPDATE market_deals SET ${[...cols.map((c) => `${c} = ?`), 'updated_at = ?'].join(', ')} WHERE id = ?`, ...cols.map((c) => fields[c]), now(), id);
 };
-const statusLabel = (key) => lookupEntries('market.deal_status').find((e) => e.key === key)?.label ?? key;
+const statusLabel = (key, direction = 'buy') => (direction === 'sell' && SELL_LABELS[key]) || lookupEntries('market.deal_status').find((e) => e.key === key)?.label || key;
 
 /**
  * Zentrale Zustandslogik – wird von Mitarbeitern (staff) und Partnern gleichermaßen genutzt.
@@ -128,8 +132,19 @@ function applyAction(dealId, actor, action, b) {
     switch (action) {
       case 'accept': {
         needOpen(); needTurn();
+        let sold = null;
+        if (d.direction === 'sell') {
+          // Verkauf an den Partner: Ware wird beim Annehmen automatisch aus dem Lager abgebucht (nachvollziehbar im Lager-Verlauf)
+          if (!d.warehouse_id) throw conflict('Das Lager für dieses Angebot existiert nicht mehr.');
+          try { bookStock({ warehouseId: d.warehouse_id, itemId: d.item_id, delta: -d.quantity, kind: 'deal_out', userId: side === 'staff' ? actor.id : null, note: `Geschäft ${d.deal_number}`, dealId }); }
+          catch (e) { if (side === 'partner') throw conflict('Das Angebot lässt sich gerade nicht annehmen: Die Ware ist nicht mehr in dieser Menge verfügbar. Bitte melde dich beim Team.'); throw e; }
+          touch(dealId, { stock_booked: 1 });
+          sold = get('SELECT w.name wname, i.name iname, i.unit u FROM warehouses w, market_items i WHERE w.id = ? AND i.id = ?', d.warehouse_id, d.item_id);
+        }
         touch(dealId, { status: 'accepted', turn: null });
         ev(dealId, actor, 'accept', { quantity: d.quantity, unitPrice: d.unit_price, text });
+        if (sold) addEvent(dealId, { type: 'system' }, 'stock', { text: `Ausgebucht: ${d.quantity.toLocaleString('de-DE')} ${sold.u} ${sold.iname} aus ${sold.wname}`, internal: true });
+        expectDealPayment(dealId); // Geldbewegung für das Finanzsystem vormerken
         break;
       }
       case 'counter': {
@@ -181,20 +196,29 @@ function applyAction(dealId, actor, action, b) {
         if (b.to !== undefined && b.to !== to) throw bad('Ungültiger Zielzustand.');
         touch(dealId, { status: to, ...(to === 'completed' ? { closed_at: now() } : {}) });
         let stored = '';
-        if (to === 'delivered' && b.warehouseId != null && b.warehouseId !== '') {
+        if (to === 'delivered' && d.direction === 'buy' && b.warehouseId != null && b.warehouseId !== '') {
           const wh = get('SELECT id, name FROM warehouses WHERE id = ?', b.warehouseId);
           if (!wh) throw bad('Unbekanntes Lager.');
           bookStock({ warehouseId: wh.id, itemId: d.item_id, delta: d.quantity, kind: 'deal', userId: actor.id, note: `Geschäft ${d.deal_number}`, dealId });
           stored = ` – eingelagert in ${wh.name}`;
         }
-        ev(dealId, actor, 'status', { text: statusLabel(to) + stored });
+        if (to === 'completed') settleDeal(dealId);
+        ev(dealId, actor, 'status', { text: statusLabel(to, d.direction) + stored });
         break;
       }
       case 'cancel': {
         if (side !== 'staff') throw forbidden();
         if (FINAL.includes(d.status)) throw conflict('Das Geschäft ist bereits beendet.');
+        let returned = '';
+        if (d.direction === 'sell' && d.stock_booked && ['accepted', 'delivery'].includes(d.status)) {
+          bookStock({ warehouseId: d.warehouse_id, itemId: d.item_id, delta: d.quantity, kind: 'deal_return', userId: actor.id, note: `Storno ${d.deal_number}`, dealId });
+          touch(dealId, { stock_booked: 0 });
+          returned = ' – Ware wurde ins Lager zurückgebucht';
+        }
         touch(dealId, { status: 'cancelled', turn: null, closed_at: now() });
+        voidDeal(dealId);
         ev(dealId, actor, 'cancel', { text });
+        if (returned) addEvent(dealId, { type: 'system' }, 'stock', { text: `Storniert${returned}`, internal: true });
         break;
       }
       case 'assign': {
@@ -260,6 +284,20 @@ function createDeal({ origin, partnerId, itemId, wantedId, quantity, unitPrice, 
     const info = get('SELECT p.name pname, i.name iname FROM market_deals d JOIN partners p ON p.id = d.partner_id JOIN market_items i ON i.id = d.item_id WHERE d.id = ?', id);
     notify(staffWith('market.view'), { key: `deal:${id}:ev:${evId}`, title: `${number} · ${info.iname}`,
       body: `${info.pname}: ${origin === 'wanted' ? 'Antwort auf Gesuch' : 'Neues Angebot'} · ${quantity.toLocaleString('de-DE')} × ${unitPrice.toLocaleString('de-DE')}`, target: { app: 'market', dealId: id } });
+    return id;
+  });
+}
+
+function createSellDeal({ partnerId, itemId, warehouseId, quantity, unitPrice, note, actor }) {
+  return tx(() => {
+    const t = now();
+    const number = allocateNumber('deal_number', 'market.deal_prefix', 'market.deal_start');
+    const res = run(`INSERT INTO market_deals (deal_number,origin,direction,partner_id,item_id,warehouse_id,quantity,unit_price,proposed_by,turn,status,note,created_at,updated_at)
+                     VALUES (?,'offer','sell',?,?,?,?,?,'staff','partner','submitted',?,?,?)`, number, partnerId, itemId, warehouseId, quantity, unitPrice, note, t, t);
+    const id = Number(res.lastInsertRowid);
+    const evId = addEvent(id, actor, 'offer', { quantity, unitPrice, text: note });
+    const iname = get('SELECT name FROM market_items WHERE id = ?', itemId).name;
+    notify([{ type: 'partner', id: partnerId }], { key: `deal:${id}:ev:${evId}`, title: `${number} · ${iname}`, body: `Neues Angebot vom Team: ${quantity.toLocaleString('de-DE')} × ${unitPrice.toLocaleString('de-DE')}`, target: { app: 'market', dealId: id } });
     return id;
   });
 }
@@ -364,6 +402,27 @@ export default {
       audit(ctx, { action: `market.deal_${action}`, module: 'market', targetType: 'deal', targetId: id, targetLabel: `${deal.item.name} · ${deal.partner.name}`,
         before: { status: before.status, quantity: before.quantity, unitPrice: before.unitPrice }, after: { status: deal.status, quantity: deal.quantity, unitPrice: deal.unitPrice } });
       return { deal, events: eventsOf(id, false, ctx.user.id) };
+    });
+
+    // Angebot an einen Partner (Verkauf aus dem Lager)
+    r.get('/api/market/partners', { perm: 'market.deals.manage' }, () => ({
+      partners: all("SELECT id, partner_number, name, apps FROM partners WHERE status = 'active' ORDER BY partner_number").filter((p) => { try { return JSON.parse(p.apps).includes('market'); } catch { return false; } }).map((p) => ({ id: p.id, number: p.partner_number, name: p.name })),
+    }));
+    r.post('/api/market/offers', { perm: 'market.deals.manage' }, (ctx) => {
+      const b = ctx.body;
+      const partner = get("SELECT id, apps, status FROM partners WHERE id = ?", b.partnerId);
+      let apps = []; try { apps = JSON.parse(partner?.apps ?? '[]'); } catch { /* leer */ }
+      if (!partner || partner.status !== 'active' || !apps.includes('market')) throw bad('Dieser Partner ist nicht aktiv oder hat keinen Börsen-Zugang.');
+      const wh = assertCanBook(ctx.user, b.warehouseId); // nur aus Lagern, in denen man auch buchen darf
+      const item = get('SELECT id, name, unit FROM market_items WHERE id = ?', b.itemId);
+      if (!item) throw bad('Unbekanntes Item.');
+      const quantity = posInt(b.quantity, 'Menge');
+      const have = get('SELECT COALESCE(quantity,0) q FROM warehouse_stock WHERE warehouse_id = ? AND item_id = ?', wh.id, item.id)?.q ?? 0;
+      if (quantity > have) throw conflict(`Im Lager sind nur ${have.toLocaleString('de-DE')} ${item.unit} ${item.name} vorhanden.`);
+      const id = createSellDeal({ partnerId: partner.id, itemId: item.id, warehouseId: wh.id, quantity, unitPrice: posInt(b.unitPrice, 'Preis pro Einheit'), note: str(b.note, 'Hinweis', { max: 500, required: false }), actor: { type: 'staff', id: ctx.user.id, name: null } });
+      audit(ctx, { action: 'market.deal_created', module: 'market', targetType: 'deal', targetId: id, targetLabel: `${item.name} · Angebot an Partner` });
+      ctx.status = 201;
+      return { deal: loadDeal(id, false, ctx.user.id) };
     });
 
     // Katalog
