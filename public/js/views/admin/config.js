@@ -71,7 +71,7 @@ function hackCard(host) {
       mount(hkHost,
         h('div', { class: 'setting-row', style: { gridTemplateColumns: 'minmax(0,1fr)' } },
           h('div', null, h('div', { class: 'lbl' }, 'Dauerhafter Link für die Exekutive'),
-            h('div', { class: 'hlp' }, 'Ohne Anmeldung nutzbar, zeigt weder Namen noch Logo des Systems. Vier Minigames, danach zufällige Datenschnipsel (nur Personalkennungen, Teilbestände, Kennzeichen, Vorgangsnummern – nie Klarnamen oder Telefonnummern) und eine Sperrzeit. Einstellungen (aktiv, Sperrzeit, Anzahl Schnipsel) stehen oben unter „Exekutive-Zugang“.'), urlBox,
+            h('div', { class: 'hlp' }, 'Ohne Anmeldung nutzbar, zeigt weder Namen noch Logo des Systems. Mehrere zufällig gezogene Minigames, danach zufällige Datenschnipsel (nur Personalkennungen, Teilbestände, Kennzeichen, Vorgangsnummern – nie Klarnamen oder Telefonnummern) und eine Sperrzeit. Einstellungen (aktiv, Sperrzeit, Anzahl Schnipsel) stehen oben unter „Exekutive-Zugang“.'), urlBox,
             h('div', { class: 'row', style: { marginTop: '10px' } },
               button('Link kopieren', { icon: 'link', size: 'sm', onClick: async () => { try { await navigator.clipboard.writeText(url); toast('Link kopiert.'); } catch { urlBox.select(); toast('Zum Kopieren Strg+C drücken.', 'info'); } } }),
               button('Link erneuern', { icon: 'refresh', size: 'sm', variant: 'ghost', onClick: async () => {
@@ -81,7 +81,7 @@ function hackCard(host) {
                 try { await api.post('/api/hack/admin/reset-cooldown'); toast('Sperrzeit aufgehoben.'); drawHack(await api.get('/api/hack/admin')); } catch (ex) { toast(ex.message, 'err'); }
               } })))),
         d.runs.length ? d.runs.map((r) => h('div', { class: 'list-row' }, h('div', { class: 'dot-icon' }, icon(r.success ? 'check' : 'alert')),
-          h('div', { class: 'grow' }, h('div', { class: 't' }, r.success ? 'Zugriff erfolgreich' : r.endedAt ? `Abgewehrt (Stufe ${r.stage + 1} von 4)` : 'Abgebrochen / läuft'), h('div', { class: 's' }, fmtDateTime(r.startedAt))))) : h('div', { class: 'muted', style: { padding: '12px 20px' } }, 'Noch keine Zugriffsversuche.'));
+          h('div', { class: 'grow' }, h('div', { class: 't' }, r.success ? 'Zugriff erfolgreich' : r.endedAt ? `Abgewehrt (in Stufe ${r.stage + 1})` : 'Abgebrochen / läuft'), h('div', { class: 's' }, fmtDateTime(r.startedAt))))) : h('div', { class: 'muted', style: { padding: '12px 20px' } }, 'Noch keine Zugriffsversuche.'));
     };
     api.get('/api/hack/admin').then(drawHack).catch((e) => mount(hkHost, empty('Nicht verfügbar', e.message, 'alert')));
 }

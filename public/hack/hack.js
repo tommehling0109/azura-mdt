@@ -55,7 +55,7 @@ async function boot() {
   if (!data.enabled) { await line('[-] Relay offline. Später erneut versuchen.', 'err'); return; }
   if (data.cooldownSec > 0) return locked(data.cooldownSec);
   await line('');
-  await line('Zielsystem gefunden. Vier Sicherheitsstufen aktiv.', 'warn');
+  await line(`Zielsystem gefunden. ${data.stages} Sicherheitsstufen aktiv.`, 'warn');
   state.maxLives = data.lives;
   await line(`Du hast ${data.lives} Versuch${data.lives === 1 ? '' : 'e'}. Wird die Rückverfolgung abgeschlossen, bist du raus.`, 'dim');
   const go = el('button', '', 'Verbindung aufbauen'); go.addEventListener('click', () => { clearPanel(); begin(); });
@@ -77,13 +77,14 @@ async function begin() {
   await line('[+] Verbindung steht. Sicherheitsstufe 1 …', 'ok');
   await stage(data.stage, data.lives);
 }
-const state = { sid: null, maxLives: 3 };
+const state = { sid: null, maxLives: 3, lives: 3 };
 
 // Antwort des Servers verarbeiten
 async function handle(res, lives) {
   const { status, data } = res;
   if (status === 410) { await line('[-] Verbindung verloren.', 'err'); clearPanel(); hud.hidden = true; return countdown(5, 'Neustart in'); }
   if (status === 429) return locked(data.details?.cooldownSec ?? 60);
+  if (data.result === 'reset') { await line(`[!] ${data.message}`, 'warn'); return stage(data.stage, state.lives); }
   if (data.result === 'ok') { await line('[+] Stufe geknackt.', 'ok'); return stage(data.stage, data.lives); }
   if (data.result === 'retry') { await line(`[!] ${data.message} – Rückverfolgung läuft (${data.lives} Versuch${data.lives === 1 ? '' : 'e'} übrig).`, 'warn'); return stage(data.stage, data.lives); }
   if (data.result === 'failed') { clearPanel(); await line(`[-] ZUGRIFF VERWEIGERT – ${data.reason}.`, 'err'); return locked(data.cooldownSec, '[-] Verbindung getrennt. Firewall-Sperre aktiv.'); }
@@ -93,8 +94,8 @@ async function handle(res, lives) {
 }
 
 async function stage(s, lives) {
-  clearPanel(); setHud(s.index, s.total, lives);
-  ({ typing, code, sequence, cipher }[s.type])(s, lives);
+  clearPanel(); state.lives = lives; setHud(s.index, s.total, lives);
+  ({ typing, code, sequence, cipher, frequency, checksum, match, math }[s.type])(s, lives);
 }
 
 // 1) Brute-Force: Befehle exakt abtippen
@@ -116,7 +117,7 @@ async function typing(s, lives) {
 
 // 2) Kennwort knacken (Mastermind, 4 verschiedene Ziffern)
 async function code(s, lives) {
-  await prompt(`hash --crack   # ${s.length} verschiedene Ziffern, ● = richtige Stelle, ○ = falsche Stelle`);
+  await prompt(`hash --crack   # ${s.length} verschiedene Ziffern, ● = richtige Stelle, ○ = falsche Stelle${s.rounds > 1 ? `  [Kennwort ${s.round}/${s.rounds}]` : ''}`);
   const inp = el('input'); inp.maxLength = s.length; inp.inputMode = 'numeric'; inp.placeholder = '0'.repeat(s.length); inp.autocomplete = 'off';
   const go = el('button', '', 'Testen'), info = el('div', 'dim', `Versuche übrig: ${s.tries}`), hist = el('div', 'hist');
   const submit = async () => {
@@ -159,6 +160,56 @@ async function cipher(s, lives) {
   slider.addEventListener('input', upd); upd();
   go.addEventListener('click', async () => { go.disabled = slider.disabled = true; handle(await call('/answer', { sid: state.sid, text: big.textContent }), lives); });
   const row = el('div', 'row'); row.append(slider, go); panel.append(big, lbl, row); slider.focus();
+}
+
+// 5) Frequenz finden (höher/tiefer, Signalstärke als Hinweis)
+async function frequency(s, lives) {
+  await prompt(`radio --tune   # finde die Frequenz (${s.min}-${s.max}), die Signalstärke hilft`);
+  const inp = el('input'); inp.type = 'number'; inp.min = s.min; inp.max = s.max; inp.placeholder = String(Math.round((s.min + s.max) / 2));
+  const go = el('button', '', 'Senden'), info = el('div', 'dim', `Versuche übrig: ${s.tries}`), hist = el('div', 'hist');
+  const submit = async () => {
+    const g = Number(inp.value);
+    if (!Number.isInteger(g) || g < s.min || g > s.max) { info.textContent = `Bitte eine ganze Zahl von ${s.min} bis ${s.max}.`; return; }
+    go.disabled = inp.disabled = true;
+    const res = await call('/answer', { sid: state.sid, guess: g });
+    if (res.data.result === 'feedback') {
+      const d = el('div'); d.append(el('span', '', String(g).padStart(3, ' ')), el('span', res.data.hint === 'higher' ? 'warn' : 'info', res.data.hint === 'higher' ? '\u25B2 höher' : '\u25BC tiefer'), el('span', 'dim', `Signal ${res.data.strength}%`));
+      hist.prepend(d); info.textContent = `Versuche übrig: ${res.data.tries}`; inp.value = ''; go.disabled = inp.disabled = false; inp.focus();
+    } else handle(res, lives);
+  };
+  go.addEventListener('click', submit); inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+  const row = el('div', 'row'); row.append(inp, go); panel.append(row, info, hist); inp.focus();
+}
+
+// 6) Gültiges Token finden: Quersumme (Hexziffern) durch n teilbar
+async function checksum(s, lives) {
+  await prompt('verify --tokens   # genau EIN Token ist gültig');
+  await line(`Regel: Zähle die Ziffern eines Tokens zusammen (A=10, B=11, C=12, D=13, E=14, F=15). Gültig ist es, wenn die Summe durch ${s.mod} teilbar ist.`, 'dim', 0);
+  const grid = el('div', 'row');
+  s.tokens.forEach((t, i) => { const b = el('button', '', t); b.addEventListener('click', async () => { [...grid.children].forEach((x) => (x.disabled = true)); handle(await call('/answer', { sid: state.sid, index: i }), lives); }); grid.append(b); });
+  panel.append(grid);
+}
+
+// 7) Muster wiedererkennen: kurz anzeigen, dann aus Optionen wählen
+async function match(s, lives) {
+  await prompt('trace --signature   # merke dir die Kennung');
+  const big = el('div', 'big', s.target), info = el('div', 'dim', 'Einprägen …'), row = el('div', 'row');
+  panel.append(big, info); await sleep(s.showMs);
+  big.textContent = '????-????'; info.textContent = 'Welche Kennung war es?';
+  s.options.forEach((o, i) => { const b = el('button', '', o); b.addEventListener('click', async () => { [...row.children].forEach((x) => (x.disabled = true)); handle(await call('/answer', { sid: state.sid, index: i }), lives); }); row.append(b); });
+  panel.append(row);
+}
+
+// 8) Prüfsummen rechnen (Kopfrechnen unter Zeitdruck)
+async function math(s, lives) {
+  await prompt(`checksum --solve   # ${s.problems.length} Rechnungen in ${s.limitSec} s`);
+  const t0 = Date.now(), rows = [], list = el('div');
+  s.problems.forEach((p) => { const r = el('div', 'row'); const i = el('input'); i.type = 'number'; i.style.width = '110px'; r.append(el('span', '', `${p} =`), i); rows.push(i); list.append(r); });
+  const go = el('button', '', 'Abschicken'), info = el('div', 'dim', '');
+  const iv = setInterval(() => { info.textContent = `Zeit: ${Math.max(0, s.limitSec - Math.floor((Date.now() - t0) / 1000))} s`; }, 500);
+  const submit = async () => { if (rows.some((i) => i.value === '')) { info.textContent = 'Bitte alle Felder ausfüllen.'; return; } clearInterval(iv); go.disabled = true; rows.forEach((i) => (i.disabled = true)); handle(await call('/answer', { sid: state.sid, answers: rows.map((i) => Number(i.value)), ms: Date.now() - t0 }), lives); };
+  go.addEventListener('click', submit); rows.forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); }));
+  panel.append(list, go, info); rows[0].focus();
 }
 
 async function success(data) {
