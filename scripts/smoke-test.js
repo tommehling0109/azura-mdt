@@ -652,6 +652,44 @@ try {
   assert.equal((await admin.call('POST', `/api/market/deals/${deal1}/advance`, { warehouseId: wh })).status, 200);
   assert.equal((await admin.call('GET', `/api/warehouses/${wh}`)).stock.find((s) => s.itemId === ore).quantity, stockBefore + 100); ok('Ware eingegangen → wird direkt ins gewählte Lager eingebucht');
 
+
+  // ══ Chat für externe Partner ══
+  const nochat = new Client(); r = await admin.call('POST', '/api/partners', { name: 'Ohne Chat', apps: ['market'] });
+  await nochat.call('POST', `/api/p/${r.partner.linkPath.split('/').pop()}/login`, { code: r.code });
+  assert.equal((await nochat.call('GET', '/api/p/chat/channels')).status, 403); ok('Partner ohne Chat-App: kein Zugriff auf den Chat');
+  const cp = new Client(); r = await admin.call('POST', '/api/partners', { name: 'Händler Chat', apps: ['market', 'chat'] }); const chatPartnerId = r.partner.id; const chatPartnerNo = r.partner.number;
+  assert.equal((await cp.call('POST', `/api/p/${r.partner.linkPath.split('/').pop()}/login`, { code: r.code })).status, 200);
+  r = await cp.call('GET', '/api/p/chat/people'); assert.ok(r.people.length >= 1); assert.ok(r.people.every((p) => /^[A-Z]+-\d+$/.test(p.label))); assert.equal(JSON.stringify(r).toLowerCase().includes('"admin"'), false); ok('Partner sieht als Ansprechpartner nur Mitglieder mit chat.partners – als Personalnummer');
+  assert.equal((await cp.call('GET', '/api/p/chat/dms')).dms.length, 0);
+  const sP = await openSse(cp.cookie, '/api/p/events');
+  r = await cp.call('POST', '/api/p/chat/dms', { userId: 1 }); assert.equal(r.status, 200); const pdm = r.channel.id; assert.match(r.channel.name, /^[A-Z]+-\d+$/);
+  assert.equal((await cp.call('POST', '/api/p/chat/dms', { userId: neuer.id })).status, 400); ok('Partner kann nur Ansprechpartner anschreiben, nicht beliebige Mitglieder');
+  r = await cp.call('POST', `/api/p/chat/channels/${pdm}/messages`, { body: 'Hallo Team, hier der Partner' }); assert.equal(r.status, 201); assert.equal(r.message.sender, chatPartnerNo); assert.equal(r.message.isMine, true);
+  r = await admin.call('GET', '/api/chat/dms'); const adm = r.dms.find((d) => d.id === pdm); assert.ok(adm); assert.equal(adm.name, chatPartnerNo); assert.equal(adm.description, 'Händler Chat'); assert.equal(adm.unread, 1);
+  r = await admin.call('GET', '/api/notifications'); assert.ok(r.notifications.some((n) => n.title === 'Neue Privatnachricht' && n.body.startsWith(chatPartnerNo))); ok('Partner → Mitarbeiter: Privatnachricht samt Benachrichtigung (Partner nur als Partnernummer)');
+  r = await admin.call('GET', `/api/chat/channels/${pdm}/messages`); assert.equal(r.messages[0].sender, chatPartnerNo); assert.equal(r.messages[0].body, 'Hallo Team, hier der Partner');
+  r = await admin.call('POST', `/api/chat/channels/${pdm}/messages`, { body: 'Hallo Partner, wir melden uns' }); assert.equal(r.status, 201);
+  assert.ok(await sP.waitFor((e) => e.event === 'change' && e.data.topic === 'chat')); ok('Mitarbeiter → Partner: Antwort kommt live an');
+  r = await cp.call('GET', '/api/p/chat/dms'); assert.equal(r.dms.length, 1); assert.equal(r.dms[0].unread, 1);
+  r = await cp.call('GET', `/api/p/chat/channels/${pdm}/messages`); assert.equal(r.messages.length, 2); assert.match(r.messages[1].sender, /^[A-Z]+-\d+$/); assert.equal(r.messages[1].isMine, false);
+  assert.equal(JSON.stringify(r).includes('Admin'), false); assert.equal(JSON.stringify(r).includes('"username"'), false); ok('Partner sieht Mitarbeiter nur als Personalnummer – nie Namen');
+  const pm = (await cp.call('POST', `/api/p/chat/channels/${pdm}/messages`, { body: 'Tippfehler' })).message.id;
+  assert.equal((await cp.call('PATCH', `/api/p/chat/messages/${pm}`, { body: 'Korrigiert' })).message.body, 'Korrigiert');
+  assert.equal((await cp.call('DELETE', `/api/p/chat/messages/${pm}`)).status, 200);
+  const adminMsg = (await admin.call('GET', `/api/chat/channels/${pdm}/messages`)).messages.find((x) => !x.isMine && !x.deleted).id;
+  assert.equal((await cp.call('PATCH', `/api/p/chat/messages/${(await admin.call('GET', `/api/chat/channels/${pdm}/messages`)).messages.find((x) => x.isMine).id}`, { body: 'fremd' })).status, 403); void adminMsg; ok('Partner kann eigene Nachrichten bearbeiten/löschen, fremde nicht');
+  assert.equal((await mod.call('GET', `/api/chat/channels/${pdm}/messages`)).status, 404); assert.equal((await mod.call('POST', '/api/chat/dms', { partnerId: chatPartnerId })).status, 403); ok('Andere Mitarbeiter können Partner-Privatchats weder lesen noch ohne chat.partners starten');
+  r = await admin.call('GET', '/api/chat/people'); assert.ok(r.partners.some((p) => p.label === chatPartnerNo)); assert.equal((await mod.call('GET', '/api/chat/people')).partners.length, 0);
+  r = await admin.call('POST', '/api/chat/dms', { partnerId: chatPartnerId }); assert.equal(r.channel.id, pdm); ok('Mitarbeiter mit chat.partners findet Partner in der Empfängerliste (Partnernummer)');
+  assert.equal((await cp.call('GET', `/api/p/chat/channels/${general}/messages`)).status, 404); assert.equal((await cp.call('GET', '/api/p/chat/channels')).channels.length, 0);
+  r = await admin.call('PATCH', `/api/chat/channels/${general}`, { partnerIds: [chatPartnerId] }); assert.deepEqual(r.channel.partnerIds, [chatPartnerId]);
+  r = await cp.call('GET', '/api/p/chat/channels'); assert.equal(r.channels.length, 1); assert.equal(r.channels[0].id, general);
+  r = await cp.call('POST', `/api/p/chat/channels/${general}/messages`, { body: 'Hallo im Kanal' }); assert.equal(r.status, 201);
+  r = await admin.call('GET', `/api/chat/channels/${general}/messages`); assert.ok(r.messages.some((x) => x.sender === chatPartnerNo && x.body === 'Hallo im Kanal')); ok('Kanäle lassen sich gezielt für Partner freigeben; Nachrichten erscheinen mit Partnernummer');
+  r = await cp.call('GET', `/api/p/chat/channels/${general}/messages`); assert.equal((await cp.call('POST', `/api/p/chat/messages/${r.messages.find((x) => !x.isMine).id}/pin`)).status, 404); assert.equal((await cp.call('GET', '/api/chat/channels')).status, 401); ok('Partner können nicht pinnen und nicht auf die Mitarbeiter-API zugreifen');
+  await admin.call('PATCH', `/api/partners/${chatPartnerId}`, { apps: ['market'] });
+  assert.equal((await cp.call('GET', '/api/p/chat/channels')).status, 403); sP.close(); ok('Chat-App für Partner jederzeit entziehbar');
+
   // ── Branding: eigenes Logo / Hintergrund ──
   const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
   assert.equal((await mod.call('POST', '/api/admin/branding/logo', { data: PNG })).status, 403);

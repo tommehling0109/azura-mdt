@@ -20,8 +20,14 @@ function renderBody(text) {
   return text.split(MENTION).map((part, i) => (i % 2 ? h('span', { class: `mention ${part.slice(1).toUpperCase() === me ? 'me' : ''}` }, part) : part)); // ungerade Teile = Erwähnungen (Capture-Gruppe)
 }
 
-export default async function render(container, ctx) {
-  const canSend = can('chat.send'), canPin = can('chat.pin'), canManage = can('chat.manage');
+/** Chat der Mitarbeiter (Standard) – und, mit { partner: true }, der Chat im Partner-Portal (gleiche Oberfläche, eigene Endpunkte). */
+export default (container, ctx) => chatApp(container, ctx, {});
+
+export async function chatApp(container, ctx, o = {}) {
+  const PARTNER = !!o.partner;
+  const A = (p) => (PARTNER ? '/api/p/chat' : '/api/chat') + p;
+  const canSend = PARTNER || can('chat.send'), canPin = !PARTNER && can('chat.pin'), canManage = !PARTNER && can('chat.manage');
+  let partnerOptions = [];
   let channels = [], dms = [];
   let current = Number(sessionStorage.getItem(CHANNEL_KEY)) || null;
   let data = { messages: [], pinned: [], hasMore: false, channel: null };
@@ -46,7 +52,9 @@ export default async function render(container, ctx) {
   // ── Kanäle ──
   async function loadChannels() {
     let fresh = [];
-    [{ channels }, { dms: fresh }] = await Promise.all([api.get('/api/chat/channels'), api.get('/api/chat/dms')]);
+    let first;
+    [first, { dms: fresh }] = await Promise.all([api.get(A('/channels')), api.get(A('/dms'))]);
+    ({ channels } = first); partnerOptions = first.partners ?? [];
     // noch leere, gerade geöffnete Privatchats in der Liste behalten, bis die erste Nachricht gesendet ist
     const keep = dms.filter((d) => d.keep && !fresh.some((f) => f.id === d.id));
     dms = [...fresh, ...keep];
@@ -54,24 +62,27 @@ export default async function render(container, ctx) {
     drawSide();
   }
   const allChats = () => [...channels, ...dms];
-  async function openDm(userId) {
-    const { channel } = await api.post('/api/chat/dms', { userId });
+  async function openDm(p) {
+    const { channel } = await api.post(A('/dms'), p.partner ? { partnerId: p.id } : { userId: p.id });
     if (!dms.some((d) => d.id === channel.id)) dms.unshift({ ...channel, keep: true });
     current = channel.id; replyTo = editing = null; setBanner(); sessionStorage.setItem(CHANNEL_KEY, String(current));
     drawSide(); await loadMessages({ initial: true }); ta.focus();
   }
   async function newDm() {
     let people = [];
-    try { ({ people } = await api.get('/api/chat/people')); } catch (e) { return toast(e.message, 'err'); }
-    const q = input({ placeholder: 'Personalnummer suchen …' });
+    try { const r = await api.get(A('/people')); people = [...(r.partners ?? []).map((x) => ({ ...x, group: 'Externe Partner' })), ...r.people.map((x) => ({ ...x, group: PARTNER ? 'Ansprechpartner im Team' : 'Mitglieder' }))]; } catch (e) { return toast(e.message, 'err'); }
+    const q = input({ placeholder: 'Nummer suchen …' });
     const list = h('div', { class: 'people-list' });
     const draw = () => {
       const f = q.value.trim().toLowerCase();
-      const rows = people.filter((p) => !f || p.label.toLowerCase().includes(f));
-      mount(list, rows.length ? rows.map((p) => {
-        const b = h('button', { type: 'button', class: 'list-row people-row' }, h('div', { class: 'dot-icon' }, icon('users')), h('div', { class: 'grow' }, h('div', { class: 't' }, p.label)), icon('chevronR'));
-        b.addEventListener('click', async () => { try { await openDm(p.id); m.close(); } catch (e) { toast(e.message, 'err'); } });
-        return b;
+      const rows = people.filter((p) => !f || `${p.label} ${p.subtitle ?? ''}`.toLowerCase().includes(f));
+      let lastGroup = null;
+      mount(list, rows.length ? rows.flatMap((p) => {
+        const b = h('button', { type: 'button', class: 'list-row people-row' }, h('div', { class: 'dot-icon' }, icon('users')), h('div', { class: 'grow' }, h('div', { class: 't' }, p.label), p.subtitle && h('div', { class: 's' }, p.subtitle)), icon('chevronR'));
+        b.addEventListener('click', async () => { try { await openDm(p); m.close(); } catch (e) { toast(e.message, 'err'); } });
+        const head = p.group !== lastGroup && (people.some((x) => x.group !== p.group)) ? h('div', { class: 'chat-side-title' }, p.group) : null;
+        lastGroup = p.group;
+        return [head, b].filter(Boolean);
       }) : empty('Niemand gefunden', people.length ? 'Prüfe die Personalnummer.' : 'Es gibt noch keine weiteren Mitglieder mit Chat-Zugang.', 'users'));
     };
     q.addEventListener('input', draw);
@@ -97,13 +108,13 @@ export default async function render(container, ctx) {
     if (!current) { mount(scroller, empty('Kein Kanal', 'Es ist noch kein Kanal für dich freigegeben.', 'chat')); mount(head); return; }
     const stick = initial || nearBottom();
     const prevH = scroller.scrollHeight, prevTop = scroller.scrollTop;
-    try { data = await api.get(`/api/chat/channels/${current}/messages`); } catch (e) { mount(scroller, empty('Nicht verfügbar', e.message, 'lock')); return; }
+    try { data = await api.get(A(`/channels/${current}/messages`)); } catch (e) { mount(scroller, empty('Nicht verfügbar', e.message, 'lock')); return; }
     if (!ctx.isCurrent()) return;
     drawHead(); drawMessages();
     if (stick) toBottom(); else scroller.scrollTop = prevTop + (scroller.scrollHeight - prevH) * 0;
     const last = data.messages.at(-1)?.id;
     if (last && document.visibilityState === 'visible') {
-      api.post(`/api/chat/channels/${current}/read`, { lastId: last }).then(() => { const c = allChats().find((x) => x.id === current); if (c && c.unread) { c.unread = 0; drawSide(); ctx.refreshCounters?.(); } }).catch(() => {});
+      api.post(A(`/channels/${current}/read`), { lastId: last }).then(() => { const c = allChats().find((x) => x.id === current); if (c && c.unread) { c.unread = 0; drawSide(); ctx.refreshCounters?.(); } }).catch(() => {});
     }
   }
 
@@ -154,7 +165,7 @@ export default async function render(container, ctx) {
     const first = data.messages[0]?.id;
     if (!first) return;
     const prevH = scroller.scrollHeight;
-    const older = await api.get(`/api/chat/channels/${current}/messages?before=${first}`);
+    const older = await api.get(A(`/channels/${current}/messages?before=${first}`));
     data.messages = [...older.messages, ...data.messages]; data.hasMore = older.hasMore;
     drawMessages();
     scroller.scrollTop = scroller.scrollHeight - prevH;
@@ -174,8 +185,8 @@ export default async function render(container, ctx) {
     const body = ta.value.trim();
     if (!body || !current) return;
     try {
-      if (editing) await api.patch(`/api/chat/messages/${editing.id}`, { body });
-      else await api.post(`/api/chat/channels/${current}/messages`, { body, replyTo: replyTo?.id });
+      if (editing) await api.patch(A(`/messages/${editing.id}`), { body });
+      else await api.post(A(`/channels/${current}/messages`), { body, replyTo: replyTo?.id });
       cancelCompose();
       await loadMessages({ initial: true });
     } catch (e) { toast(e.message, 'err'); }
@@ -188,12 +199,12 @@ export default async function render(container, ctx) {
   ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`; });
 
   async function togglePin(m) {
-    try { if (m.pinned) await api.del(`/api/chat/messages/${m.id}/pin`); else await api.post(`/api/chat/messages/${m.id}/pin`); await loadMessages(); } catch (e) { toast(e.message, 'err'); }
+    try { if (m.pinned) await api.del(A(`/messages/${m.id}/pin`)); else await api.post(A(`/messages/${m.id}/pin`)); await loadMessages(); } catch (e) { toast(e.message, 'err'); }
   }
   async function del(m) {
     const r = await confirmDialog({ title: 'Nachricht löschen?', message: m.isMine ? 'Deine Nachricht wird für alle gelöscht.' : 'Diese Nachricht wird als Moderator für alle gelöscht.', confirmLabel: 'Löschen' });
     if (!r) return;
-    try { await api.del(`/api/chat/messages/${m.id}`); await loadMessages(); } catch (e) { toast(e.message, 'err'); }
+    try { await api.del(A(`/messages/${m.id}`)); await loadMessages(); } catch (e) { toast(e.message, 'err'); }
   }
 
   // ── Kanal-Verwaltung ──
@@ -219,20 +230,22 @@ export default async function render(container, ctx) {
       paint();
       const restricted = toggle('Nur für bestimmte Rollen sichtbar', c?.restricted ?? false);
       const boxes = roles.map((r) => [r, checkbox(h('span', null, r.name), c?.roleIds.includes(r.id) ?? false)]);
+      const pBoxes = partnerOptions.map((p) => [p, checkbox(h('span', null, `${p.label} · ${p.name}${p.active ? '' : ' (inaktiv)'}`), c?.partnerIds?.includes(p.id) ?? false)]);
       const footer = [];
       if (c) footer.push(button('Löschen', { variant: 'danger', icon: 'trash', onClick: async () => {
         const r = await confirmDialog({ title: 'Kanal löschen?', message: `„${c.name}“ und alle Nachrichten darin werden endgültig gelöscht.`, confirmLabel: 'Löschen' });
         if (!r) return;
-        try { await api.del(`/api/chat/channels/${c.id}`); em.close(); toast('Kanal gelöscht.'); redraw(); loadMessages({ initial: true }); } catch (e) { toast(e.message, 'err'); }
+        try { await api.del(A(`/channels/${c.id}`)); em.close(); toast('Kanal gelöscht.'); redraw(); loadMessages({ initial: true }); } catch (e) { toast(e.message, 'err'); }
       } }));
       footer.push(h('span', { class: 'grow' }), button('Abbrechen', { onClick: () => em.close() }), button(c ? 'Speichern' : 'Erstellen', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
         err.replaceChildren();
-        const payload = { name: name.value, description: desc.value, color, restricted: restricted.input.checked, roleIds: boxes.filter(([, x]) => x.input.checked).map(([r]) => r.id) };
-        try { if (c) await api.patch(`/api/chat/channels/${c.id}`, payload); else await api.post('/api/chat/channels', payload); em.close(); toast('Gespeichert.'); redraw(); } catch (ex) { err.replaceChildren(formError(ex.message)); }
+        const payload = { name: name.value, description: desc.value, color, restricted: restricted.input.checked, roleIds: boxes.filter(([, x]) => x.input.checked).map(([r]) => r.id), partnerIds: pBoxes.filter(([, x]) => x.input.checked).map(([p]) => p.id) };
+        try { if (c) await api.patch(A(`/channels/${c.id}`), payload); else await api.post(A('/channels'), payload); em.close(); toast('Gespeichert.'); redraw(); } catch (ex) { err.replaceChildren(formError(ex.message)); }
       }) }));
       const em = openModal({ title: c ? `Kanal: ${c.name}` : 'Neuer Kanal', body: h('div', null, err, h('div', { class: 'form-row' }, field('Name', name), field('Beschreibung', desc)), field('Farbe', sw), restricted,
         h('div', { class: 'help', style: { margin: '8px 0 6px' } }, 'Beschränkte Kanäle sehen nur Mitglieder mit einer der gewählten Rollen (Administratoren immer).'),
-        boxes.map(([, x]) => x)), footer });
+        boxes.map(([, x]) => x),
+        pBoxes.length ? [h('div', { class: 'sep' }), h('div', { class: 'label', style: { margin: '0 0 6px' } }, 'Für externe Partner freigeben'), h('div', { class: 'help', style: { marginBottom: '6px' } }, 'Freigegebene Partner (Partner-App „Chat“) können in diesem Kanal lesen und schreiben – als Partnernummer.'), pBoxes.map(([, x]) => x)] : null), footer });
     }
     redraw();
   }

@@ -422,4 +422,20 @@ export const SCHEMA_MIGRATIONS = [
   );
   CREATE INDEX idx_wh_events ON warehouse_events(warehouse_id, id);
   `,
+  /* v8 – Chat für externe Partner */ `
+  ALTER TABLE chat_channels ADD COLUMN dm_partner INTEGER REFERENCES partners(id) ON DELETE CASCADE;
+  CREATE UNIQUE INDEX idx_chat_dm_partner ON chat_channels(dm_a, dm_partner) WHERE kind = 'dm' AND dm_partner IS NOT NULL;
+  ALTER TABLE chat_messages ADD COLUMN partner_id INTEGER REFERENCES partners(id) ON DELETE SET NULL;
+  CREATE TABLE chat_channel_partners (
+    channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+    partner_id INTEGER NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
+    PRIMARY KEY (channel_id, partner_id)
+  );
+  CREATE TABLE chat_partner_reads (
+    channel_id   INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+    partner_id   INTEGER NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
+    last_read_id INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (channel_id, partner_id)
+  );
+  `,
 ];
