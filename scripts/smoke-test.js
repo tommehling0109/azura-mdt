@@ -1199,6 +1199,31 @@ try {
     assert.equal((await guest.call('POST', H + '/answer', { sid: r.sid, guess: 999 })).status, 400);
     const lo = fs_.target > 1 ? fs_.target - 1 : 256; const hint = await guest.call('POST', H + '/answer', { sid: r.sid, guess: lo }); assert.equal(hint.result, 'feedback'); assert.equal(hint.hint, lo < fs_.target ? 'higher' : 'lower'); assert.equal(JSON.stringify(hint).includes(String(fs_.target)) && hint.strength === undefined, false);
     await admin.call('PUT', '/api/config', { values: Object.fromEntries(['typing', 'code', 'sequence', 'cipher', 'frequency', 'checksum', 'match', 'math'].map((g) => ['hack.game_' + g, true]).concat([['hack.stage_count', 4], ['hack.pin_reset', true]])) });
+    // Hinweise: je Minigame einmal, mit Trefferchance und Ladezeit
+    const HP = { 'hack.hint_seconds': 0, 'hack.hint_chance': 100, 'hack.stage_count': 8 };
+    await admin.call('PUT', '/api/config', { values: { ...HP, ...Object.fromEntries(['typing', 'code', 'sequence', 'cipher', 'frequency', 'checksum', 'match', 'math'].map((g) => ['hack.game_' + g, true])) } });
+    await admin.call('POST', '/api/hack/admin/reset-cooldown'); r = await guest.call('POST', H + '/start', {}); assert.equal(r.status, 200); assert.equal((await guest.call('GET', H + '/status')).hints, true); const hsid = r.sid; const got = {}; let wrongs = 0;
+    for (let n = 0; n < 8; n++) { const sess = __sessions.get(hsid), t = sess.stage.type, sec = sess.stage.secret;
+      const before = sec.limitMs; const hr = await guest.call('POST', H + '/hint', { sid: hsid }); assert.equal(hr.status, 200); assert.ok(hr.hint?.text, 'Hinweis bei 100 % Chance'); got[t] = hr.hint;
+      assert.equal((await guest.call('POST', H + '/hint', { sid: hsid })).status, 409); // nur einmal je Minigame
+      if (t === 'typing') assert.equal(sec.limitMs, before + 30000);
+      if (t === 'code') { const m = hr.hint.text.match(/Stelle (\d) .* (\d)\./); assert.equal(sec.digits[Number(m[1]) - 1], m[2]); }
+      if (t === 'sequence') assert.ok(hr.hint.text.includes(String(sec.seq[0] + 1)));
+      if (t === 'cipher') assert.ok(hr.hint.text.includes(sec.word[0]) && hr.hint.text.includes(String(sec.word.length)));
+      if (t === 'frequency') { const m = hr.hint.text.match(/zwischen (\d+) und (\d+)/); assert.ok(Number(m[1]) <= sec.target && sec.target <= Number(m[2])); }
+      if (t === 'checksum' || t === 'match') { assert.ok(hr.hint.eliminate.length >= 1 && !hr.hint.eliminate.includes(sec.index)); assert.equal(JSON.stringify(hr).includes('"index"'), false); }
+      if (t === 'math') assert.equal(hr.hint.fill.value, sec.answers[hr.hint.fill.index]);
+      if (wrongs < 2 && ['typing', 'sequence', 'cipher', 'checksum', 'match', 'math'].includes(t)) { wrongs++; const wr = await guest.call('POST', H + '/answer', { sid: hsid, ...wrong(sess) }); // falsch: neue Aufgabe derselben Stufe – Hinweis bleibt verbraucht
+        assert.equal(wr.result, 'retry'); assert.equal((await guest.call('POST', H + '/hint', { sid: hsid })).status, 409); }
+      const res = await guest.call('POST', H + '/answer', { sid: hsid, ...solve(__sessions.get(hsid)) }); if (res.result === 'reset') await guest.call('POST', H + '/answer', { sid: hsid, ...solve(__sessions.get(hsid)) });
+      if (res.result === 'done') break; }
+    assert.ok(Object.keys(got).length >= 4);
+    // Ohne Treffer: Hinweis verbraucht, aber leer; Hinweise abschaltbar
+    await admin.call('PUT', '/api/config', { values: { 'hack.hint_chance': 0, 'hack.stage_count': 1 } }); await admin.call('POST', '/api/hack/admin/reset-cooldown');
+    r = await guest.call('POST', H + '/start', {}); let nh = await guest.call('POST', H + '/hint', { sid: r.sid }); assert.equal(nh.status, 200); assert.equal(nh.hint, null); assert.equal((await guest.call('POST', H + '/hint', { sid: r.sid })).status, 409);
+    await admin.call('PUT', '/api/config', { values: { 'hack.hints': false } }); await admin.call('POST', '/api/hack/admin/reset-cooldown'); r = await guest.call('POST', H + '/start', {}); assert.equal((await guest.call('POST', H + '/hint', { sid: r.sid })).status, 403); assert.equal((await guest.call('GET', H + '/status')).hints, false);
+    assert.equal((await new Client().call('POST', '/api/h/falsch/hint', { sid: 'x' })).status, 404); assert.equal((await guest.call('POST', H + '/hint', { sid: 'unbekannt' })).status, 410);
+    await admin.call('PUT', '/api/config', { values: { 'hack.hints': true, 'hack.hint_chance': 65, 'hack.hint_seconds': 3, 'hack.stage_count': 4 } });
     // abgeschaltet
     await admin.call('POST', '/api/hack/admin/reset-cooldown'); await admin.call('PUT', '/api/config', { values: { 'hack.enabled': false } }); assert.equal((await guest.call('POST', H + '/start', {})).status, 403); await admin.call('PUT', '/api/config', { values: { 'hack.enabled': true } });
     // Link erneuern: alter Link tot

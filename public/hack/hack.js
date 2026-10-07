@@ -37,9 +37,30 @@ function setHud(index, total, lives) {
   const b = el('span', 'lives', '\u2665'.repeat(lives) + '\u2661'.repeat(Math.max(0, state.maxLives - lives)));
   const c = el('span'); c.append('ZEIT ', Object.assign(el('b'), { textContent: '--:--' }));
   hud.append(a, b, c);
+  if (state.hints) {
+    const used = state.hintUsed.has(index), hb = el('button', 'hintbtn', used ? 'Hinweis verbraucht' : 'Hinweis anfordern (1×)'); hb.disabled = used; hb.type = 'button';
+    hb.addEventListener('click', () => requestHint(hb, index)); hud.append(hb);
+  }
   if (!setHud.t0) setHud.t0 = Date.now();
   clearInterval(setHud.iv); setHud.iv = setInterval(() => { const s = Math.floor((Date.now() - setHud.t0) / 1000); c.lastChild.textContent = fmt(s); }, 1000);
 }
+
+// ── Hinweis: dauert ein paar Sekunden, liefert mit Wahrscheinlichkeit nichts ──
+async function requestHint(btn, index) {
+  state.hintUsed.add(index); btn.disabled = true;
+  let n = 0; const iv = setInterval(() => { btn.textContent = `Hinweis wird geladen${'.'.repeat(1 + (n++ % 3))}`; }, 400);
+  await line('[?] Suche nach Hinweisen …', 'dim', 0);
+  const res = await call('/hint', { sid: state.sid });
+  clearInterval(iv); btn.textContent = 'Hinweis verbraucht';
+  if (res.status !== 200 || res.data.stale || state.index !== index) return; // Stufe ist inzwischen gewechselt
+  const h = res.data.hint;
+  if (!h) { await line('[?] Keine Hinweise gefunden – die Suche blieb ergebnislos.', 'warn', 0); return; }
+  await line(`[?] Hinweis: ${h.text}`, 'info', 0);
+  (h.eliminate ?? []).forEach((i) => state.elim.add(i)); applyElim();
+  if (h.fill) { const f = panel.querySelectorAll('input')[h.fill.index]; if (f) { f.value = h.fill.value; f.classList.add('hinted'); } }
+  panel.querySelector('textarea, input:not(:disabled)')?.focus();
+}
+function applyElim() { panel.querySelectorAll('.row button').forEach((b, i) => { if (state.elim.has(i)) { b.disabled = true; b.classList.add('struck'); } }); }
 
 // ── Ablauf ──
 async function boot() {
@@ -55,8 +76,8 @@ async function boot() {
   if (!data.enabled) { await line('[-] Relay offline. Später erneut versuchen.', 'err'); return; }
   if (data.cooldownSec > 0) return locked(data.cooldownSec);
   await line('');
-  await line(`Zielsystem gefunden. ${data.stages} Sicherheitsstufen aktiv.`, 'warn');
-  state.maxLives = data.lives;
+  await line(`Zielsystem gefunden. ${data.stages} ${data.stages === 1 ? 'Sicherheitsstufe' : 'Sicherheitsstufen'} aktiv.`, 'warn');
+  state.maxLives = data.lives; state.hints = data.hints !== false;
   await line(`Du hast ${data.lives} Versuch${data.lives === 1 ? '' : 'e'}. Wird die Rückverfolgung abgeschlossen, bist du raus.`, 'dim');
   const go = el('button', '', 'Verbindung aufbauen'); go.addEventListener('click', () => { clearPanel(); begin(); });
   panel.append(go); go.focus();
@@ -73,11 +94,11 @@ async function begin() {
   if (status === 429) return locked(data.details?.cooldownSec ?? 60);
   if (status !== 200) { await line('[-] Verbindung abgelehnt.', 'err'); return; }
   setHud.t0 = Date.now();
-  state.sid = data.sid; state.maxLives = data.maxLives ?? data.lives;
+  state.hintUsed = new Set(); state.sid = data.sid; state.maxLives = data.maxLives ?? data.lives;
   await line('[+] Verbindung steht. Sicherheitsstufe 1 …', 'ok');
   await stage(data.stage, data.lives);
 }
-const state = { sid: null, maxLives: 3, lives: 3 };
+const state = { sid: null, maxLives: 3, lives: 3, hints: true, hintUsed: new Set(), index: 0, elim: new Set() };
 
 // Antwort des Servers verarbeiten
 async function handle(res, lives) {
@@ -94,7 +115,7 @@ async function handle(res, lives) {
 }
 
 async function stage(s, lives) {
-  clearPanel(); state.lives = lives; setHud(s.index, s.total, lives);
+  clearPanel(); state.lives = lives; state.index = s.index; state.elim = new Set(); setHud(s.index, s.total, lives);
   ({ typing, code, sequence, cipher, frequency, checksum, match, math }[s.type])(s, lives);
 }
 
@@ -137,7 +158,7 @@ async function code(s, lives) {
 async function sequence(s, lives) {
   await prompt('firewall --pattern   # merke dir die Folge und wiederhole sie');
   const grid = el('div', 'grid'), info = el('div', 'dim', 'Beobachte …'); const cells = [];
-  for (let i = 0; i < s.grid; i++) { const b = el('button', '', ''); b.disabled = true; b.setAttribute('aria-label', `Feld ${i + 1}`); cells.push(b); grid.append(b); }
+  for (let i = 0; i < s.grid; i++) { const b = el('button', '', String(i + 1)); b.disabled = true; b.setAttribute('aria-label', `Feld ${i + 1}`); cells.push(b); grid.append(b); }
   panel.append(grid, info);
   await sleep(700);
   for (const n of s.sequence) { cells[n].classList.add('lit'); await sleep(s.speed); cells[n].classList.remove('lit'); await sleep(Math.round(s.speed / 2.4)); }
@@ -197,7 +218,7 @@ async function match(s, lives) {
   panel.append(big, info); await sleep(s.showMs);
   big.textContent = '????-????'; info.textContent = 'Welche Kennung war es?';
   s.options.forEach((o, i) => { const b = el('button', '', o); b.addEventListener('click', async () => { [...row.children].forEach((x) => (x.disabled = true)); handle(await call('/answer', { sid: state.sid, index: i }), lives); }); row.append(b); });
-  panel.append(row);
+  panel.append(row); applyElim();
 }
 
 // 8) Prüfsummen rechnen (Kopfrechnen unter Zeitdruck)

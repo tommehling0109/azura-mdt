@@ -116,6 +116,26 @@ function makeStage(type, { round = 1 } = {}) {
 }
 const stageDto = (s) => ({ type: s.stage.type, index: s.index, total: s.plan.length, ...(s.stage.type === 'typing' ? { lines: s.stage.lines, typeSec: s.stage.typeSec } : s.stage.public) });
 
+// ── Hinweise: pro Minigame einmal anforderbar; dauert ein paar Sekunden und liefert mit Wahrscheinlichkeit nichts ──
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+function makeHint(st) {
+  const sec = st.secret;
+  switch (st.type) {
+    case 'typing': sec.limitMs += 30_000; return { text: 'Zeitlimit für diese Stufe um 30 Sekunden verlängert.' };
+    case 'code': { const pos = randomInt(0, sec.digits.length); return { text: `Stelle ${pos + 1} des Kennworts ist eine ${sec.digits[pos]}.` }; }
+    case 'sequence': return { text: `Die Folge beginnt mit den Feldern ${sec.seq.slice(0, Math.ceil(sec.seq.length / 2)).map((x) => x + 1).join(', ')}.` };
+    case 'cipher': return { text: `Das Wort hat ${sec.word.length} Buchstaben und beginnt mit „${sec.word[0]}“.` };
+    case 'frequency': { const lo = Math.max(1, sec.target - randomInt(0, 64)), hi = Math.min(256, lo + 63); return { text: `Das Signal liegt zwischen ${lo} und ${hi}.` }; }
+    case 'checksum': case 'match': {
+      const total = st.type === 'checksum' ? st.public.tokens.length : st.public.options.length;
+      const wrong = shuffle([...Array(total).keys()].filter((i) => i !== sec.index)).slice(0, st.type === 'checksum' ? 3 : Math.max(1, Math.floor((total - 1) / 2)));
+      return { text: `${wrong.length} falsche ${st.type === 'checksum' ? 'Tokens' : 'Kennungen'} wurden ausgeschlossen.`, eliminate: wrong };
+    }
+    case 'math': { const index = randomInt(0, sec.answers.length); return { text: `Aufgabe ${index + 1} ergibt ${sec.answers[index]}.`, fill: { index, value: sec.answers[index] } }; }
+    default: return null;
+  }
+}
+
 // ── Beute: harmlose Schnipsel, nur ausdrücklich ausgewählte Spalten (keine Namen, Telefonnummern, Akten, Preise) ──
 const SNIPPETS = [
   ['personal', () => { // Personalnummern (nur Kennung + Rang)
@@ -176,6 +196,9 @@ export default {
     { key: 'hack.game_checksum', group: 'Exekutive-Zugang', label: 'Minigame: Gültiges Token finden (Prüfsumme)', type: 'bool', default: true, perm: 'hack.manage' },
     { key: 'hack.game_match', group: 'Exekutive-Zugang', label: 'Minigame: Muster wiedererkennen', type: 'bool', default: true, perm: 'hack.manage' },
     { key: 'hack.game_math', group: 'Exekutive-Zugang', label: 'Minigame: Prüfsummen rechnen', type: 'bool', default: true, perm: 'hack.manage' },
+    { key: 'hack.hints', group: 'Exekutive-Zugang', label: 'Hinweise erlauben', help: 'In jedem Minigame darf einmal ein Hinweis angefordert werden.', type: 'bool', default: true, perm: 'hack.manage' },
+    { key: 'hack.hint_chance', group: 'Exekutive-Zugang', label: 'Hinweis: Trefferchance (%)', help: 'Wahrscheinlichkeit, dass die Suche einen Hinweis findet – sonst bleibt sie ohne Ergebnis (und der Hinweis ist trotzdem verbraucht).', type: 'number', default: 65, min: 0, max: 100, perm: 'hack.manage' },
+    { key: 'hack.hint_seconds', group: 'Exekutive-Zugang', label: 'Hinweis: Ladezeit (Sekunden)', help: 'Mindestdauer, bis das Ergebnis da ist (zufällig bis zu 1 Sekunde länger).', type: 'number', default: 3, min: 0, max: 20, perm: 'hack.manage' },
     { key: 'hack.lives', group: 'Exekutive-Zugang', label: 'Versuche (Leben) pro Zugriff', help: 'Jeder Fehler in einer Stufe kostet ein Leben; bei 0 ist der Zugriff gescheitert.', type: 'number', default: 3, min: 1, max: 10, perm: 'hack.manage' },
     { key: 'hack.max_minutes', group: 'Exekutive-Zugang', label: 'Zeitlimit pro Zugriff (Minuten)', type: 'number', default: 10, min: 2, max: 60, perm: 'hack.manage' },
     { key: 'hack.cooldown_minutes', group: 'Exekutive-Zugang', label: 'Sperrzeit nach Erfolg (Minuten)', help: 'Gilt für den Link insgesamt (alle Beamten gemeinsam).', type: 'number', default: 30, min: 1, max: 10080, perm: 'hack.manage' },
@@ -206,7 +229,7 @@ export default {
 
     // ── Öffentlicher Link (ohne Anmeldung, ohne Kennzeichnung) ──
     const O = { auth: false };
-    r.get('/api/h/:token/status', O, (ctx) => { guard(ctx); return { enabled: getConfig('hack.enabled'), cooldownSec: cooldownLeftSec(), lives: lives(), stages: pickPlan().length }; });
+    r.get('/api/h/:token/status', O, (ctx) => { guard(ctx); return { enabled: getConfig('hack.enabled'), cooldownSec: cooldownLeftSec(), lives: lives(), stages: pickPlan().length, hints: !!getConfig('hack.hints') }; });
 
     r.post('/api/h/:token/start', O, (ctx) => {
       guard(ctx);
@@ -215,10 +238,24 @@ export default {
       if (left > 0) throw new HttpError(429, 'Gesperrt.', 'cooldown', { cooldownSec: left });
       const runId = Number(run('INSERT INTO hack_runs (started_at, ip) VALUES (?, ?)', now(), ctx.ip).lastInsertRowid);
       const sid = randomBytes(16).toString('hex');
-      const plan = pickPlan(), s = { sid, runId, started: Date.now(), index: 0, lives: lives(), plan, stage: makeStage(plan[0]) };
+      const plan = pickPlan(), s = { sid, runId, started: Date.now(), index: 0, lives: lives(), plan, hints: new Set(), stage: makeStage(plan[0]) };
       sessions.set(sid, s);
       audit({ ip: ctx.ip, actorName: 'Unbekannter Zugriff' }, { action: 'hack.started', module: 'hack', targetType: 'hack', targetId: runId, targetLabel: 'Zugriffsversuch gestartet' });
       return { sid, lives: s.lives, maxLives: s.lives, stage: stageDto(s) };
+    });
+
+    r.post('/api/h/:token/hint', O, async (ctx) => {
+      guard(ctx);
+      const s = sessions.get(String(ctx.body.sid ?? ''));
+      if (!s || s.done) throw new HttpError(410, 'Verbindung verloren.', 'lost');
+      if (!getConfig('hack.hints')) throw new HttpError(403, 'Keine Hinweise verfügbar.', 'disabled');
+      if (s.hints.has(s.index)) throw new HttpError(409, 'Hinweis bereits verwendet.', 'used');
+      s.hints.add(s.index); // zählt auch, wenn die Suche nichts findet
+      const idx = s.index, st = s.stage, secs = Number(getConfig('hack.hint_seconds'));
+      if (secs > 0) await sleep((secs + Math.random()) * 1000);
+      if (s.done || s.index !== idx || s.stage.type !== st.type) return { hint: null, stale: true };
+      const found = randomInt(0, 100) < Number(getConfig('hack.hint_chance'));
+      return { hint: found ? makeHint(s.stage) : null };
     });
 
     r.post('/api/h/:token/answer', O, (ctx) => {

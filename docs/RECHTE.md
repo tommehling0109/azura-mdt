@@ -236,6 +236,7 @@
 | POST | `/api/hack/admin/reset-cooldown` | `hack.manage` |
 | GET | `/api/h/:token/status` | *öffentlich* |
 | POST | `/api/h/:token/start` | *öffentlich* |
+| POST | `/api/h/:token/hint` | *öffentlich* |
 | POST | `/api/h/:token/answer` | *öffentlich* |
 | GET | `/api/lookups` | `lookups.view` \| `market.view` |
 | POST | `/api/lookups/:list` | `lookups.manage` |
