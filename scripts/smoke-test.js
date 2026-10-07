@@ -1230,6 +1230,23 @@ try {
     assert.equal((await mod.call('POST', '/api/hack/admin/regenerate')).status, 403); const nw = await admin.call('POST', '/api/hack/admin/regenerate'); assert.notEqual(nw.path, adm.path); assert.equal((await guest.call('GET', H + '/status')).status, 404); assert.equal((await guest.call('GET', '/api/h/' + nw.path.split('/')[2] + '/status')).status, 200);
     ok('Exekutive-Zugang: neutraler Link, zufällig gezogene Minigames (8 im Pool) serverseitig geprüft, PIN-Reset, harmlose Beute, Sperrzeit, Einstellungen, Link erneuern'); }
 
+  // ══ Schwarzes Brett ══
+  { assert.equal((await mod.call('GET', '/api/board')).status, 403); assert.equal((await new Client().call('GET', '/api/board')).status, 401); assert.equal((await tp.call('GET', '/api/board')).status, 401); // Partner haben kein Brett
+    await setPerms(['board.view']); r = await mod.call('GET', '/api/board'); assert.equal(r.status, 200); assert.equal(r.canManage, false); assert.equal((await mod.call('POST', '/api/board', { title: 'Test', level: 'info' })).status, 403);
+    await setPerms(['board.view', 'board.manage']);
+    assert.equal((await mod.call('POST', '/api/board', { title: 'x' })).status, 400); assert.equal((await mod.call('POST', '/api/board', { title: 'Gueltig', level: 'rot' })).status, 400);
+    r = await mod.call('POST', '/api/board', { title: 'Treffen am Samstag', body: 'Alle um 20 Uhr am Lager.', level: 'important' }); assert.equal(r.status, 201); const b1 = r.post.id; assert.equal(r.post.level, 'important'); assert.equal(r.post.pinned, false); assert.ok(r.post.author);
+    r = await mod.call('POST', '/api/board', { title: 'ALARM', body: 'Razzia vermutet', level: 'urgent', pinned: true }); assert.equal(r.status, 201); const b2 = r.post.id;
+    r = await mod.call('POST', '/api/board', { title: 'Ruhig', level: 'info' }); const b3 = r.post.id;
+    r = await mod.call('GET', '/api/board'); assert.equal(r.canManage, true); assert.deepEqual(r.posts.slice(0, 3).map((p) => p.id), [b2, b3, b1]); // angepinnte zuerst, dann neueste
+    assert.equal(JSON.stringify(r).includes('Neuer'), false); // Verfasser nur als Kennung
+    assert.ok((await admin.call('GET', '/api/notifications')).notifications.some((n) => /Dringende Ankündigung/.test(n.title)));
+    assert.equal((await mod.call('PATCH', `/api/board/${b3}`, { pinned: true, level: 'success', title: 'Neuigkeit!' })).post.level, 'success'); assert.equal((await mod.call('PATCH', `/api/board/${b3}`, { level: 'nope' })).status, 400); assert.equal((await mod.call('PATCH', '/api/board/99999', { title: 'abc' })).status, 404);
+    await setPerms(['board.view']); assert.equal((await mod.call('DELETE', `/api/board/${b1}`)).status, 403); assert.equal((await mod.call('PATCH', `/api/board/${b1}`, { pinned: true })).status, 403);
+    await setPerms(['board.view', 'board.manage']); assert.equal((await mod.call('DELETE', `/api/board/${b1}`)).status, 200); assert.equal((await admin.call('GET', '/api/board')).posts.some((p) => p.id === b1), false); assert.equal((await admin.call('GET', '/api/board')).canManage, true);
+    for (const id of [b2, b3]) await admin.call('DELETE', `/api/board/${id}`); await setPerms([]);
+    assert.ok(JSON.stringify((await admin.call('GET', '/api/roles')).roles).includes('board.view'), 'Rang-Rollen dürfen das Brett sehen'); ok('Schwarzes Brett: nur Mitarbeiter, Rechte board.view/board.manage, Hervorhebung, Anpinnen, Entfernen, Benachrichtigung bei Dringend'); }
+
   // Superadmin: Artikel samt Geschäften/Bestand löschen
   assert.equal((await admin.call('DELETE', `/api/warehouse/items/${ore}`)).status, 409); assert.equal((await mod.call('DELETE', `/api/warehouse/items/${ore}?force=1`)).status, 403);
   assert.equal((await admin.call('DELETE', `/api/warehouse/items/${ore}?force=1`)).status, 200); assert.equal((await admin.call('GET', '/api/market/deals')).deals.some((d) => d.item?.id === ore), false); ok('Superadmin löscht Artikel samt Geschäften, Gesuchen und Beständen');

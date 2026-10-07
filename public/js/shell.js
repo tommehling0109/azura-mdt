@@ -7,6 +7,7 @@ import { state, canAny, can, applyConfig } from './state.js';
 import { NAV, allItems } from './modules.js';
 import { openAccountDialog } from './views/account.js';
 import { openSettingsDialog } from './views/settings.js';
+import { createBoard } from './board.js';
 import { api } from './api.js';
 import { connect, disconnect, subscribe, onStatus } from './realtime.js';
 import { initLock, clearLockState } from './lockscreen.js';
@@ -176,7 +177,8 @@ export function showApp(onLogout, opts = {}) {
         opts.partner ? icon('users') : (panelAvatar = userAvatar(state.user, 'sm')), h('span', null, state.user.displayName)),
       h('button', { class: 'panel-btn', type: 'button', title: 'Abmelden', 'aria-label': 'Abmelden', onclick: () => { clearLockState(); lockCtl?.destroy(); onLogout(); } }, icon('logout'))));
   const desktop = h('div', { class: 'desktop' }, panel, area, h('div', { class: 'dock-row' }, dock));
-  mount(screen(), h('div', { class: 'wallpaper' }), widget, desktop, startMenu, npanel);
+  const board = !opts.partner && can('board.view') ? createBoard() : null; // Schwarzes Brett: nur für Mitarbeiter
+  mount(screen(), h('div', { class: 'wallpaper' }), widget, board?.el, desktop, startMenu, npanel);
   if (state.config['ui.desktop_icons']) area.append(iconsEl);
 
   // ── Desktop-Icons (frei verschiebbar, Position wird pro Benutzer im Browser gemerkt) ──

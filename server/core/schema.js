@@ -682,4 +682,18 @@ export const SCHEMA_MIGRATIONS = [
     ip         TEXT
   );
   `,
+  // 17: Schwarzes Brett (Ankuendigungen auf dem Desktop)
+  `
+  CREATE TABLE board_posts (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    title      TEXT NOT NULL,
+    body       TEXT NOT NULL DEFAULT '',
+    level      TEXT NOT NULL DEFAULT 'info' CHECK (level IN ('info','important','urgent','success')),
+    pinned     INTEGER NOT NULL DEFAULT 0,
+    author_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_board_order ON board_posts(pinned, id);
+  `,
 ];
