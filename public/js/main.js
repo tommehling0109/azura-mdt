@@ -7,7 +7,7 @@ import { showCompanyPortal } from './views/company-portal.js';
 import { PARTNER_NAV } from './modules.js';
 import { toast } from './ui/kit.js';
 import { h } from './ui/dom.js';
-import { syncVersion, watchVersion, resetLocal } from './version.js';
+import { syncVersion, watchVersion, resetLocal, hardRefresh } from './version.js';
 
 // Externer Zugang: /p/<link-token> – eigene Anmeldung per Code, nur freigeschaltete Apps
 const partnerToken = (() => { const m = location.pathname.match(/^\/p\/([^/]+)\/?$/); return m ? decodeURIComponent(m[1]) : null; })();
@@ -51,7 +51,7 @@ async function showDiagnose(b) {
     ...KEY_PERMS.map((k) => [k, u ? (u.permissions?.includes(k) ? 'ja' : 'FEHLT') : '–'])];
   const { openModal, button } = await import('./ui/kit.js');
   const m = openModal({ title: 'Diagnose', body: h('div', null, h('p', { class: 'muted' }, 'Wenn Funktionen fehlen: Steht bei einem Recht „FEHLT“, muss es deinem Konto (Rolle oder Direkte Rechte) zugewiesen werden.'),
-    h('dl', { class: 'details-dl' }, rows.flatMap(([k, v]) => [h('dt', null, k), h('dd', { class: 'mono' }, v)]))), footer: [button('Schließen', { onClick: () => m.close() })] });
+    h('dl', { class: 'details-dl' }, rows.flatMap(([k, v]) => [h('dt', null, k), h('dd', { class: 'mono' }, v)]))), footer: [button('Zwischenspeicher leeren & neu laden', { icon: 'refresh', onClick: () => hardRefresh() }), button('Schließen', { onClick: () => m.close() })] });
 }
 
 async function boot() {

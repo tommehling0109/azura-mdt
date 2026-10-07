@@ -10,6 +10,7 @@ import { syncLookups } from './core/lookups.js';
 import { registerConfig } from './core/config.js';
 import { migrate, DB_PATH } from './core/db.js';
 import { setReinit } from './core/reset.js';
+import { APP_VERSION } from './core/version.js';
 import { dirname } from 'node:path';
 
 import systemModule, { brandingFile } from './modules/system.js';
@@ -132,6 +133,23 @@ export function buildApp() {
     res.end(f.body);
   }
 
+  /**
+   * Cache-Schutz: Jede Programmdatei wird mit der aktuellen Versionskennung ausgeliefert – Skripte/Styles in index.html und ALLE Importe zwischen den Skripten
+   * bekommen `?v=<Version>` angehängt. Nach einem Update sind es dadurch neue Adressen, die kein Browser-, Proxy- oder CDN-Cache kennt (und alte Adressen bleiben `no-store`).
+   */
+  const V = encodeURIComponent(APP_VERSION);
+  const JS_IMPORT = [/(\bfrom\s*)(['"])(\.{1,2}\/[^'"?]+?\.js)\2/g, /(\bimport\s*\(\s*)(['"])(\.{1,2}\/[^'"?]+?\.js)\2/g, /(\bimport\s+)(['"])(\.{1,2}\/[^'"?]+?\.js)\2/g];
+  const versionJs = (src) => JS_IMPORT.reduce((s, re) => s.replace(re, (_m, a, q, p) => `${a}${q}${p}?v=${V}${q}`), src);
+  const versionHtml = (src) => src.replace(/(\b(?:src|href)=")(\/(?:js|css)\/[^"?]+)"/g, (_m, a, p) => `${a}${p}?v=${V}"`);
+  const versioned = new Map(); // Datei → { mtime, text }
+  async function readVersioned(file, ext) {
+    const mtime = (await stat(file)).mtimeMs, hit = versioned.get(file);
+    if (hit && hit.mtime === mtime) return hit.text;
+    const raw = (await readFile(file, 'utf8')), text = ext === '.js' ? versionJs(raw) : versionHtml(raw);
+    versioned.set(file, { mtime, text });
+    return text;
+  }
+
   async function serveStatic(req, res, url) {
     if (url.pathname.startsWith('/maptiles/')) return serveMapTile(res, url.pathname);
     if (url.pathname === '/branding/logo') return serveBranding(res, 'logo');
@@ -147,8 +165,14 @@ export function buildApp() {
       if (extname(rel)) { res.writeHead(404); return res.end('Not found'); }
       file = join(PUBLIC_DIR, 'index.html');
     }
-    const body = await readFile(file);
-    res.writeHead(200, { 'Content-Type': MIME[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-store, max-age=0', 'Pragma': 'no-cache', 'Surrogate-Control': 'no-store', 'CDN-Cache-Control': 'no-store' }); // auch Proxys/CDNs dürfen Programmdateien nie zwischenspeichern
+    const ext = extname(file);
+    const body = ext === '.js' || ext === '.html' ? await readVersioned(file, ext) : await readFile(file);
+    // Einmal je neuer Version beim Aufruf der Seite: den HTTP-Cache dieses Browsers für die Seite leeren lassen (Clear-Site-Data) – so verschwinden auch ältere, falsch zwischengespeicherte Dateien
+    const extra = {};
+    if (ext === '.html' && req.method === 'GET') {
+      if (parseCookies(req.headers.cookie)['mdt_v'] !== APP_VERSION) { extra['Clear-Site-Data'] = '"cache"'; extra['Set-Cookie'] = `mdt_v=${APP_VERSION}; Path=/; Max-Age=31536000; SameSite=Lax${isSecure(req) ? '; Secure' : ''}`; }
+    }
+    res.writeHead(200, { ...extra, 'Content-Type': MIME[ext] ?? 'application/octet-stream', 'Cache-Control': 'no-store, max-age=0', 'Pragma': 'no-cache', 'Surrogate-Control': 'no-store', 'CDN-Cache-Control': 'no-store' }); // auch Proxys/CDNs dürfen Programmdateien nie zwischenspeichern
     res.end(body);
   }
 

@@ -900,6 +900,16 @@ try {
   // ══ Versionskennung (Selbstheilung nach Updates) ══
   r = await new Client().call('GET', '/api/bootstrap'); assert.match(r.version, /^[0-9a-f]{12}$/); assert.equal((await new Client().call('GET', '/api/version')).version, r.version);
   assert.equal((await fetch(`${base}/js/main.js`)).headers.get('cache-control'), 'no-store, max-age=0'); assert.equal((await fetch(`${base}/reset`)).status, 200); ok('Version im Bootstrap, Programmdateien ohne Browser-Cache, /reset erreichbar');
+  { // Cache-Schutz: versionierte Adressen + Cache-Reset einmal je Version
+    const ver = (await new Client().call('GET', '/api/version')).version;
+    const html = await (await fetch(`${base}/`)).text(); assert.match(html, new RegExp(`/js/main\\.js\\?v=${ver}`)); assert.match(html, new RegExp(`/css/theme\\.css\\?v=${ver}`));
+    const mainJs = await (await fetch(`${base}/js/main.js?v=${ver}`)).text(); assert.match(mainJs, new RegExp(`from './api\\.js\\?v=${ver}'`)); assert.match(mainJs, new RegExp(`from './views/auth\\.js\\?v=${ver}'`));
+    const shellJs = await (await fetch(`${base}/js/shell.js`)).text(); assert.match(shellJs, new RegExp(`import\\('\\./views/tickets\\.js\\?v=${ver}'\\)`)); // auch dynamische Importe
+    assert.equal((mainJs.match(/from '\.[^']*\.js'/g) ?? []).length, 0, 'unversionierter Import übrig');
+    const first = await fetch(`${base}/`); assert.equal(first.headers.get('clear-site-data'), '"cache"'); assert.match(first.headers.get('set-cookie'), new RegExp(`mdt_v=${ver}`));
+    const again = await fetch(`${base}/`, { headers: { cookie: `mdt_v=${ver}` } }); assert.equal(again.headers.get('clear-site-data'), null); // nur beim ersten Besuch nach einem Update
+    assert.equal((await fetch(`${base}/js/main.js?v=${ver}`)).headers.get('cache-control'), 'no-store, max-age=0');
+    ok('Cache-Schutz: alle Skripte/Styles/Importe mit Versions-Adresse, Cache-Reset (Clear-Site-Data) einmal je Version'); }
 
 
   // ══ Profilbilder ══

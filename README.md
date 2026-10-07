@@ -165,6 +165,7 @@ Desktop-Symbole (Konfiguration → *Desktop-Symbole anzeigen*) lassen sich frei 
 - **Update-Prüfung:** Das MDT fragt alle 6 Stunden (und auf Knopfdruck unter Konfiguration → Updates) bei GitHub den neuesten Commit ab und vergleicht ihn mit dem installierten Stand. Ist er neuer, erhalten **Superadmin und Administratoren** einmal je Version eine Benachrichtigung. Abschaltbar; ohne Git-Stand (ZIP-Download, Anzeige „lokal-…“) ist kein Vergleich möglich.
 - **Rollen passend zu den Rängen:** Bei der Einrichtung werden 13 Rollen (Aspirante … El Azur Supremo) mit aufsteigenden Rechten angelegt (jede Stufe enthält die darunter; die oberste ist Administrator-Rolle) sowie die frei vergebbare Rolle „Administrator“. Der Superadmin braucht keine Rolle.
 - **Karte:** Grundlage ist jetzt die mitgelieferte **Postal-Karte** (`public/img/map.webp`, Postleitzahlen aufgedruckt, kalibriert auf die Postal-Daten des Servers). Unter Konfiguration → Karte lässt sich zwischen Bild und Kacheln (Satellit) umschalten bzw. ein eigenes Bild samt Kalibrierung eintragen.
+- **Cache-Schutz:** Skripte, Styles und alle Importe werden mit Versions-Adresse (`?v=…`) ausgeliefert, dazu `no-store` und ein einmaliger Cache-Reset (`Clear-Site-Data`) beim ersten Aufruf nach einem Update – kein STRG+F5 mehr nötig. Details: [docs/UPDATE-ANLEITUNG.md](docs/UPDATE-ANLEITUNG.md).
 - **Build-Anzeige:** unten rechts, abschaltbar unter Konfiguration → Darstellung.
 
 ## Nächste Phasen

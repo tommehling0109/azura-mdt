@@ -53,6 +53,14 @@ export function watchVersion(current) {
   window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); }); // aus dem Zurück-/Vorwärts-Cache wiederhergestellte Seite: frisch laden
 }
 
+/** Zwischenspeicher dieser App leeren (Browser-Cache-API, lokale mdt:-Daten) und die Seite mit neuer Adresse laden – bleibt angemeldet. */
+export async function hardRefresh() {
+  wipeLocal();
+  try { for (const k of await caches.keys()) await caches.delete(k); } catch { /* keine Cache-API */ }
+  try { for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister(); } catch { /* kein SW */ }
+  location.replace(`/?neu=${Date.now()}`);
+}
+
 export async function resetLocal() {
   document.body.textContent = 'Lokale Daten werden zurückgesetzt …';
   wipeLocal();

@@ -106,6 +106,18 @@ Beim Start des Containers `TRUST_PROXY=1` setzen (steht schon im Update-Skript),
 
 ---
 
+## C2) Wie das MDT veraltete Browser-Dateien verhindert (Cache-Schutz)
+
+Das passiert automatisch – nach einem Update muss niemand STRG+F5 drücken:
+
+1. **Versions-Adressen:** Jede Programmdatei wird mit der aktuellen Version angefordert (`/js/main.js?v=<Version>`, ebenso alle Importe zwischen den Skripten und die Styles). Nach einem Update sind es *neue Adressen* – kein Browser-, Proxy- oder CDN-Cache kennt sie, es kann also nichts Altes ausgeliefert werden.
+2. **No-Store-Header:** Der Server verbietet jedes Zwischenspeichern der Programmdateien.
+3. **Cache-Reset beim ersten Besuch:** Beim ersten Seitenaufruf nach einem Update sendet der Server `Clear-Site-Data: "cache"`; der Browser leert den Zwischenspeicher dieser Seite einmalig (dafür merkt er sich die Version im Cookie `mdt_v`).
+4. **Offene Seiten:** Eine bereits geöffnete Seite prüft alle 20 Sekunden die Version und lädt sich bei einem Update selbst neu (wartet, solange gerade getippt wird). Lokale Zwischenstände (`mdt:…`) werden dabei verworfen.
+5. **Notausgang:** Klick auf „Build …“ → **„Zwischenspeicher leeren & neu laden“** (bleibt angemeldet). Komplett zurücksetzen (inkl. Abmelden): `/reset` aufrufen.
+
+Nur der **Reverse-Proxy** kann das noch aushebeln, wenn er selbst zwischenspeichert (z. B. Nginx Proxy Manager → „Cache Assets“ AUS lassen, Cloudflare: Cache für diese Domain aus).
+
 ## D) Fehlersuche in 3 Fragen
 
 | Frage | Befehl / Ort | Wenn es nicht stimmt |
