@@ -148,7 +148,7 @@ export function buildApp() {
       file = join(PUBLIC_DIR, 'index.html');
     }
     const body = await readFile(file);
-    res.writeHead(200, { 'Content-Type': MIME[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' });
+    res.writeHead(200, { 'Content-Type': MIME[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-store, max-age=0', 'Pragma': 'no-cache', 'Surrogate-Control': 'no-store', 'CDN-Cache-Control': 'no-store' }); // auch Proxys/CDNs dürfen Programmdateien nie zwischenspeichern
     res.end(body);
   }
 

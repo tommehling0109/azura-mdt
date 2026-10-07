@@ -897,7 +897,7 @@ try {
 
   // ══ Versionskennung (Selbstheilung nach Updates) ══
   r = await new Client().call('GET', '/api/bootstrap'); assert.match(r.version, /^[0-9a-f]{12}$/); assert.equal((await new Client().call('GET', '/api/version')).version, r.version);
-  assert.equal((await fetch(`${base}/js/main.js`)).headers.get('cache-control'), 'no-store'); assert.equal((await fetch(`${base}/reset`)).status, 200); ok('Version im Bootstrap, Programmdateien ohne Browser-Cache, /reset erreichbar');
+  assert.equal((await fetch(`${base}/js/main.js`)).headers.get('cache-control'), 'no-store, max-age=0'); assert.equal((await fetch(`${base}/reset`)).status, 200); ok('Version im Bootstrap, Programmdateien ohne Browser-Cache, /reset erreichbar');
 
 
   // ══ Profilbilder ══

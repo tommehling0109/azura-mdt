@@ -47,9 +47,10 @@ export function watchVersion(current) {
       if (left-- <= 0) { clearInterval(tick); reload(); }
     }, 1000);
   };
-  setInterval(check, 60_000);
+  setInterval(check, 20_000);
   document.addEventListener('visibilitychange', check);
   window.addEventListener('focus', check);
+  window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); }); // aus dem Zurück-/Vorwärts-Cache wiederhergestellte Seite: frisch laden
 }
 
 export async function resetLocal() {
