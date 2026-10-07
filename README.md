@@ -2,6 +2,8 @@
 
 Generisches, vollständig konfigurierbares Web-MDT. Keine festen Organisationen, Benutzer, Rollen, Preise oder Lager im Code.
 
+> **Windows 11:** siehe [deploy/windows/README-WINDOWS.md](deploy/windows/README-WINDOWS.md) (Docker Desktop mit Install-/Update-Skript). **Updates allgemein:** [docs/UPDATE-ANLEITUNG.md](docs/UPDATE-ANLEITUNG.md).
+
 ## Docker / Portainer (plug and play)
 
 `docker-compose.yml` im Repo-Hauptverzeichnis ist ein fertiger Stack (Volume `mdt-data`, Healthcheck, Neustart-Policy) – **ohne Variablen** lauffähig. In Portainer: *Stacks → Add stack → Repository* (URL dieses Repos, Compose-Pfad `docker-compose.yml`) → Deploy → `http://<server>:3847` → Ersteinrichtung. Alternativ ohne Build mit dem fertigen GHCR-Image (`deploy/portainer/stack-ghcr.yml`, gebaut von GitHub Actions). Details, Updates, Reverse-Proxy und Backups: [deploy/portainer/README-PORTAINER.md](deploy/portainer/README-PORTAINER.md).
