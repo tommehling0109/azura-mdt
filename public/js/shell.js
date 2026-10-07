@@ -60,7 +60,9 @@ export async function openTarget(target) {
   if (!target || !ui) return;
   window.focus?.();
   if (target.app === 'chat' && target.channelId) { try { sessionStorage.setItem('mdt:chat:channel', String(target.channelId)); } catch { /* egal */ } }
+  if (target.app === 'tab' && target.statementId) { try { sessionStorage.setItem('mdt:tab:open', String(target.statementId)); } catch { /* egal */ } }
   if (target.app) ui.open(target.app);
+  if (target.app === 'tab' && target.statementId) window.dispatchEvent(new Event('mdt:tab-open'));
   if (target.app === 'chat' && target.channelId) window.dispatchEvent(new Event('mdt:chat-open'));
   if (target.app === 'market' && target.dealId) {
     const { openDealModal } = await import('./views/market-shared.js');

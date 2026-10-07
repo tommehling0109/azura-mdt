@@ -3,12 +3,22 @@ import { state, applyConfig, previewConfig } from './state.js';
 import { showApp, showLock, openApp } from './shell.js';
 import { showLogin, showRegister, showSetup, showPending } from './views/auth.js';
 import { showPartnerLogin, showInvalidLink } from './views/partner/login.js';
+import { showCompanyPortal } from './views/company-portal.js';
 import { PARTNER_NAV } from './modules.js';
 import { toast } from './ui/kit.js';
 import { h } from './ui/dom.js';
 
 // Externer Zugang: /p/<link-token> – eigene Anmeldung per Code, nur freigeschaltete Apps
 const partnerToken = (() => { const m = location.pathname.match(/^\/p\/([^/]+)\/?$/); return m ? decodeURIComponent(m[1]) : null; })();
+
+// Firmenportal (Deckel-Abrechnung): /deckel/firma/<link-token> – ohne Anmeldung, nur die eigenen Abrechnungen
+const companyToken = (() => { const m = location.pathname.match(/^\/deckel\/firma\/([^/]+)\/?$/); return m ? decodeURIComponent(m[1]) : null; })();
+async function startCompany() {
+  const b = await boot();
+  if (!b) return;
+  applyConfig(b.config);
+  showCompanyPortal({ token: companyToken });
+}
 
 async function logout() {
   try { await api.post('/api/auth/logout'); } catch { /* egal */ }
@@ -85,7 +95,7 @@ onUnauthenticated((code) => {
   if (partnerToken && code === 'unauthenticated_partner') { state.user = null; toast('Deine Sitzung ist abgelaufen oder der Zugang wurde geändert.', 'warn'); startPartner(); }
   else if (!partnerToken && code === 'unauthenticated') { state.user = null; toast('Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.', 'warn'); start(); }
 });
-(partnerToken ? startPartner : start)();
+(companyToken ? startCompany : partnerToken ? startPartner : start)();
 
 // Konfigurationsänderungen (z. B. Akzentfarbe) sofort sichtbar machen
 window.addEventListener('mdt:config', (e) => previewConfig(e.detail));

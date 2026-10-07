@@ -467,3 +467,16 @@ table.table { width: 100%; border-collapse: collapse; min-width: 640px; }
 .deal-card.fresh-status .fresh-badge { background: linear-gradient(135deg, #f59e0b, #fbbf24); color: #1b1d21; } .deal-card.fresh-status .fresh-badge::before { background: #1b1d21; }
 .wanted-card.fresh { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-line), 0 0 34px -14px var(--accent); }
 .badge-dot { animation: fresh-pulse 1.8s ease-out infinite; }
+
+/* ── Deckel-System ── */
+.cmp { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 16px; border-radius: var(--r-lg); border: 1px solid var(--line); background: color-mix(in srgb, var(--bg-3) 70%, transparent); }
+.cmp > div { display: flex; flex-direction: column; gap: 3px; } .cmp .k { font-size: 11.5px; color: var(--text-3); } .cmp b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.cmp .cmp-state { grid-column: 1 / -1; font-weight: 700; font-size: 13px; padding-top: 10px; border-top: 1px solid var(--line); }
+.cmp.ok { border-color: rgba(52, 211, 153, 0.5); } .cmp.ok .cmp-state, .cmp.ok > div:nth-child(3) b { color: #34d399; }
+.cmp.bad { border-color: rgba(248, 113, 113, 0.55); box-shadow: 0 0 28px -16px #f87171; } .cmp.bad .cmp-state, .cmp.bad > div:nth-child(3) b { color: #f87171; }
+.lock-card.wide { width: min(760px, calc(100vw - 32px)); max-width: none; max-height: calc(100vh - 48px); overflow-y: auto; text-align: left; }
+.company-portal h2 { font-size: 22px; margin: 6px 0 2px; }
+.cp-section { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-3); margin: 22px 0 10px; }
+.cp-selected { font-weight: 700; margin: 2px 0 10px; color: var(--accent-hi, var(--accent)); }
+.cp-success { display: flex; gap: 10px; align-items: center; padding: 12px 14px; margin: 14px 0 4px; border-radius: var(--r-md); background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.45); color: #34d399; font-weight: 600; } .cp-success svg { width: 18px; height: 18px; flex: none; }
+@media (max-width: 560px) { .cmp { grid-template-columns: 1fr; } }

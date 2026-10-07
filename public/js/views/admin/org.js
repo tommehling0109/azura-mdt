@@ -7,7 +7,7 @@ import {
 import { api } from '../../api.js';
 import { can, state } from '../../state.js';
 
-const MODULE_LABELS = { system: 'System', users: 'Benutzer', roles: 'Rollen', audit: 'Audit-Log', org: 'Organisation', chat: 'Chat', market: 'Börse', partners: 'Externe Zugänge', lookups: 'Kategorien', permissions: 'Eigene Rechte', vehicles: 'Fahrzeuge', warehouse: 'Lager', finance: 'Finanzen', map: 'Karte' };
+const MODULE_LABELS = { system: 'System', users: 'Benutzer', roles: 'Rollen', audit: 'Audit-Log', org: 'Organisation', chat: 'Chat', market: 'Börse', partners: 'Externe Zugänge', lookups: 'Kategorien', permissions: 'Eigene Rechte', vehicles: 'Fahrzeuge', warehouse: 'Lager', finance: 'Finanzen', tab: 'Deckel', map: 'Karte' };
 const COLORS = ['#f5a524', '#ef4444', '#f472b6', '#a78bfa', '#4f8cff', '#22d3ee', '#22c4a8', '#84cc16', '#94a3b8'];
 
 /** Farbwahl: Schnellauswahl + freie Farbe. */

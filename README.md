@@ -92,6 +92,16 @@ Desktop-Look: obere Leiste (Logo/App-Menü, Uhr, Benutzer), schwebendes Dock mit
   Rechte: `warehouse.view`, `warehouse.view_access` (Zugangsinfo), `warehouse.stock` (buchen), `warehouse.manage` (Lager verwalten + Zugriffe), `warehouse.items` (Artikel), `warehouse.prices` (Preisspannen). Zusätzlich je Lager: „beschränkt“ + Rollen mit Stufe *Ansehen* oder *Verwalten*.
 - **Preisspanne → Börse:** Jeder Artikel hat optional Mindest-/Höchstpreis und einen Zielbestand. Stellt ein Partner ein Angebot ein (Artikel + Stückzahl), sieht er automatisch unseren **Preisvorschlag** (nie die Spanne) und kann ihn direkt annehmen oder einen eigenen Preis nennen. Beides wird vom Team manuell geprüft (annehmen / Gegenangebot / ablehnen). Die Regel steht unter Konfiguration → Lager: nach Bestand (je voller das Lager gegenüber dem Zielbestand, desto niedriger der Preis), Mittelwert, Mindest- oder Höchstpreis. Bei „Ware eingegangen“ kann die Lieferung direkt in ein Lager eingebucht werden.
 
+## Deckel-System (Firmenabrechnung)
+
+App „Deckel“ (Bereich Finanzen). Firmen werden als Geschäftskunden angelegt (Ansprechpartner, Kontakt, **wöchentlich/monatlich**, gültig für *alle / bestimmte Mitarbeiter / Mitarbeitergruppe per Recht*, optionales Limit, Status) und bekommen automatisch einen **eigenen Portal-Link** `/deckel/firma/<Token>` (neu erzeugbar, alter Link ungültig).
+
+- **Buchungen:** Mitarbeiter schreiben auf Deckel – **Personalnummer ist Pflicht** und wird beim Tippen geprüft (angezeigt wird nur die Nummer, nie ein Name). Fremde Nummern nur mit `tab.book_others`. Jede Buchung bekommt Nummer, Zeitraum (07.10.2026 → *KW 41 / 2026* bzw. *Oktober 2026*), Ersteller, Uhrzeit und einen Finanzvorgang im Journal. **Nie gelöscht**: nur storniert/korrigiert (Korrektur = Storno + verknüpfte neue Buchung), alles im Audit-Log.
+- **Firmenportal:** Firma wählt Woche/Monat (nur Zeiträume ohne Abrechnung), trägt den fälligen Betrag ein (+ Kommentar), bekommt die Bestätigung und sieht ihre Historie. Sie sieht nie unsere Summen, Buchungen, Mitarbeiter oder andere Firmen. Standard: nur abgeschlossene Zeiträume (Konfiguration → Deckel).
+- **Abgleich:** unsere Buchungssumme vs. eingereicht, Differenz sofort sichtbar. Bei Abweichung lässt sich die Abrechnung nur mit ausdrücklicher Freigabe + Begründung bestätigen.
+- **Ablauf:** Eingereicht → In Prüfung → Bestätigt → Zahlung ausstehend → Bezahlt (oder Abgelehnt, dann kann die Firma erneut einreichen). Zahlung per **Überweisung** (Datum, Referenz) oder **Rechnung** (erhalten, Nummer, Betrag, Datum, PDF/Bild). Ab „Bestätigt“ sind Buchungen des Zeitraums gesperrt; bei „Bezahlt“ werden die Finanzvorgänge verbucht. Neue Abrechnungen lösen eine Benachrichtigung aus.
+- **Rechte:** `tab.book` (buchen, eigene sehen), `tab.book_others`, `tab.view`, `tab.cancel`, `tab.manage_companies`, `tab.statements` (Finanz). Dashboard-Widget „Deckel“ zeigt offene Deckel, ausstehende Abrechnungen, Zahlungen und Gesamt offen.
+
 ## Nächste Phasen
 
 Weitere Module (Fahrzeuge, Lager, Ankauf, Chat …) werden als `server/modules/<name>.js` (Permissions + Routen + Migration) und

@@ -463,4 +463,85 @@ export const SCHEMA_MIGRATIONS = [
   CREATE INDEX idx_ledger_deal ON finance_ledger(deal_id);
   CREATE INDEX idx_ledger_status ON finance_ledger(status, direction);
   `,
+  /* v10 – Deckel-System (Firmenabrechnung) */ `
+  CREATE TABLE tab_companies (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_number     TEXT UNIQUE,
+    name               TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    contact_name       TEXT NOT NULL DEFAULT '',
+    contact_info       TEXT NOT NULL DEFAULT '',
+    billing_interval   TEXT NOT NULL CHECK (billing_interval IN ('weekly','monthly')),
+    scope              TEXT NOT NULL DEFAULT 'all' CHECK (scope IN ('all','selected','perm')),
+    scope_perm         TEXT,
+    credit_limit_cents INTEGER,
+    status             TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled')),
+    link_token         TEXT NOT NULL UNIQUE,
+    notes              TEXT NOT NULL DEFAULT '',
+    created_by         INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at         TEXT NOT NULL,
+    updated_at         TEXT NOT NULL
+  );
+  CREATE TABLE tab_company_members (
+    company_id INTEGER NOT NULL REFERENCES tab_companies(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (company_id, user_id)
+  );
+  CREATE TABLE tab_entries (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_number   TEXT UNIQUE,
+    company_id     INTEGER NOT NULL REFERENCES tab_companies(id) ON DELETE RESTRICT,
+    member_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    member_number  TEXT NOT NULL,
+    amount_cents   INTEGER NOT NULL CHECK (amount_cents > 0),
+    description    TEXT NOT NULL,
+    period_key     TEXT NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','cancelled')),
+    corrects_id    INTEGER REFERENCES tab_entries(id) ON DELETE SET NULL,
+    created_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at     TEXT NOT NULL,
+    cancelled_at   TEXT,
+    cancelled_by   INTEGER,
+    cancel_reason  TEXT
+  );
+  CREATE INDEX idx_tab_entries_period ON tab_entries(company_id, period_key);
+  CREATE INDEX idx_tab_entries_member ON tab_entries(member_user_id);
+  CREATE TABLE tab_statements (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    statement_number     TEXT UNIQUE,
+    company_id           INTEGER NOT NULL REFERENCES tab_companies(id) ON DELETE RESTRICT,
+    period_key           TEXT NOT NULL,
+    submitted_cents      INTEGER NOT NULL CHECK (submitted_cents >= 0),
+    our_cents            INTEGER NOT NULL DEFAULT 0,
+    approved_cents       INTEGER,
+    comment              TEXT NOT NULL DEFAULT '',
+    status               TEXT NOT NULL DEFAULT 'submitted' CHECK (status IN ('submitted','review','confirmed','payment_pending','paid','rejected')),
+    diff_note            TEXT NOT NULL DEFAULT '',
+    reject_reason        TEXT NOT NULL DEFAULT '',
+    pay_method           TEXT CHECK (pay_method IN ('transfer','invoice')),
+    paid_at              TEXT,
+    pay_reference        TEXT NOT NULL DEFAULT '',
+    invoice_received     INTEGER NOT NULL DEFAULT 0,
+    invoice_number       TEXT NOT NULL DEFAULT '',
+    invoice_amount_cents INTEGER,
+    invoice_date         TEXT,
+    invoice_file_ext     TEXT,
+    submitted_at         TEXT NOT NULL,
+    reviewed_by          INTEGER,
+    paid_by              INTEGER,
+    updated_at           TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX idx_tab_statement_period ON tab_statements(company_id, period_key) WHERE status != 'rejected';
+  CREATE TABLE tab_statement_log (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    statement_id INTEGER NOT NULL REFERENCES tab_statements(id) ON DELETE CASCADE,
+    ts           TEXT NOT NULL,
+    user_id      INTEGER,
+    by_company   INTEGER NOT NULL DEFAULT 0,
+    text         TEXT NOT NULL
+  );
+  ALTER TABLE finance_ledger ADD COLUMN ref_type TEXT;
+  ALTER TABLE finance_ledger ADD COLUMN ref_id INTEGER;
+  ALTER TABLE finance_ledger ADD COLUMN company_id INTEGER REFERENCES tab_companies(id) ON DELETE SET NULL;
+  CREATE INDEX idx_ledger_ref ON finance_ledger(ref_type, ref_id);
+  `,
 ];

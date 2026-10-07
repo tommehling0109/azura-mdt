@@ -15,7 +15,7 @@ import { everySecond, timeParts, dateLong } from '../clock.js';
 const hour = () => new Date().getHours();
 const greeting = () => (hour() < 5 ? 'Gute Nacht' : hour() < 11 ? 'Guten Morgen' : hour() < 18 ? 'Guten Tag' : 'Guten Abend');
 const nf = (n) => Number(n ?? 0).toLocaleString('de-DE');
-const money = (n) => `${nf(n)} ${state.config['market.currency'] || '$'}`;
+const money = (n) => `${Number(n ?? 0).toLocaleString('de-DE', { minimumFractionDigits: Number.isInteger(Number(n ?? 0)) ? 0 : 2, maximumFractionDigits: 2 })} ${state.config['market.currency'] || '$'}`;
 
 /** Kennzahl-Kachel mit Symbol; tone = ok | warn | err | info */
 const tile = (value, label, { ic, tone = '', onClick } = {}) => {
@@ -124,6 +124,17 @@ const RENDERERS = {
       rows.length ? h('div', null, h('div', { class: 'sub-title' }, 'Auslastung'), rows) : null,
       d.low.length > 0 && h('div', null, h('div', { class: 'sub-title warn' }, 'Bestand niedrig'),
         d.low.map((i) => h('div', { class: 'list-row', style: { padding: '8px 0' } }, h('div', { class: 'grow t' }, i.name), h('span', { class: 'muted' }, `${nf(i.stock)} / ${nf(i.target)} ${i.unit}`))))), { icon: 'storage' });
+  },
+
+  'tab-overview': (w) => {
+    const d = w.data;
+    const cents = (c) => money(c / 100);
+    return card(w.title, h('div', { class: 'stack-v' },
+      h('div', { class: 'tile-row' }, tile(d.openCompanies, 'Offene Deckel', { ic: 'dollar', tone: d.openCompanies ? 'info' : '', onClick: () => openApp('tab') }), tile(d.pendingPeriods, 'Abrechnungen ausstehend', { ic: 'hourglass', tone: d.pendingPeriods ? 'warn' : '', onClick: () => openApp('tab') }),
+        tile(d.submitted + d.review, 'Eingereicht / Prüfung', { ic: 'search', tone: d.submitted ? 'warn' : '', onClick: () => openApp('tab') }), tile(d.confirmed + d.paymentPending, 'Zahlung ausstehend', { ic: 'alert', tone: d.confirmed + d.paymentPending ? 'warn' : '', onClick: () => openApp('tab') }), tile(d.paid, 'Bezahlt', { ic: 'check', tone: 'ok', onClick: () => openApp('tab') })),
+      h('div', { class: 'fin-balance neg' }, h('div', { class: 'fb-l' }, 'Gesamt offen'), h('div', { class: 'fb-v' }, cents(d.openCents))),
+      d.recent.length > 0 && h('div', null, h('div', { class: 'sub-title' }, 'Aktuelle Abrechnungen'), d.recent.slice(0, 4).map((x) => h('div', { class: 'list-row', style: { padding: '8px 0', cursor: 'pointer' }, onclick: () => openApp('tab') },
+        h('div', { class: 'grow' }, h('div', { class: 't' }, x.company), h('div', { class: 's' }, x.interval + ' · ' + x.period)), h('b', null, cents(x.submittedCents)), h('span', { class: 'badge', style: { '--c': x.statusColor } }, x.statusLabel))))), { icon: 'dollar' });
   },
 
   'finance-flow': (w) => {

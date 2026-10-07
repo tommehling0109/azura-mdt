@@ -26,6 +26,12 @@ export const NAV = [
     ],
   },
   {
+    section: 'Finanzen',
+    items: [
+      { id: 'tab', label: 'Deckel', subtitle: 'Firmen-Deckel, Abrechnungen und Zahlungen', icon: 'dollar', path: '/deckel', perm: ['tab.book', 'tab.view', 'tab.statements', 'tab.manage_companies'], win: { w: 1120, h: 680 }, view: () => import('./views/tab.js') },
+    ],
+  },
+  {
     section: 'Kommunikation',
     items: [
       { id: 'chat', label: 'Chat', subtitle: 'Kanäle, Nachrichten und Pinnwand', icon: 'chat', path: '/chat', perm: ['chat.view'], win: { w: 1000, h: 640 }, view: () => import('./views/chat.js'), badge: 'chatUnread' },

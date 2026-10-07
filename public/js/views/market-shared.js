@@ -6,7 +6,7 @@ import { api } from '../api.js';
 import { subscribe } from '../realtime.js';
 import { state, can } from '../state.js';
 
-export const money = (n) => `${Number(n ?? 0).toLocaleString('de-DE')} ${state.config['market.currency'] || '$'}`;
+export const money = (n) => `${Number(n ?? 0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} ${state.config['market.currency'] || '$'}`;
 export const dealBadge = (d) => h('span', { class: 'badge', style: { '--c': d.statusColor } }, d.statusLabel);
 /** Richtung: Ankauf (Partner verkauft uns etwas) oder Verkauf (wir bieten dem Partner etwas aus dem Lager an). */
 export const dirBadge = (d) => (d.direction === 'sell' ? h('span', { class: 'badge no-dot b-info' }, 'Verkauf') : h('span', { class: 'badge no-dot b-mute' }, 'Ankauf'));
