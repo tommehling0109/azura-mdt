@@ -33,7 +33,8 @@ export function loadAccess(userId) {
   const isSuperadmin = !!get('SELECT is_superadmin s FROM users WHERE id = ?', userId)?.s;
   const isAdmin = isSuperadmin || roles.some((r) => r.is_admin);
   let perms;
-  if (isAdmin) perms = new Set(all('SELECT key FROM permissions').map((r) => r.key));
+  // Superadmin/Administrator: IMMER alle Rechte – aus der Datenbank (inkl. eigener Rechte) UND aus dem Code-Registry, damit auch ein frisch hinzugekommenes Recht sofort gilt
+  if (isAdmin) perms = new Set([...all('SELECT key FROM permissions').map((r) => r.key), ...registry.keys()]);
   else {
     perms = new Set(all(
       `SELECT DISTINCT rp.permission_key k FROM role_permissions rp JOIN user_roles ur ON ur.role_id=rp.role_id WHERE ur.user_id=?

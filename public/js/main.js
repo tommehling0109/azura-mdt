@@ -58,7 +58,11 @@ async function boot() {
   try {
     const b = await api.get('/api/bootstrap');
     document.getElementById('build-tag')?.remove();
-    document.body.append(h('div', { id: 'build-tag', class: 'build-tag', title: 'Installierter Programmstand – klicken für Diagnose', onclick: () => showDiagnose(b) }, `Build ${b.commit ?? '?'}`));
+    const tag = h('div', { id: 'build-tag', class: 'build-tag', title: 'Installierter Programmstand – klicken für Diagnose', onclick: () => showDiagnose(b) }, `Build ${b.commit ?? '?'}`);
+    const screenEl = document.getElementById('screen');
+    // Die Pille lebt im Hintergrund-Layer des Bildschirms (unter Fenstern und Dock) und wird nach jedem Neuaufbau des Bildschirms wieder eingesetzt
+    const place = () => { if (tag.parentNode !== screenEl) screenEl.append(tag); };
+    place(); new MutationObserver(place).observe(screenEl, { childList: true });
     syncVersion(b.version); watchVersion(b.version); // veralteten lokalen Zustand nach Updates verwerfen / laufende Seite erneuern
     return b;
   } catch (e) {

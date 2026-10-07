@@ -70,6 +70,13 @@ export default {
     { key: 'auth.registration_enabled', group: 'Zugang', label: 'Registrierung erlauben', help: 'Neue Benutzer können sich selbst registrieren und warten auf Freischaltung.', type: 'bool', default: true, public: true },
     { key: 'auth.session_hours', group: 'Zugang', label: 'Sitzungsdauer (Stunden)', type: 'number', default: 12, min: 1, max: 720 },
   ],
+  /** Selbstheilung bei jedem Start: Gibt es Benutzer, aber keinen Superadmin (z. B. Altbestand), wird der älteste aktive Administrator zum Superadmin. */
+  init() {
+    if (get('SELECT 1 x FROM users WHERE is_superadmin = 1')) return;
+    const first = get("SELECT u.id FROM users u JOIN user_roles ur ON ur.user_id = u.id JOIN roles r ON r.id = ur.role_id WHERE r.is_admin = 1 AND u.status = 'active' ORDER BY u.id LIMIT 1")
+      ?? get("SELECT id FROM users WHERE status = 'active' ORDER BY id LIMIT 1");
+    if (first) run('UPDATE users SET is_superadmin = 1 WHERE id = ?', first.id);
+  },
   routes(r) {
     // Öffentlich: Konfiguration für Login/Setup-Bildschirm
     r.get('/api/bootstrap', { auth: false }, () => ({ setupRequired: setupRequired(), config: publicConfig(), version: APP_VERSION, commit: APP_COMMIT }));

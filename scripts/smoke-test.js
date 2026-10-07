@@ -951,7 +951,8 @@ try {
 
   // ══ Superadmin, Hierarchie, Stammdaten externer Zugänge, Finanzen, Statistik ══
   const adminId = users.find((u) => u.username === 'admin').id;
-  r = await admin.call('GET', '/api/auth/me'); assert.equal(r.user.isSuperadmin, true); assert.equal((await mod.call('GET', '/api/auth/me')).user.isSuperadmin, false);
+  r = await admin.call('GET', '/api/auth/me'); assert.equal(r.user.isSuperadmin, true);
+  { const allKeys = (await admin.call('GET', '/api/permissions')).permissions.map((p) => p.key); assert.ok(allKeys.length > 60); assert.deepEqual(allKeys.filter((k) => !r.user.permissions.includes(k)), []); ok('Superadmin besitzt jederzeit ALLE Rechte (auch neu hinzugekommene)'); } assert.equal((await mod.call('GET', '/api/auth/me')).user.isSuperadmin, false);
   assert.equal((await admin.call('PATCH', `/api/users/${adminId}`, { isSuperadmin: false })).status, 403); assert.equal((await admin.call('PATCH', `/api/users/${neuer.id}`, { isSuperadmin: true })).status, 403); // die Rolle „Superadmin“ ist fest: weder vergeb- noch entziehbar
   await setPerms(['users.edit', 'users.view']); assert.equal((await mod.call('PATCH', `/api/users/${neuer.id}`, { isSuperadmin: true })).status, 403); assert.equal((await mod.call('POST', `/api/users/${adminId}/password`, { password: 'neuesPasswort123' })).status, 403); await setPerms([]);
   assert.ok((await admin.call('GET', '/api/permissions')).permissions.some((p) => p.key === 'users.password_reset')); ok('Rolle „Superadmin“ ist fest (nicht vergeb-/entziehbar); Passwort-Reset hat ein eigenes Recht');
