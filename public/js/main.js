@@ -7,6 +7,7 @@ import { showCompanyPortal } from './views/company-portal.js';
 import { PARTNER_NAV } from './modules.js';
 import { toast } from './ui/kit.js';
 import { h } from './ui/dom.js';
+import { syncVersion, watchVersion, resetLocal } from './version.js';
 
 // Externer Zugang: /p/<link-token> – eigene Anmeldung per Code, nur freigeschaltete Apps
 const partnerToken = (() => { const m = location.pathname.match(/^\/p\/([^/]+)\/?$/); return m ? decodeURIComponent(m[1]) : null; })();
@@ -42,7 +43,11 @@ function route(user) {
 }
 
 async function boot() {
-  try { return await api.get('/api/bootstrap'); } catch (e) {
+  try {
+    const b = await api.get('/api/bootstrap');
+    syncVersion(b.version); watchVersion(b.version); // veralteten lokalen Zustand nach Updates verwerfen / laufende Seite erneuern
+    return b;
+  } catch (e) {
     showLock(h('div', { class: 'lock-card' }, h('h2', null, 'Server nicht erreichbar'), h('p', { class: 'lead' }, e.message)));
     return null;
   }
@@ -95,7 +100,8 @@ onUnauthenticated((code) => {
   if (partnerToken && code === 'unauthenticated_partner') { state.user = null; toast('Deine Sitzung ist abgelaufen oder der Zugang wurde geändert.', 'warn'); startPartner(); }
   else if (!partnerToken && code === 'unauthenticated') { state.user = null; toast('Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.', 'warn'); start(); }
 });
-(companyToken ? startCompany : partnerToken ? startPartner : start)();
+if (location.pathname === '/reset') resetLocal(); // Notausgang: lokale Daten dieser App löschen und abmelden
+else (companyToken ? startCompany : partnerToken ? startPartner : start)();
 
 // Konfigurationsänderungen (z. B. Akzentfarbe) sofort sichtbar machen
 window.addEventListener('mdt:config', (e) => previewConfig(e.detail));

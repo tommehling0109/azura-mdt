@@ -930,6 +930,10 @@ try {
   assert.equal((await admin.call('GET', '/api/dashboard')).widgets.some((w) => w.id === 'credit-overview'), true);
   r = await admin.call('GET', '/api/audit?module=credit&limit=200'); const cacts = new Set(r.rows.map((x) => x.action)); for (const a of ['credit.requested', 'credit.counter', 'credit.accept', 'credit.disburse', 'credit.payment', 'credit.limit_set']) assert.ok(cacts.has(a), a); ok('Alle Kredit-Aktionen stehen im Audit-Log');
 
+  // ══ Versionskennung (Selbstheilung nach Updates) ══
+  r = await new Client().call('GET', '/api/bootstrap'); assert.match(r.version, /^[0-9a-f]{12}$/); assert.equal((await new Client().call('GET', '/api/version')).version, r.version);
+  assert.equal((await fetch(`${base}/js/main.js`)).headers.get('cache-control'), 'no-store'); assert.equal((await fetch(`${base}/reset`)).status, 200); ok('Version im Bootstrap, Programmdateien ohne Browser-Cache, /reset erreichbar');
+
   // ── Branding: eigenes Logo / Hintergrund ──
   const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
   assert.equal((await mod.call('POST', '/api/admin/branding/logo', { data: PNG })).status, 403);
