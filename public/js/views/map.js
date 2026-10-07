@@ -24,10 +24,10 @@ export default async function render(container, ctx) {
   try { [L, cfg] = await Promise.all([loadLeaflet(), api.get('/api/map/config')]); } catch (e) { return mount(container, empty('Karte nicht verfügbar', e.message, 'alert')); }
   if (!ctx.isCurrent()) return;
   const { calib, minZoom, maxZoom } = cfg;
-  const toLL = (x, y) => L.latLng(calib.scale * y - calib.y, calib.x + calib.scale * x);
-  const toGame = (ll) => ({ x: (ll.lng - calib.x) / calib.scale, y: (ll.lat + calib.y) / calib.scale });
+  const toLL = (x, y) => L.latLng(calib.y - calib.scale * y, calib.x + calib.scale * x);
+  const toGame = (ll) => ({ x: (ll.lng - calib.x) / calib.scale, y: (calib.y - ll.lat) / calib.scale });
   const SIZE = 256 * 2 ** maxZoom;
-  const bounds = L.latLngBounds([[-SIZE, 0], [0, SIZE]]);
+  const bounds = L.latLngBounds([[0, 0], [SIZE, SIZE]]);
 
   const state = { points: [], vehicles: [], hidden: new Set(), q: '', showPostals: cfg.showPostals, showVeh: true, placing: false, moving: false };
   const side = h('aside', { class: 'map-side' });
@@ -37,14 +37,14 @@ export default async function render(container, ctx) {
   const stage = h('div', { class: 'map-stage' }, mapEl, tools, status);
   mount(container, h('div', { class: 'mapview' }, side, stage));
 
-  const crs = L.extend({}, L.CRS.Simple, { scale: (z) => 2 ** (z - maxZoom), zoom: (s) => Math.log2(s) + maxZoom });
+  const crs = L.extend({}, L.CRS.Simple, { transformation: new L.Transformation(1, 0, 1, 0), scale: (z) => 2 ** (z - maxZoom), zoom: (s) => Math.log2(s) + maxZoom });
   const map = L.map(mapEl, { crs, minZoom, maxZoom: maxZoom + 1, zoomSnap: 0.5, zoomDelta: 0.5, attributionControl: false, maxBounds: bounds.pad(0.1), maxBoundsViscosity: 0.8 });
   const tiles = L.tileLayer(cfg.tileUrl, { minZoom, maxNativeZoom: maxZoom, maxZoom: maxZoom + 1, tileSize: 256, noWrap: true, bounds, errorTileUrl: '' }).addTo(map);
   const pointLayer = L.layerGroup().addTo(map);
   const vehLayer = L.layerGroup().addTo(map);
   const postalLayer = L.layerGroup();
   map.fitBounds(bounds, { animate: false });
-  const startView = () => map.setView(toLL(0, 0), minZoom + 1.5, { animate: false });
+  const startView = () => map.setView(toLL(0, 0), Math.max(minZoom, maxZoom - 2.5), { animate: false });
   startView();
   const ro = new ResizeObserver(() => map.invalidateSize());
   ro.observe(mapEl);
@@ -88,7 +88,7 @@ export default async function render(container, ctx) {
   async function ensurePostals() { if (!postals) postals = (await api.get('/api/map/postals')).postals; return postals; }
   async function drawPostals() {
     postalLayer.clearLayers();
-    if (!state.showPostals || map.getZoom() < minZoom + 1.5) { map.removeLayer(postalLayer); return; }
+    if (!state.showPostals || map.getZoom() < minZoom + 2) { map.removeLayer(postalLayer); return; }
     await ensurePostals();
     if (!map.hasLayer(postalLayer)) postalLayer.addTo(map);
     const view = map.getBounds().pad(0.1), z = map.getZoom();
