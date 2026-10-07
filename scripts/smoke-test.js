@@ -852,6 +852,84 @@ try {
   r = await admin.call('GET', '/api/audit?module=tab&limit=200'); const acts = new Set(r.rows.map((x) => x.action)); for (const a of ['tab.entry_created', 'tab.entry_cancelled', 'tab.entry_corrected', 'tab.company_created', 'tab.statement_submitted', 'tab.statement_confirm', 'tab.statement_pay']) assert.ok(acts.has(a), a); ok('Alle wichtigen Aktionen stehen im Audit-Log');
   await setPerms([]);
 
+
+  // ══ Kreditsystem ══
+  const { runCreditReminders } = await import('../server/modules/credit.js');
+  const calcSrv = await import('../server/core/credit-calc.js'), calcCli = await import('../public/js/credit-calc.js');
+  const sample = { principal: 123457, count: 7, frequency: 'monthly', type: 'flat', rateBp: 175, ratePeriod: 'month' };
+  assert.deepEqual(calcSrv.calcLoan(sample), calcCli.calcLoan(sample)); assert.deepEqual(calcSrv.splitInstallments({ principal: 100, interest: 7, count: 3 }), calcCli.splitInstallments({ principal: 100, interest: 7, count: 3 }));
+  assert.deepEqual(calcSrv.dueDates('2026-01-31', 3, 'monthly'), ['2026-02-28', '2026-03-31', '2026-04-30']); assert.deepEqual(calcSrv.calcLoan({ principal: 100000, count: 10, frequency: 'weekly', type: 'flat', rateBp: 250, ratePeriod: 'week' }), { days: 70, interest: 25000, total: 125000, installment: 12500 }); ok('Kreditberechnung: einfache Zinsen, Raten, Fälligkeiten (Server = Frontend)');
+  const noCredit = new Client(); r = await admin.call('POST', '/api/partners', { name: 'Ohne Kredit', apps: ['market'] }); await noCredit.call('POST', `/api/p/${r.partner.linkPath.split('/').pop()}/login`, { code: r.code });
+  assert.equal((await noCredit.call('GET', '/api/p/credit/loans')).status, 403);
+  const bor = new Client(); r = await admin.call('POST', '/api/partners', { name: 'Kreditnehmer Eins', apps: ['credit'] }); const borId = r.partner.id; const borNo = r.partner.number;
+  assert.equal((await bor.call('POST', `/api/p/${r.partner.linkPath.split('/').pop()}/login`, { code: r.code })).status, 200);
+  const bor2 = new Client(); r = await admin.call('POST', '/api/partners', { name: 'Kreditnehmer Zwei', apps: ['credit'] }); const bor2Id = r.partner.id; await bor2.call('POST', `/api/p/${r.partner.linkPath.split('/').pop()}/login`, { code: r.code });
+  r = await bor.call('GET', '/api/p/credit/config'); assert.equal(r.limitCents, null); ok('Kredit-App nur für Partner mit freigeschalteter App');
+  assert.equal((await bor.call('POST', '/api/p/credit/requests', { principalCents: 100, termCount: 5, frequency: 'weekly' })).status, 400);
+  assert.equal((await bor.call('POST', '/api/p/credit/requests', { principalCents: 100000, termCount: 0, frequency: 'weekly' })).status, 400);
+  assert.equal((await bor.call('POST', '/api/p/credit/requests', { principalCents: 100000, termCount: 5, frequency: 'täglich' })).status, 400);
+  r = await bor.call('POST', '/api/p/credit/requests', { principalCents: 100000, termCount: 10, frequency: 'weekly', note: 'Fuhrpark erweitern' }); assert.equal(r.status, 201); assert.match(r.loan.number, /^[A-Z]+-K-\d+$/); assert.equal(r.loan.status, 'requested'); assert.equal(r.loan.turn, 'staff'); assert.equal(r.loan.interest.set, false); assert.equal(r.loan.partner, undefined); const loan1 = r.loan.id;
+  r = await admin.call('GET', '/api/notifications'); assert.ok(r.notifications.some((n) => /neue Kreditanfrage/.test(n.title) && n.target.loanId === loan1)); ok('Kredit anfragen (Summe, Laufzeit, wöchentlich/monatlich) – Team wird benachrichtigt');
+  assert.equal((await mod.call('GET', '/api/credit/loans')).status, 403);
+  r = await admin.call('GET', '/api/credit/loans?group=staff'); assert.equal(r.loans.length, 1); assert.equal(r.loans[0].partner.number, borNo);
+  assert.equal((await admin.call('POST', `/api/credit/loans/${loan1}/accept`, {})).status, 400); // Zahlungsziel fehlt
+  assert.equal((await bor.call('POST', `/api/p/credit/loans/${loan1}/accept`)).status, 409); // nicht am Zug
+  assert.equal((await admin.call('POST', `/api/credit/loans/${loan1}/counter`, { interestType: 'flat', ratePercent: 0, ratePeriod: 'week', payTo: 'Konto 123' })).status, 400);
+  r = await admin.call('POST', `/api/credit/loans/${loan1}/counter`, { interestType: 'flat', ratePercent: 2.5, ratePeriod: 'week', payTo: 'Konto 123 · Verwendungszweck: Kreditnummer', text: 'Unser Angebot' });
+  assert.equal(r.status, 200); assert.equal(r.loan.status, 'negotiating'); assert.equal(r.loan.turn, 'partner'); assert.equal(r.loan.interestCents, 25000); assert.equal(r.loan.totalCents, 125000); assert.equal(r.loan.installmentCents, 12500); ok('Gegenvorschlag des Teams: Zinssatz pro Woche, Zahlungsziel – Gesamtkosten werden berechnet');
+  r = await bor.call('GET', `/api/p/credit/loans/${loan1}`); assert.equal(r.loan.interestCents, 25000); assert.equal(r.loan.totalCents, 125000); assert.equal(r.loan.installmentCents, 12500); assert.equal(r.loan.interest.text, '2,5 % pro Woche'); assert.match(r.loan.payTo, /Konto 123/); assert.equal(r.loan.turn, 'partner');
+  assert.equal(JSON.stringify(r).includes('Kreditnehmer Eins'), false); assert.ok(r.events.length >= 2); ok('Kreditnehmer sieht transparent: Zinsen, Gesamtrückzahlung, Rate, Laufzeit, Zahlungsziel');
+  assert.equal((await bor2.call('GET', `/api/p/credit/loans/${loan1}`)).status, 404); ok('Ein Kreditnehmer sieht nie Kredite anderer');
+  r = await bor.call('POST', `/api/p/credit/loans/${loan1}/counter`, { termCount: 5, text: 'Lieber kürzer' }); assert.equal(r.loan.turn, 'staff'); assert.equal(r.loan.termCount, 5); assert.equal(r.loan.interestCents, 12500); assert.equal(r.loan.interest.rateBp, 250); assert.equal((await bor.call('POST', `/api/p/credit/loans/${loan1}/counter`, { termCount: 3 })).status, 409);
+  assert.equal((await bor.call('POST', `/api/p/credit/loans/${loan1}/counter`, { interestType: 'none' })).status, 409); ok('Gegenvorschlag des Kreditnehmers (Laufzeit) – Zinssatz bleibt Sache des Teams, Zinsen werden neu berechnet');
+  r = await admin.call('POST', `/api/credit/loans/${loan1}/accept`, {}); assert.equal(r.loan.status, 'accepted');
+  assert.equal((await bor.call('POST', `/api/p/credit/loans/${loan1}/report`, { installmentId: 1 })).status, 409);
+  r = await admin.call('POST', `/api/credit/loans/${loan1}/disburse`, { date: '2026-10-07' }); assert.equal(r.loan.status, 'active'); assert.equal(r.loan.installments.length, 5);
+  assert.deepEqual(r.loan.installments.map((i) => i.dueDate), ['2026-10-14', '2026-10-21', '2026-10-28', '2026-11-04', '2026-11-11']); assert.equal(r.loan.installments.reduce((a, i) => a + i.amountCents, 0), 112500); assert.equal(r.loan.installments[0].amountCents, 22500);
+  r = await admin.call('GET', '/api/finance/ledger?q=' + borNo); const cl = r.entries.filter((e) => e.entryType === 'credit_payout' || e.entryType === 'credit_installment'); assert.equal(cl.filter((e) => e.entryType === 'credit_payout' && e.direction === 'out' && e.status === 'settled' && e.amount === 1000).length, 1); assert.equal(cl.filter((e) => e.entryType === 'credit_installment' && e.status === 'expected' && e.direction === 'in').length, 5); ok('Annahme → Auszahlung bestätigt: Tilgungsplan (5 Raten mit Fälligkeiten) und Finanzvorgänge');
+  r = await bor.call('GET', `/api/p/credit/loans/${loan1}`); assert.equal(r.loan.installments.length, 5); assert.equal(r.loan.nextDue.date, '2026-10-14'); assert.equal(r.loan.remainingCents, 112500); assert.equal(r.loan.nextDue.amountCents, 22500); ok('Kreditnehmer sieht Fälligkeiten, Beträge und den Rest');
+  const inst1 = r.loan.installments[0].id;
+  r = await bor.call('POST', `/api/p/credit/loans/${loan1}/report`, { installmentId: inst1 }); assert.ok(r.loan.installments[0].reportedAt); assert.ok((await admin.call('GET', '/api/notifications')).notifications.some((n) => /Ratenzahlung gemeldet/.test(n.body)));
+  assert.equal((await mod.call('POST', `/api/credit/loans/${loan1}/payment`, { installmentId: inst1 })).status, 403);
+  assert.equal((await admin.call('POST', `/api/credit/loans/${loan1}/payment`, { installmentId: inst1, amountCents: 99999999 })).status, 400);
+  r = await admin.call('POST', `/api/credit/loans/${loan1}/payment`, { installmentId: inst1, amountCents: 10000, date: '2026-10-14' }); assert.equal(r.loan.installments[0].status, 'open'); assert.equal(r.loan.installments[0].paidCents, 10000);
+  r = await admin.call('POST', `/api/credit/loans/${loan1}/payment`, { installmentId: inst1, date: '2026-10-15' }); assert.equal(r.loan.installments[0].status, 'paid'); assert.equal(r.loan.installmentsPaid, 1); ok('Ratenzahlungen erfassen (auch teilweise), Zahlung melden');
+  for (const i of r.loan.installments.slice(1)) r = await admin.call('POST', `/api/credit/loans/${loan1}/payment`, { installmentId: i.id });
+  assert.equal(r.loan.status, 'completed'); assert.equal(r.loan.remainingCents, 0); assert.equal(r.loan.nextDue, null);
+  r = await admin.call('GET', '/api/finance/ledger?q=' + borNo); assert.equal(r.entries.filter((e) => e.entryType === 'credit_installment' && e.status === 'settled').length, 5); assert.equal((await admin.call('POST', `/api/credit/loans/${loan1}/payment`, { installmentId: inst1 })).status, 409);
+  r = await bor.call('GET', '/api/p/credit/loans'); assert.equal(r.loans[0].status, 'completed'); assert.equal((await bor.call('POST', '/api/p/credit/requests', { principalCents: 50000, termCount: 2, frequency: 'monthly' })).status, 201); ok('Abbezahlt: Kredit schließt sich, bleibt im Verlauf, neuer Kredit ist beantragbar');
+  // Rahmen, Limits, Ablehnen, Ausfall
+  assert.equal((await mod.call('PATCH', `/api/credit/borrowers/${borId}`, { limitCents: 1000 })).status, 403);
+  assert.equal((await admin.call('PATCH', `/api/credit/borrowers/${borId}`, { limitCents: 15000 })).status, 200);
+  assert.equal((await bor.call('POST', '/api/p/credit/requests', { principalCents: 20000, termCount: 2, frequency: 'monthly' })).status, 409); // 20000 > Rahmen 15000
+  r = await bor.call('GET', '/api/p/credit/config'); assert.equal(r.limitCents, 15000); assert.equal(r.availableCents, 15000);
+  r = await admin.call('GET', '/api/credit/borrowers'); assert.equal(r.borrowers.find((b) => b.id === borId).completedLoans, 1); ok('Kreditrahmen je Kreditnehmer wird bei Anfrage und Annahme geprüft');
+  r = await admin.call('GET', '/api/credit/loans?partner=' + borId + '&status=requested'); const loan2 = r.loans[0].id;
+  assert.equal((await admin.call('POST', `/api/credit/loans/${loan2}/accept`, { payTo: 'Bar' })).status, 409); // 50000 > Rahmen 15000 beim Annehmen
+  assert.equal((await admin.call('POST', `/api/credit/loans/${loan2}/reject`, { text: 'Zu riskant' })).loan.status, 'rejected'); assert.equal((await bor.call('POST', `/api/p/credit/loans/${loan2}/withdraw`)).status, 409);
+  await admin.call('PUT', '/api/config', { values: { 'credit.max_open_requests': 1 } });
+  assert.equal((await bor2.call('POST', '/api/p/credit/requests', { principalCents: 10000, termCount: 4, frequency: 'monthly' })).status, 201); assert.equal((await bor2.call('POST', '/api/p/credit/requests', { principalCents: 10000, termCount: 4, frequency: 'monthly' })).status, 409);
+  await admin.call('PUT', '/api/config', { values: { 'credit.max_open_requests': 3 } });
+  const loan3 = (await admin.call('GET', '/api/credit/loans?partner=' + bor2Id)).loans[0].id;
+  assert.equal((await bor2.call('POST', `/api/p/credit/loans/${loan3}/withdraw`)).loan.status, 'withdrawn'); ok('Ablehnen, Zurückziehen und Begrenzung offener Anfragen');
+  // Zinsfrei annehmen, Erinnerungen, Ausfall
+  const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const daysAgo = (n) => new Date(new Date(todayIso + 'T12:00:00').getTime() - n * 86400000).toISOString().slice(0, 10);
+  r = await bor2.call('POST', '/api/p/credit/requests', { principalCents: 30000, termCount: 3, frequency: 'weekly' }); const loan4 = r.loan.id;
+  r = await admin.call('POST', `/api/credit/loans/${loan4}/accept`, { payTo: 'Barzahlung im Büro' }); assert.equal(r.loan.interest.type, 'none'); assert.equal(r.loan.interestCents, 0); assert.equal(r.loan.interest.text, 'Zinsfrei'); assert.equal(r.loan.totalCents, 30000);
+  r = await admin.call('POST', `/api/credit/loans/${loan4}/disburse`, { date: daysAgo(6) }); // 1. Rate morgen fällig
+  runCreditReminders(); r = await bor2.call('GET', '/api/p/notifications'); assert.ok(r.notifications.some((n) => /Rate bald fällig/.test(n.title)));
+  r = await bor2.call('POST', '/api/p/credit/requests', { principalCents: 10000, termCount: 2, frequency: 'weekly' }); const loan5 = r.loan.id; await admin.call('POST', `/api/credit/loans/${loan5}/accept`, { payTo: 'Bar' });
+  await admin.call('POST', `/api/credit/loans/${loan5}/disburse`, { date: daysAgo(20) }); runCreditReminders();
+  r = await bor2.call('GET', '/api/p/notifications'); assert.ok(r.notifications.some((n) => /Rate überfällig/.test(n.title))); assert.ok((await admin.call('GET', '/api/notifications')).notifications.some((n) => /Rate überfällig/.test(n.title)));
+  r = await bor2.call('GET', `/api/p/credit/loans/${loan5}`); assert.equal(r.loan.overdueCount, 2); assert.equal(r.loan.installments[0].overdue, true); assert.equal((await admin.call('GET', '/api/credit/loans?group=overdue')).loans.length, 1);
+  r = await admin.call('GET', '/api/credit/summary'); assert.equal(r.summary.overdueCount, 2); assert.ok(r.summary.outstandingCents >= 40000); assert.ok(r.summary.upcoming.length >= 1); ok('Erinnerungen (bald fällig / überfällig) und Überfällig-Auswertung');
+  r = await admin.call('POST', `/api/credit/loans/${loan5}/default`, { text: 'Zahlt nicht' }); assert.equal(r.loan.status, 'defaulted');
+  r = await admin.call('GET', '/api/finance/ledger?q=Bar'); void r; assert.equal((await admin.call('POST', `/api/credit/loans/${loan5}/payment`, { installmentId: 1 })).status, 409);
+  r = await admin.call('GET', '/api/finance/ledger?status=cancelled'); assert.ok(r.entries.some((e) => e.entryType === 'credit_installment')); ok('Ausfall markiert offene Raten als nicht mehr erwartet (Journal storniert)');
+  assert.equal((await admin.call('GET', '/api/dashboard')).widgets.some((w) => w.id === 'credit-overview'), true);
+  r = await admin.call('GET', '/api/audit?module=credit&limit=200'); const cacts = new Set(r.rows.map((x) => x.action)); for (const a of ['credit.requested', 'credit.counter', 'credit.accept', 'credit.disburse', 'credit.payment', 'credit.limit_set']) assert.ok(cacts.has(a), a); ok('Alle Kredit-Aktionen stehen im Audit-Log');
+
   // ── Branding: eigenes Logo / Hintergrund ──
   const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
   assert.equal((await mod.call('POST', '/api/admin/branding/logo', { data: PNG })).status, 403);

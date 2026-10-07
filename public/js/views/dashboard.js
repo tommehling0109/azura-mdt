@@ -137,6 +137,16 @@ const RENDERERS = {
         h('div', { class: 'grow' }, h('div', { class: 't' }, x.company), h('div', { class: 's' }, x.interval + ' · ' + x.period)), h('b', null, cents(x.submittedCents)), h('span', { class: 'badge', style: { '--c': x.statusColor } }, x.statusLabel))))), { icon: 'dollar' });
   },
 
+  'credit-overview': (w) => {
+    const d = w.data;
+    const cents = (c) => money(c / 100);
+    return card(w.title, h('div', { class: 'stack-v' },
+      h('div', { class: 'tile-row' }, tile(d.awaitingStaff, 'Anfragen offen', { ic: 'alert', tone: d.awaitingStaff ? 'warn' : '', onClick: () => openApp('credit') }), tile(d.active, 'Laufend', { ic: 'refresh', tone: 'info', onClick: () => openApp('credit') }),
+        tile(d.overdueCount, 'Überfällig', { ic: 'hourglass', tone: d.overdueCount ? 'err' : '', onClick: () => openApp('credit') })),
+      h('div', { class: 'fin-balance pos' }, h('div', { class: 'fb-l' }, 'Verliehen (noch offen)'), h('div', { class: 'fb-v' }, cents(d.outstandingCents))),
+      h('div', { class: 'fin-line' }, h('span', { class: 'muted' }, 'Erwartete Zinsen'), h('b', null, cents(d.expectedInterestCents)))), { icon: 'dollar' });
+  },
+
   'finance-flow': (w) => {
     const d = w.data;
     const line = (label, v, cls) => h('div', { class: 'fin-line' }, h('span', { class: 'muted' }, label), h('b', { class: cls }, money(v)));

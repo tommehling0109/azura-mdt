@@ -102,6 +102,18 @@ App „Deckel“ (Bereich Finanzen). Firmen werden als Geschäftskunden angelegt
 - **Ablauf:** Eingereicht → In Prüfung → Bestätigt → Zahlung ausstehend → Bezahlt (oder Abgelehnt, dann kann die Firma erneut einreichen). Zahlung per **Überweisung** (Datum, Referenz) oder **Rechnung** (erhalten, Nummer, Betrag, Datum, PDF/Bild). Ab „Bestätigt“ sind Buchungen des Zeitraums gesperrt; bei „Bezahlt“ werden die Finanzvorgänge verbucht. Neue Abrechnungen lösen eine Benachrichtigung aus.
 - **Rechte:** `tab.book` (buchen, eigene sehen), `tab.book_others`, `tab.view`, `tab.cancel`, `tab.manage_companies`, `tab.statements` (Finanz). Dashboard-Widget „Deckel“ zeigt offene Deckel, ausstehende Abrechnungen, Zahlungen und Gesamt offen.
 
+## Kreditsystem
+
+App „Kredit“ (Finanzen) für Mitarbeiter und – als Partner-App – für externe Zugänge. Unter *Externe Zugänge* wird einem Zugang (Link + Code wie gehabt) die App **Kredit** freigeschaltet; er wird damit zum Kreditnehmer.
+
+- **Anfrage:** Der Kreditnehmer schlägt **Summe, Laufzeit (Anzahl Raten) und Rhythmus (wöchentlich/monatlich)** vor und sieht vorab eine Raten-Vorschau.
+- **Verhandlung wie in der Börse:** Das Team **nimmt an** oder macht einen **Gegenvorschlag** und legt dabei **Zinsen** (zinsfrei oder Zinssatz pro Tag/Woche/Monat) sowie das **Zahlungsziel** („Wohin zahlen?“) fest; der Kreditnehmer kann annehmen, ablehnen oder Summe/Laufzeit gegenvorschlagen (der Zinssatz bleibt Sache des Teams). Wer am Zug ist, ist immer sichtbar.
+- **Transparenz:** Der Kreditnehmer sieht Kreditsumme, Zinssatz, **Zinsen gesamt**, **Gesamtrückzahlung**, Rate, Laufzeit und Zahlungsziel – bevor er annimmt. Berechnung: einfache Zinsen auf die Kreditsumme; Laufzeit = Raten × (7 bzw. 30 Tage); Tag/Woche/Monat = 1/7/30 Tage; gleiche Raten, Rundungsrest in der letzten Rate.
+- **Nach der Annahme:** Das Team bestätigt die **Auszahlung** → Tilgungsplan mit Fälligkeiten (wöchentlich +7 Tage, monatlich gleicher Tag im Folgemonat). Der Kreditnehmer sieht jede Rate (Betrag, Fälligkeit, Status, „in x Tagen“), kann Zahlungen **melden**, das Team erfasst Zahlungen (auch Teilzahlungen). Erinnerungen vor Fälligkeit und bei Überfälligkeit gehen an beide Seiten; „Überfällig“ wird hervorgehoben.
+- **Abschluss:** Sind alle Raten bezahlt, gilt der Kredit als **abbezahlt**; er bleibt im Verlauf und es lassen sich neue beantragen. Ausfälle lassen sich markieren (offene Raten werden im Journal storniert).
+- **Finanz-Journal:** Auszahlung = Ausgang (verbucht), jede Rate = erwartete Einnahme (verbucht bei Zahlung) – später auswertbar (Zinsanteil im Vermerk).
+- **Grenzen & Rechte:** Kreditrahmen je Kreditnehmer, Min/Max-Summe, längste Laufzeit und Zahl offener Anfragen (Konfiguration → Kredit). Rechte: `credit.view`, `credit.manage` (verhandeln, auszahlen), `credit.payments` (Zahlungen/Ausfall), `credit.limits` (Kreditrahmen).
+
 ## Nächste Phasen
 
 Weitere Module (Fahrzeuge, Lager, Ankauf, Chat …) werden als `server/modules/<name>.js` (Permissions + Routen + Migration) und

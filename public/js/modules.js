@@ -28,6 +28,7 @@ export const NAV = [
   {
     section: 'Finanzen',
     items: [
+      { id: 'credit', label: 'Kredit', subtitle: 'Kreditanfragen, Zinsen und Ratenpläne', icon: 'bank', path: '/credit', perm: ['credit.view'], win: { w: 1120, h: 680 }, view: () => import('./views/credit.js'), badge: 'creditAwaiting' },
       { id: 'tab', label: 'Deckel', subtitle: 'Firmen-Deckel, Abrechnungen und Zahlungen', icon: 'dollar', path: '/deckel', perm: ['tab.book', 'tab.view', 'tab.statements', 'tab.manage_companies'], win: { w: 1120, h: 680 }, view: () => import('./views/tab.js') },
     ],
   },
@@ -61,6 +62,7 @@ export const PARTNER_NAV = [
     items: [
       { id: 'market', label: 'Börse', subtitle: 'Angebote, Gesuche und Geschäfte', icon: 'tag', win: { w: 1000, h: 660 }, view: () => import('./views/partner/market.js'), badge: 'marketNew' },
       { id: 'chat', label: 'Chat', subtitle: 'Nachrichten mit dem Team', icon: 'chat', win: { w: 960, h: 620 }, view: () => import('./views/partner/chat.js'), badge: 'chatUnread' },
+      { id: 'credit', label: 'Kredit', subtitle: 'Kredite anfragen und Raten verfolgen', icon: 'bank', win: { w: 1000, h: 660 }, view: () => import('./views/partner/credit.js'), badge: 'creditNew' },
     ],
   },
 ];

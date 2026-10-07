@@ -61,7 +61,9 @@ export async function openTarget(target) {
   window.focus?.();
   if (target.app === 'chat' && target.channelId) { try { sessionStorage.setItem('mdt:chat:channel', String(target.channelId)); } catch { /* egal */ } }
   if (target.app === 'tab' && target.statementId) { try { sessionStorage.setItem('mdt:tab:open', String(target.statementId)); } catch { /* egal */ } }
+  if (target.app === 'credit' && target.loanId) { try { sessionStorage.setItem('mdt:credit:open', String(target.loanId)); } catch { /* egal */ } }
   if (target.app) ui.open(target.app);
+  if (target.app === 'credit' && target.loanId) window.dispatchEvent(new Event('mdt:credit-open'));
   if (target.app === 'tab' && target.statementId) window.dispatchEvent(new Event('mdt:tab-open'));
   if (target.app === 'chat' && target.channelId) window.dispatchEvent(new Event('mdt:chat-open'));
   if (target.app === 'market' && target.dealId) {
@@ -70,16 +72,17 @@ export async function openTarget(target) {
   }
 }
 
-const counters = { pendingUsers: 0, marketAwaiting: 0, chatUnread: 0, marketNew: 0 };
+const counters = { pendingUsers: 0, marketAwaiting: 0, chatUnread: 0, marketNew: 0, creditAwaiting: 0, creditNew: 0 };
 let baseTitle = null;
 let partnerMode = false;
 async function refreshCounters() {
   if (partnerMode) {
     try { counters.marketNew = unseenCount(partnerScope(), (await api.get('/api/p/market/deals')).deals); } catch { /* App nicht freigeschaltet */ }
     try { counters.chatUnread = (await api.get('/api/p/chat/unread')).unread ?? 0; } catch { /* App nicht freigeschaltet */ }
+    try { counters.creditNew = unseenCount(`${partnerScope()}:credit`, (await api.get('/api/p/credit/loans')).loans.map((l) => ({ id: l.id, updatedAt: l.updatedAt, status: l.status, statusLabel: l.statusLabel }))); } catch { /* App nicht freigeschaltet */ }
     // Tab-Titel: ungesehene Änderungen auf einen Blick
     baseTitle ??= document.title.replace(/^\(\d+\)\s*/, '');
-    const n = counters.marketNew + counters.chatUnread;
+    const n = counters.marketNew + counters.chatUnread + counters.creditNew;
     document.title = n > 0 ? `(${n}) ${baseTitle}` : baseTitle;
     return;
   }
@@ -88,6 +91,9 @@ async function refreshCounters() {
   }
   if (can('chat.view')) {
     try { counters.chatUnread = (await api.get('/api/chat/unread')).unread ?? 0; } catch { /* ignorieren */ }
+  }
+  if (can('credit.view')) {
+    try { counters.creditAwaiting = (await api.get('/api/credit/summary')).summary.awaitingStaff ?? 0; } catch { /* ignorieren */ }
   }
   if (can('market.view')) {
     try { counters.marketAwaiting = (await api.get('/api/market/summary')).awaitingStaff ?? 0; } catch { /* ignorieren */ }
@@ -390,7 +396,7 @@ export function showApp(onLogout, opts = {}) {
   // ── Echtzeit: eine Verbindung für Panel und Partner-Portal ──
   connect(opts.partner ? 'partner' : 'staff');
   initNotifier({ kind: opts.partner ? 'partner' : 'staff', id: opts.partner ? state.user.displayName : state.user.id, open: openTarget });
-  subscribe(opts.partner ? ['market', 'chat'] : ['users', 'market', 'chat'], async () => { await refreshCounters(); renderIcons(); }); // Zähler/Abzeichen live
+  subscribe(opts.partner ? ['market', 'chat', 'credit'] : ['users', 'market', 'chat', 'credit'], async () => { await refreshCounters(); renderIcons(); }); // Zähler/Abzeichen live
   subscribe(['system', 'dashboard'], async () => { applyConfig((await api.get('/api/bootstrap')).config); }); // Farben/Logo/Namen live für alle
   if (opts.partner) subscribe(['partners'], () => api.get('/api/p/me')); // Zugang geändert/deaktiviert → sofort abgemeldet (401-Handler)
   // Sperrbildschirm (Timeout kommt aus der Konfiguration; Entsperren per Passwort bzw. Code)

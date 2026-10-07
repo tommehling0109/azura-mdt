@@ -544,4 +544,60 @@ export const SCHEMA_MIGRATIONS = [
   ALTER TABLE finance_ledger ADD COLUMN company_id INTEGER REFERENCES tab_companies(id) ON DELETE SET NULL;
   CREATE INDEX idx_ledger_ref ON finance_ledger(ref_type, ref_id);
   `,
+  /* v11 – Kreditsystem */ `
+  ALTER TABLE partners ADD COLUMN credit_limit_cents INTEGER;
+  CREATE TABLE credit_loans (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    loan_number    TEXT UNIQUE,
+    partner_id     INTEGER NOT NULL REFERENCES partners(id) ON DELETE RESTRICT,
+    status         TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested','negotiating','accepted','active','completed','rejected','withdrawn','cancelled','defaulted')),
+    turn           TEXT CHECK (turn IN ('staff','partner')),
+    proposed_by    TEXT NOT NULL DEFAULT 'partner' CHECK (proposed_by IN ('staff','partner')),
+    principal_cents INTEGER NOT NULL CHECK (principal_cents > 0),
+    term_count     INTEGER NOT NULL CHECK (term_count > 0),
+    frequency      TEXT NOT NULL CHECK (frequency IN ('weekly','monthly')),
+    interest_set   INTEGER NOT NULL DEFAULT 0,
+    interest_type  TEXT NOT NULL DEFAULT 'none' CHECK (interest_type IN ('none','flat')),
+    rate_bp        INTEGER NOT NULL DEFAULT 0,
+    rate_period    TEXT NOT NULL DEFAULT 'week' CHECK (rate_period IN ('day','week','month')),
+    pay_to         TEXT NOT NULL DEFAULT '',
+    note           TEXT NOT NULL DEFAULT '',
+    start_date     TEXT,
+    disbursed_at   TEXT,
+    closed_at      TEXT,
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+  );
+  CREATE INDEX idx_credit_partner ON credit_loans(partner_id);
+  CREATE INDEX idx_credit_status ON credit_loans(status);
+  CREATE TABLE credit_installments (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    loan_id         INTEGER NOT NULL REFERENCES credit_loans(id) ON DELETE CASCADE,
+    seq             INTEGER NOT NULL,
+    due_date        TEXT NOT NULL,
+    principal_cents INTEGER NOT NULL,
+    interest_cents  INTEGER NOT NULL,
+    amount_cents    INTEGER NOT NULL,
+    paid_cents      INTEGER NOT NULL DEFAULT 0,
+    status          TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','paid','cancelled')),
+    paid_at         TEXT,
+    reported_at     TEXT,
+    note            TEXT NOT NULL DEFAULT '',
+    reminded        INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX idx_credit_inst_loan ON credit_installments(loan_id, seq);
+  CREATE INDEX idx_credit_inst_due ON credit_installments(status, due_date);
+  CREATE TABLE credit_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    loan_id    INTEGER NOT NULL REFERENCES credit_loans(id) ON DELETE CASCADE,
+    actor_type TEXT NOT NULL CHECK (actor_type IN ('staff','partner','system')),
+    actor_id   INTEGER,
+    kind       TEXT NOT NULL,
+    text       TEXT,
+    snapshot   TEXT,
+    internal   INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_credit_events ON credit_events(loan_id, id);
+  `,
 ];

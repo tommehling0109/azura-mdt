@@ -32,6 +32,16 @@ export const settleTabPeriod = (companyId, periodKey) => run(
   "UPDATE finance_ledger SET status = 'settled', settled_at = ? WHERE ref_type = 'tab_entry' AND status = 'expected' AND ref_id IN (SELECT id FROM tab_entries WHERE company_id = ? AND period_key = ? AND status = 'active')",
   now(), companyId, periodKey);
 
+/** Kredit: Auszahlung (Ausgang, sofort verbucht) und je Rate eine erwartete Einnahme. */
+export function creditPayout(loan) {
+  run(`INSERT INTO finance_ledger (entry_type,direction,amount,currency,status,partner_id,quantity,note,ref_type,ref_id,created_at,settled_at)
+       VALUES ('credit_payout','out',?,?,'settled',?,1,?,'loan',?,?,?)`, loan.principal_cents / 100, getConfig('market.currency') ?? '$', loan.partner_id, `Kreditauszahlung ${loan.loan_number}`, loan.id, now(), now());
+}
+export const creditExpectInstallment = (loan, inst) => run(`INSERT INTO finance_ledger (entry_type,direction,amount,currency,status,partner_id,quantity,note,ref_type,ref_id,created_at)
+  VALUES ('credit_installment','in',?,?,'expected',?,1,?,'credit_installment',?,?)`, inst.amount_cents / 100, getConfig('market.currency') ?? '$', loan.partner_id, `Rate ${inst.seq} · ${loan.loan_number} (davon Zinsen ${(inst.interest_cents / 100).toFixed(2)})`, inst.id, now());
+export const creditSettleInstallment = (instId) => run("UPDATE finance_ledger SET status = 'settled', settled_at = ? WHERE ref_type = 'credit_installment' AND ref_id = ? AND status = 'expected'", now(), instId);
+export const creditCancelInstallments = (loanId) => run("UPDATE finance_ledger SET status = 'cancelled', cancelled_at = ? WHERE ref_type = 'credit_installment' AND status = 'expected' AND ref_id IN (SELECT id FROM credit_installments WHERE loan_id = ? AND status = 'open')", now(), loanId);
+
 export const ledgerEntries = ({ status, direction, q, limit = 200 } = {}) => {
   const where = [], p = [];
   if (['expected', 'settled', 'cancelled'].includes(status)) { where.push('l.status = ?'); p.push(status); }
