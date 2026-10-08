@@ -76,9 +76,9 @@ export default {
     { key: 'map.tile_url', group: 'Karte', label: 'Kachel-URL der Karte', help: 'Vorlage mit {z}, {x} und {y} (z. B. …/{z}/{x}-{y}.webp). Eigene Kacheln lassen sich unter /maptiles/{z}/{x}/{y}.png aus dem Ordner data/maptiles ausliefern.', type: 'string', default: 'https://viruxe.github.io/gtav-map-tiles/satelite/{z}/{x}-{y}.webp', max: 300 },
     { key: 'map.min_zoom', group: 'Karte', label: 'Kleinste Zoomstufe', type: 'number', default: 0, min: 0, max: 12 },
     { key: 'map.max_zoom', group: 'Karte', label: 'Größte Zoomstufe (Kachelauflösung)', type: 'number', default: 5, min: 1, max: 12 },
-    { key: 'map.calib_scale', group: 'Karte', label: 'Kalibrierung: Pixel pro Spieleinheit', help: 'Rechnet Spielkoordinaten in Kartenpixel der größten Zoomstufe um (Standard passt zur GTA-5-Karte).', type: 'number', default: 0.6465, min: 0.0001, max: 1000 },
-    { key: 'map.calib_x', group: 'Karte', label: 'Kalibrierung: X-Versatz (px)', type: 'number', default: 3914.5, min: -1000000, max: 1000000 },
-    { key: 'map.calib_y', group: 'Karte', label: 'Kalibrierung: Y-Versatz von oben (px)', type: 'number', default: 5566.5, min: -1000000, max: 1000000 },
+    { key: 'map.calib_scale', group: 'Karte', label: 'Kalibrierung: Pixel pro Spieleinheit', help: 'Rechnet Spielkoordinaten in Kartenpixel der größten Zoomstufe um. Standard: per Küstenabgleich mit der Postal-Karte berechnet (scripts/fit-map-calibration.py) – die Postleitzahlen liegen damit auf den Gebäuden der Satellitenkarte.', type: 'number', default: 0.66, min: 0.0001, max: 1000 },
+    { key: 'map.calib_x', group: 'Karte', label: 'Kalibrierung: X-Versatz (px)', type: 'number', default: 3755.8, min: -1000000, max: 1000000 },
+    { key: 'map.calib_y', group: 'Karte', label: 'Kalibrierung: Y-Versatz von oben (px)', type: 'number', default: 5530.1, min: -1000000, max: 1000000 },
     { key: 'map.show_postals', group: 'Karte', label: 'Postleitzahlen standardmäßig anzeigen', help: 'Blendet die Postleitzahlen als Beschriftung über der Karte ein. Bei der Postal-Karte (Bild) sind sie bereits aufgedruckt – dann besser aus.', type: 'bool', default: true },
   ],
   routes(r) {
