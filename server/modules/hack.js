@@ -162,6 +162,18 @@ const SNIPPETS = [
     const rows = all("SELECT partner_number n FROM partners WHERE status = 'active' AND partner_number IS NOT NULL ORDER BY RANDOM() LIMIT 2");
     return rows.length ? { kind: 'Extern', title: 'Gegenstellen', lines: rows.map((x) => x.n) } : null;
   }],
+  ['contacts', () => { // Kontaktbuch: nur offene Institutionen (Name, Art, Anzahl Personen) – nie Personen, Kontaktdaten oder Bankdaten
+    const rows = all("SELECT o.name, l.label type, (SELECT COUNT(*) FROM contact_people p WHERE p.org_id = o.id) n FROM contact_orgs o LEFT JOIN lookups l ON l.id = o.type_id WHERE o.restricted = 0 ORDER BY RANDOM() LIMIT 2");
+    return rows.length ? { kind: 'Kontakte', title: 'Kontaktbuch-Auszug', lines: rows.map((x) => `${x.name}${x.type ? `  ·  ${x.type}` : ''}  ·  ${x.n} Einträge`) } : null;
+  }],
+  ['changelog', () => { // Versionshinweise (nur Version und Titel)
+    const c = get('SELECT version, title FROM changelog_entries ORDER BY RANDOM() LIMIT 1');
+    return c ? { kind: 'System', title: 'Wartungsnotiz', lines: [`${c.version ? c.version + '  ·  ' : ''}${c.title}`] } : null;
+  }],
+  ['board', () => { // Schwarzes Brett: nur die Überschrift einer unkritischen Meldung
+    const b = get("SELECT title FROM board_posts WHERE level IN ('info','success') ORDER BY RANDOM() LIMIT 1");
+    return b ? { kind: 'Intern', title: 'Aushang', lines: [b.title] } : null;
+  }],
 ];
 function loot() {
   const want = Math.max(1, Number(getConfig('hack.reward_count')) || 3);
@@ -210,6 +222,9 @@ export default {
     { key: 'hack.loot_warehouse', group: 'Exekutive-Zugang', label: 'Beute: Lager-Teilbestände', help: 'Nur Lagernummer, wenige Positionen, gerundete Mengen.', type: 'bool', default: true, perm: 'hack.manage' },
     { key: 'hack.loot_vehicles', group: 'Exekutive-Zugang', label: 'Beute: Fahrzeuge', help: 'Kennzeichen und Modell.', type: 'bool', default: true, perm: 'hack.manage' },
     { key: 'hack.loot_deals', group: 'Exekutive-Zugang', label: 'Beute: Geschäftsvorgänge', help: 'Vorgangsnummer, Artikel, Menge – ohne Preis und Partner.', type: 'bool', default: true, perm: 'hack.manage' },
+    { key: 'hack.loot_contacts', group: 'Exekutive-Zugang', label: 'Beute: Kontaktbuch', help: 'Nur Institutionsname, Art und Anzahl der Einträge – keine Personen, Kontakt- oder Bankdaten, keine gesperrten Einträge.', type: 'bool', default: true, perm: 'hack.manage' },
+    { key: 'hack.loot_changelog', group: 'Exekutive-Zugang', label: 'Beute: Changelog', help: 'Nur Version und Titel eines Eintrags.', type: 'bool', default: true, perm: 'hack.manage' },
+    { key: 'hack.loot_board', group: 'Exekutive-Zugang', label: 'Beute: Schwarzes Brett', help: 'Nur die Überschrift einer Info-/Erfolgsmeldung, nie Text oder Dringendes.', type: 'bool', default: true, perm: 'hack.manage' },
     { key: 'hack.loot_partners', group: 'Exekutive-Zugang', label: 'Beute: Externe Zugänge', help: 'Nur die Partnernummer.', type: 'bool', default: true, perm: 'hack.manage' },
   ],
   routes(r) {

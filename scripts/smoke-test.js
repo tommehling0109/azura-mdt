@@ -1186,6 +1186,7 @@ try {
     const run1 = await play(guest, { sid }, H); assert.equal(run1.res.result, 'done'); assert.ok(run1.res.rewards.length >= 1 && run1.res.cooldownSec > 0);
     const loot = JSON.stringify(run1.res.rewards); for (const verboten of ['Händler Eins', 'Ticket Partner', 'Hand Nummer', 'Anna', '(555)', 'LS111222', 'anna@umail.com']) assert.equal(loot.includes(verboten), false, 'Beute enthält ' + verboten);
     assert.equal((await guest.call('POST', H + '/answer', { sid, text: 'x', ms: 99999 })).status, 410); // Sitzung beendet
+    { const cfg = JSON.stringify((await admin.call('GET', '/api/config'))); for (const k of ['hack.loot_contacts', 'hack.loot_changelog', 'hack.loot_board']) assert.ok(cfg.includes(k), k + ' fehlt in der Konfiguration'); }
     // Sperrzeit
     r = await guest.call('GET', H + '/status'); assert.ok(r.cooldownSec > 0); r = await guest.call('POST', H + '/start', {}); assert.equal(r.status, 429); assert.equal(r.code, 'cooldown'); assert.ok(r.details.cooldownSec > 0);
     assert.ok((await admin.call('GET', '/api/notifications')).notifications.some((n) => /Unbefugter Zugriff erfolgreich/.test(n.title)));
