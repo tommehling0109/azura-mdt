@@ -131,7 +131,7 @@ export function showApp(onLogout, opts = {}) {
 
   const widget = h('div', { class: 'desk-widget', 'aria-hidden': 'true' });
   const dwHm = h('span', null), dwS = h('span', { class: 'dw-sec' }), dwDate = h('div', { class: 'dw-date' }), dwName = h('div', { class: 'dw-name' });
-  mount(widget, h('div', { class: 'dw-time' }, dwHm, dwS), dwDate, dwName);
+  mount(widget, h('div', { class: 'dw-time' }, dwHm, dwS), dwDate, dwName, h('div', { class: 'dw-note' }, 'Fiktives System – nur für den Unity Life Roleplay Server'));
   everySecond(widget, () => { const t = timeParts(); dwHm.textContent = t.hm; dwS.textContent = `:${t.s}`; dwDate.textContent = dateLong(); dwName.textContent = state.config['system.name'] || 'MDT'; });
 
   // ── Live-Status + Benachrichtigungen (Glocke) ──

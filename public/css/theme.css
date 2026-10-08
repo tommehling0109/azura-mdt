@@ -81,7 +81,7 @@ html.density-comfortable .win-content { zoom: 1.08; }
 html.no-anim *, html.no-anim *::before, html.no-anim *::after { animation: none !important; transition: none !important; }
 html.no-glass .panel, html.no-glass .dock, html.no-glass .start-menu, html.no-glass .notif-panel, html.no-glass .lock-card, html.no-glass .modal-root, html.no-glass .lock-overlay { backdrop-filter: none !important; }
 html.no-glass .panel, html.no-glass .dock, html.no-glass .start-menu, html.no-glass .lock-card { background: var(--bg-1) !important; }
-html.no-widget .desk-widget { display: none; }
+html.no-widget .desk-widget > :not(.dw-note) { display: none; } /* Der Hinweis „fiktives System“ bleibt immer sichtbar */
 html.no-watermark .wallpaper::after { display: none; }
 html.wp-gradient .wallpaper::before { display: none; }
 html.wp-solid .wallpaper { background: var(--wp-a) !important; }
