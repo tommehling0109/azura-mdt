@@ -43,6 +43,7 @@ export function applyConfig(cfg) {
   state.config = cfg;
   applyVars(cfg);
   document.title = cfg['system.name'] || 'MDT';
+  window.dispatchEvent(new Event('mdt:config-applied'));
 }
 
 /** Live-Vorschau in der Konfiguration: wirkt sofort, ohne zu speichern. */

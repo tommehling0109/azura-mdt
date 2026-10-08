@@ -16,11 +16,11 @@ const emit = () => listeners.forEach((f) => f(data));
 
 // ── Einstellungen (pro Browser/Gerät, bleiben bei Updates erhalten): Ton, Lautstärke, Tonauswahl, Pop-up-Hinweise ──
 const SKEY = 'azura.set.v1';
-const DEFAULTS = { sound: true, popup: true, volume: 60, tone: 'chime' };
+const DEFAULTS = { sound: true, popup: true, volume: 60, tone: 'chime', icons: 'default' }; // icons: default (wie vom Admin eingestellt) | on | off
 export const TONES = [['chime', 'Zweiklang (Standard)'], ['bell', 'Glocke'], ['pop', 'Pop'], ['ding', 'Dreiklang'], ['soft', 'Sanft']];
 const readSettings = () => { try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(SKEY) || '{}') }; } catch { return { ...DEFAULTS }; } };
 export const getSetting = (k) => readSettings()[k];
-export function setSetting(k, v) { try { localStorage.setItem(SKEY, JSON.stringify({ ...readSettings(), [k]: v })); } catch { /* egal */ } }
+export function setSetting(k, v) { try { localStorage.setItem(SKEY, JSON.stringify({ ...readSettings(), [k]: v })); } catch { /* egal */ } window.dispatchEvent(new Event('mdt:settings')); }
 export const getPref = (k) => !!getSetting(k);
 export const setPref = (k, v) => setSetting(k, !!v);
 

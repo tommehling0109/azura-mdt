@@ -12,7 +12,7 @@ import { createChangelog } from './changelog.js';
 import { api } from './api.js';
 import { connect, disconnect, subscribe, onStatus } from './realtime.js';
 import { initLock, clearLockState } from './lockscreen.js';
-import { initNotifier, getNotifications, onNotifChange, markRead, removeNotifs, getPref, setPref } from './notifier.js';
+import { initNotifier, getNotifications, onNotifChange, markRead, removeNotifs, getPref, setPref, getSetting } from './notifier.js';
 
 const screen = () => document.getElementById('screen');
 const compact = () => window.matchMedia('(max-width: 700px)').matches;
@@ -183,7 +183,10 @@ export function showApp(onLogout, opts = {}) {
   const changelog = !opts.partner && can('changelog.view') ? createChangelog() : null; // Changelog links, nur für Mitarbeiter
   if (changelog) area.append(changelog.el);
   if (board) area.append(board.el); // im Desktop-Bereich: Fenster liegen darüber, die Fensterleisten bleiben bedienbar
-  if (state.config['ui.desktop_icons']) area.append(iconsEl);
+  // Desktop-Symbole: Voreinstellung des Administrators, jeder Benutzer kann sie in seinen Einstellungen für sich an-/ausschalten
+  const iconsWanted = () => { const u = getSetting('icons'); return u === 'on' ? true : u === 'off' ? false : !!state.config['ui.desktop_icons']; };
+  const syncIcons = () => { const want = iconsWanted(); if (want && !iconsEl.isConnected) { area.append(iconsEl); renderIcons(); } else if (!want && iconsEl.isConnected) iconsEl.remove(); };
+  if (iconsWanted()) area.append(iconsEl);
 
   // ── Desktop-Icons (frei verschiebbar, Position wird pro Benutzer im Browser gemerkt) ──
   const POS_KEY = `azura.iconpos.v1.${state.user?.id ?? 0}`;
@@ -191,12 +194,19 @@ export function showApp(onLogout, opts = {}) {
   const savePos = (p) => { try { localStorage.setItem(POS_KEY, JSON.stringify(p)); } catch { /* egal */ } };
   const GRID = { w: 96, h: 102, pad: 10 };
   const dockH = () => document.querySelector('.dock-row')?.offsetHeight ?? 0; // der Desktop reicht bis zum unteren Rand; Symbole bleiben oberhalb der Leiste
-  function defaultSlot(idx) {
-    const rows = Math.max(1, Math.floor((area.clientHeight - dockH() - 24) / GRID.h) || 1);
-    return { x: GRID.pad + Math.floor(idx / rows) * GRID.w, y: 12 + (idx % rows) * GRID.h };
+  // Freie Plätze für Symbole ohne gemerkte Position: spaltenweise von links, aber nie unter dem Schwarzen Brett / Changelog (auch aufgeklappt)
+  const panelRects = () => { const a = area.getBoundingClientRect(); return [board?.el, changelog?.el].filter((e) => e && !e.hidden && e.offsetParent).map((e) => { const r = e.getBoundingClientRect(); return { l: r.left - a.left - 8, t: r.top - a.top - 8, r: r.right - a.left + 8, b: r.bottom - a.top + 8 }; }); };
+  function freeSlots(count) {
+    const rects = panelRects(), rows = Math.max(1, Math.floor((area.clientHeight - dockH() - 24) / GRID.h) || 1), cols = Math.max(1, Math.floor((area.clientWidth - GRID.pad) / GRID.w)), out = [];
+    for (let col = 0; col < cols && out.length < count; col++) for (let row = 0; row < rows && out.length < count; row++) {
+      const x = GRID.pad + col * GRID.w, y = 12 + row * GRID.h;
+      if (!rects.some((q) => x < q.r && x + 92 > q.l && y < q.b && y + 94 > q.t)) out.push({ x, y });
+    }
+    while (out.length < count) out.push({ x: GRID.pad, y: 12 }); // Notfall: kein Platz
+    return out;
   }
-  function placeIcon(b, id, idx, pos) {
-    const p = pos[id] ?? defaultSlot(idx);
+  function placeIcon(b, id, slot, pos) {
+    const p = pos[id] ?? slot;
     b.style.left = `${p.x}px`; b.style.top = `${p.y}px`;
   }
   function enableDrag(b, id) {
@@ -224,11 +234,12 @@ export function showApp(onLogout, opts = {}) {
   function renderIcons() {
     iconsEl.classList.toggle('free', !compact());
     const pos = loadPos();
-    mount(iconsEl, visibleSections().flatMap((s) => s.items).map((i, idx) => {
+    const items = visibleSections().flatMap((s) => s.items), slots = freeSlots(items.filter((i) => !pos[i.id]).length); let next = 0;
+    mount(iconsEl, items.map((i) => {
       const n = i.badge ? counters[i.badge] : 0;
       const b = h('button', { class: 'desk-icon', type: 'button', title: i.subtitle ?? i.label },
         h('div', { class: 'di-img' }, icon(i.icon), n > 0 && h('span', { class: 'badge-dot' }, n)), h('span', { class: 'di-label' }, i.label));
-      if (!compact()) { placeIcon(b, i.id, idx, pos); enableDrag(b, i.id); }
+      if (!compact()) { placeIcon(b, i.id, pos[i.id] ? null : slots[next++], pos); enableDrag(b, i.id); }
       b.addEventListener('click', (e) => {
         e.stopPropagation();
         if (b._dragged) return;
@@ -240,7 +251,10 @@ export function showApp(onLogout, opts = {}) {
     }));
     renderTasks();
   }
-  area.addEventListener('pointerdown', (e) => { if (e.target === area || e.target === iconsEl) iconsEl.querySelectorAll('.sel').forEach((x) => x.classList.remove('sel')); });
+  area.addEventListener('pointerdown', (e) => { if (!e.target.closest?.('.desk-icon')) iconsEl.querySelectorAll('.sel').forEach((x) => x.classList.remove('sel')); });
+  // Auf- und Zuklappen der Tafeln (und Inhaltsänderungen) ordnen die Symbole ohne eigene Position neu an
+  if (typeof ResizeObserver !== 'undefined') { let t; const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(() => { if (iconsEl.isConnected) renderIcons(); }, 80); }); [board?.el, changelog?.el].forEach((e) => e && ro.observe(e)); }
+  window.addEventListener('mdt:settings', syncIcons); window.addEventListener('mdt:config-applied', syncIcons);
 
   // ── Startmenü ──
   const closeStart = () => { startMenu.hidden = true; startBtn.classList.remove('open'); };

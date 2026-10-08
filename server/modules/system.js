@@ -68,7 +68,7 @@ export default {
     { key: 'system.update_repo', group: 'Updates', label: 'GitHub-Repository', help: 'Format: besitzer/name', type: 'string', default: 'tommehling0109/azura-mdt', max: 100 },
     { key: 'ui.show_watermark', group: 'Darstellung', label: 'Logo-Wasserzeichen im Hintergrund', type: 'bool', default: true, public: true },
     { key: 'security.lock_timeout_minutes', group: 'Zugang', label: 'Sperrbildschirm nach Inaktivität (Minuten)', help: 'Nach dieser Zeit ohne Eingabe wird der Bildschirm gesperrt; Entsperren per Passwort bzw. Code. 0 = aus.', type: 'number', default: 10, min: 0, max: 1440, public: true },
-    { key: 'ui.desktop_icons', group: 'Darstellung', label: 'Desktop-Symbole anzeigen', help: 'Zeigt die Apps zusätzlich als Symbole auf dem Desktop (das Dock unten bleibt immer sichtbar).', type: 'bool', default: false, public: true },
+    { key: 'ui.desktop_icons', group: 'Darstellung', label: 'Desktop-Symbole anzeigen', help: 'Voreinstellung für alle: zeigt die Apps zusätzlich als Symbole auf dem Desktop (das Dock unten bleibt immer sichtbar). Jeder kann das für sich unter Einstellungen (Zahnrad) ändern.', type: 'bool', default: false, public: true },
     { key: 'branding.logo_version', group: 'Darstellung', label: 'Logo-Version', type: 'number', default: 0, min: 0, max: 9e15, hidden: true, public: true },
     { key: 'branding.wallpaper_version', group: 'Darstellung', label: 'Hintergrund-Version', type: 'number', default: 0, min: 0, max: 9e15, hidden: true, public: true },
     { key: 'auth.registration_enabled', group: 'Zugang', label: 'Registrierung erlauben', help: 'Neue Benutzer können sich selbst registrieren und warten auf Freischaltung.', type: 'bool', default: true, public: true },

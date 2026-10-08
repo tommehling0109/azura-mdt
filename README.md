@@ -158,7 +158,7 @@ Konfiguration → *Gefahrenzone* (nur Superadmin): leert **alle Daten** und hoch
 
 ## Oberfläche
 
-Desktop-Symbole (Konfiguration → *Desktop-Symbole anzeigen*) lassen sich frei verschieben (Position wird pro Benutzer im Browser gemerkt); das Dock hebt Symbole über die Leiste hinaus an; außerhalb der Karte ist der Hintergrund meerblau.
+Desktop-Symbole (Voreinstellung des Admins unter Konfiguration → *Desktop-Symbole anzeigen*; **jeder Benutzer kann sie in seinen Einstellungen (Zahnrad) für sich an-/ausschalten**, auch Externe) ordnen sich um das aufgeklappte Schwarze Brett und Changelog herum an und lassen sich frei verschieben (Position wird pro Benutzer im Browser gemerkt); das Dock hebt Symbole über die Leiste hinaus an; außerhalb der Karte ist der Hintergrund meerblau.
 
 ## Updates, Rollen & Anzeige
 

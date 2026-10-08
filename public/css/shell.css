@@ -305,3 +305,6 @@ html.neutral { --logo-url: none; }
 .cl-full .cl-list li { font-size: 13px; }
 .cl-tools { display: inline-flex; opacity: 0.6; } .cl-full:hover .cl-tools { opacity: 1; }
 @media (max-width: 700px) { .board.changelog { display: none; } }
+
+/* Desktop-Symbole liegen über Schwarzem Brett/Changelog; nur die Symbole selbst fangen Klicks ab */
+.desktop-icons { z-index: 3; pointer-events: none; } .desk-icon { pointer-events: auto; }
