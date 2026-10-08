@@ -196,19 +196,27 @@ export function showApp(onLogout, opts = {}) {
   const savePos = (p) => { try { localStorage.setItem(POS_KEY, JSON.stringify(p)); } catch { /* egal */ } };
   const GRID = { w: 96, h: 102, pad: 10 };
   const dockH = () => document.querySelector('.dock-row')?.offsetHeight ?? 0; // der Desktop reicht bis zum unteren Rand; Symbole bleiben oberhalb der Leiste
-  // Freie Plätze für Symbole ohne gemerkte Position: spaltenweise von links, aber nie unter dem Schwarzen Brett / Changelog (auch aufgeklappt)
+  // Anordnung der Symbole: selbst platzierte bleiben stehen – es sei denn, eine aufgeklappte Tafel (Schwarzes Brett/Changelog) läge darüber, dann
+  // werden sie nur für die Anzeige auf den nächsten freien Platz geschoben (die gemerkte Position bleibt, klappt die Tafel zu, sind sie wieder dort).
+  // Symbole ohne eigene Position füllen die übrigen freien Plätze – nie unter Tafeln und nie auf anderen Symbolen.
   const panelRects = () => { const a = area.getBoundingClientRect(); return [board?.el, changelog?.el].filter((e) => e && !e.hidden && e.offsetParent).map((e) => { const r = e.getBoundingClientRect(); return { l: r.left - a.left - 8, t: r.top - a.top - 8, r: r.right - a.left + 8, b: r.bottom - a.top + 8 }; }); };
-  function freeSlots(count) {
-    const rects = panelRects(), rows = Math.max(1, Math.floor((area.clientHeight - dockH() - 24) / GRID.h) || 1), cols = Math.max(1, Math.floor((area.clientWidth - GRID.pad) / GRID.w)), out = [];
-    for (let col = 0; col < cols && out.length < count; col++) for (let row = 0; row < rows && out.length < count; row++) {
-      const x = GRID.pad + col * GRID.w, y = 12 + row * GRID.h;
-      if (!rects.some((q) => x < q.r && x + 92 > q.l && y < q.b && y + 94 > q.t)) out.push({ x, y });
+  const iconBox = (x, y) => ({ l: x - 2, t: y - 2, r: x + 94, b: y + 96 });
+  const overlap = (p, q) => p.l < q.r && p.r > q.l && p.t < q.b && p.b > q.t;
+  function layoutIcons(items, pos) {
+    const rects = panelRects(), out = {}, used = [];
+    const rows = Math.max(1, Math.floor((area.clientHeight - dockH() - 24) / GRID.h) || 1), cols = Math.max(1, Math.floor((area.clientWidth - GRID.pad) / GRID.w)), cells = [];
+    for (let col = 0; col < cols; col++) for (let row = 0; row < rows; row++) cells.push({ x: GRID.pad + col * GRID.w, y: 12 + row * GRID.h });
+    const free = (c) => { const b = iconBox(c.x, c.y); return !rects.some((q) => overlap(b, q)) && !used.some((u) => overlap(b, u)); };
+    for (const it of items) { const p = pos[it.id]; if (p && !rects.some((q) => overlap(iconBox(p.x, p.y), q))) { out[it.id] = p; used.push(iconBox(p.x, p.y)); } } // 1) selbst platziert, frei
+    for (const it of items) { // 2) selbst platziert, aber unter einer Tafel → nächster freier Platz
+      const p = pos[it.id]; if (!p || out[it.id]) continue;
+      const best = cells.filter(free).sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0] ?? p;
+      out[it.id] = best; used.push(iconBox(best.x, best.y));
     }
-    while (out.length < count) out.push({ x: GRID.pad, y: 12 }); // Notfall: kein Platz
+    for (const it of items) { if (pos[it.id]) continue; const c = cells.find(free) ?? { x: GRID.pad, y: 12 }; out[it.id] = c; used.push(iconBox(c.x, c.y)); } // 3) ohne eigene Position
     return out;
   }
-  function placeIcon(b, id, slot, pos) {
-    const p = pos[id] ?? slot;
+  function placeIcon(b, p) {
     b.style.left = `${p.x}px`; b.style.top = `${p.y}px`;
   }
   function enableDrag(b, id) {
@@ -228,7 +236,7 @@ export function showApp(onLogout, opts = {}) {
         b.classList.remove('dragging'); b._dragged = true; setTimeout(() => { b._dragged = false; }, 0);
         const snap = (v) => Math.round(v / 8) * 8;
         const x = snap(b.offsetLeft), y = snap(b.offsetTop); b.style.left = `${x}px`; b.style.top = `${y}px`;
-        const pos = loadPos(); pos[id] = { x, y }; savePos(pos);
+        const pos = loadPos(); pos[id] = { x, y }; savePos(pos); setTimeout(renderIcons, 60);
       };
       b.addEventListener('pointermove', mv); b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
     });
@@ -236,12 +244,12 @@ export function showApp(onLogout, opts = {}) {
   function renderIcons() {
     iconsEl.classList.toggle('free', !compact());
     const pos = loadPos();
-    const items = visibleSections().flatMap((s) => s.items), slots = freeSlots(items.filter((i) => !pos[i.id]).length); let next = 0;
+    const items = visibleSections().flatMap((s) => s.items), lay = compact() ? {} : layoutIcons(items, pos);
     mount(iconsEl, items.map((i) => {
       const n = i.badge ? counters[i.badge] : 0;
       const b = h('button', { class: 'desk-icon', type: 'button', title: i.subtitle ?? i.label },
         h('div', { class: 'di-img' }, icon(i.icon), n > 0 && h('span', { class: 'badge-dot' }, n)), h('span', { class: 'di-label' }, i.label));
-      if (!compact()) { placeIcon(b, i.id, pos[i.id] ? null : slots[next++], pos); enableDrag(b, i.id); }
+      if (!compact()) { placeIcon(b, lay[i.id]); enableDrag(b, i.id); }
       b.addEventListener('click', (e) => {
         e.stopPropagation();
         if (b._dragged) return;
