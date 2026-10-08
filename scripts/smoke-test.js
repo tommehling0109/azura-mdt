@@ -1315,6 +1315,53 @@ try {
     assert.ok(JSON.stringify((await admin.call('GET', '/api/roles')).roles).includes('changelog.view'), 'Rang-Rollen dürfen das Changelog sehen');
     ok('Changelog: nur Mitarbeiter, Rechte changelog.view/changelog.manage, Arten (neu/geändert/behoben/entfernt/Sicherheit), Seiten, Benachrichtigung'); }
 
+  // ══ Kontaktbuch ══
+  { assert.equal((await mod.call('GET', '/api/contacts/options')).status, 403); assert.equal((await tp.call('GET', '/api/contacts/orgs')).status, 401); assert.equal((await new Client().call('GET', '/api/contacts/orgs')).status, 401);
+    await setPerms(['contacts.view']); let o = await mod.call('GET', '/api/contacts/options'); assert.equal(o.status, 200); assert.equal(o.canEdit, false); assert.equal(o.canBank, false); assert.ok(o.orgTypes.some((t) => t.label === 'Behörde')); assert.ok(o.relations.some((t) => t.label === 'Angehöriger')); assert.deepEqual(o.roles, []);
+    assert.equal((await mod.call('POST', '/api/contacts/orgs', { name: 'Test' })).status, 403);
+    await setPerms(['contacts.view', 'contacts.edit']);
+    const typeAuth = o.orgTypes.find((t) => t.label === 'Behörde').id, typeFirm = o.orgTypes.find((t) => t.label === 'Firma').id, relEmp = o.relations.find((t) => t.label === 'Mitarbeiter').id, relFam = o.relations.find((t) => t.label === 'Angehöriger').id;
+    for (const bad of [{ name: 'x' }, { name: 'Gültig', flag: 'rot' }, { name: 'Gültig', typeId: 99999 }, { name: 'Gültig', channels: [{ kind: 'brieftaube', value: 'x' }] }]) assert.equal((await mod.call('POST', '/api/contacts/orgs', bad)).status, 400);
+    r = await mod.call('POST', '/api/contacts/orgs', { name: 'Los Santos Police Department', typeId: typeAuth, flag: 'important', address: 'Mission Row 1', description: 'Polizei', tags: 'Polizei, Behörde', channels: [{ kind: 'phone', label: 'Zentrale', value: '(555) 000-1111' }, { kind: 'email', value: 'info@lspd.example' }, { kind: 'website', value: 'lspd.example' }, { kind: 'phone', value: '  ' }] });
+    assert.equal(r.status, 201); const org1 = r.org.id; assert.equal(r.org.channels.length, 3); assert.equal(r.org.flag.label, 'Wichtig'); assert.equal(r.org.type.label, 'Behörde'); assert.equal(r.org.restricted, false);
+    r = await mod.call('POST', '/api/contacts/orgs', { name: 'Muster Bau GmbH', typeId: typeFirm }); const org2 = r.org.id;
+    assert.equal((await mod.call('POST', '/api/contacts/people', { firstName: '', lastName: '' })).status, 400); assert.equal((await mod.call('POST', '/api/contacts/people', { lastName: 'X', orgId: 99999 })).status, 400);
+    r = await mod.call('POST', '/api/contacts/people', { firstName: 'Max', lastName: 'Mustermann', orgId: org1, relationId: relEmp, position: 'Abteilungsleiter', address: 'Mission Row 1', homeAddress: 'Vinewood Blvd 12', birthday: '1985-04-12', channels: [{ kind: 'mobile', label: 'privat', value: '(555) 123-4567' }, { kind: 'email', value: 'max@lspd.example' }], notes: 'Zuverlässig' });
+    assert.equal(r.status, 201); const pr1 = r.person.id; assert.equal(r.person.name, 'Max Mustermann'); assert.equal(r.person.org.name, 'Los Santos Police Department'); assert.equal(r.person.bank, null);
+    assert.equal((await mod.call('POST', '/api/contacts/people', { firstName: 'Eva', lastName: 'Muster', bank: { name: 'Fleeca', account: 'LS123' } })).status, 403); // Bankdaten brauchen contacts.bank
+    r = await mod.call('POST', '/api/contacts/people', { firstName: 'Anna', lastName: 'Mustermann', orgId: org1, relationId: relFam, position: 'Tochter' }); const pr2 = r.person.id;
+    // Bankdaten
+    await setPerms(['contacts.view', 'contacts.edit', 'contacts.bank']);
+    r = await mod.call('PATCH', `/api/contacts/people/${pr1}`, { bank: { name: 'Fleeca Bank', account: 'LS28180705', note: 'Hauptkonto' } }); assert.equal(r.status, 200); assert.equal(r.person.bank.account, 'LS28180705'); assert.equal(r.person.firstName, 'Max'); assert.equal(r.person.lastName, 'Mustermann');
+    await setPerms(['contacts.view', 'contacts.edit']); r = await mod.call('GET', `/api/contacts/people/${pr1}`); assert.equal(r.person.bank, null); assert.equal(r.person.hasBank, true); assert.equal(JSON.stringify(r).includes('LS28180705'), false);
+    assert.equal(JSON.stringify(await mod.call('GET', '/api/contacts/people')).includes('LS28180705'), false); r = await mod.call('PATCH', `/api/contacts/people/${pr1}`, { notes: 'Geändert' }); assert.equal(r.person.hasBank, true); // Bank bleibt beim Bearbeiten ohne Recht erhalten
+    await setPerms(['contacts.view', 'contacts.edit', 'contacts.bank']); assert.equal((await mod.call('GET', `/api/contacts/people/${pr1}`)).person.bank.name, 'Fleeca Bank'); await setPerms(['contacts.view', 'contacts.edit']);
+    r = await mod.call('PATCH', `/api/contacts/people/${pr1}`, { firstName: 'Maximilian' }); assert.equal(r.person.name, 'Maximilian Mustermann'); // Teiländerung behält den Nachnamen
+    // Suche, Filter, Details
+    r = await mod.call('GET', '/api/contacts/orgs?q=lspd.example'); assert.deepEqual(r.orgs.map((x) => x.id), [org1]); r = await mod.call('GET', `/api/contacts/orgs?type=${typeFirm}`); assert.deepEqual(r.orgs.map((x) => x.id), [org2]); assert.equal((await mod.call('GET', '/api/contacts/orgs?flag=important')).orgs.length, 1);
+    r = await mod.call('GET', '/api/contacts/people?q=123-4567'); assert.deepEqual(r.people.map((x) => x.id), [pr1]); assert.equal((await mod.call('GET', '/api/contacts/people?q=Police')).people.length, 2); assert.equal((await mod.call('GET', `/api/contacts/people?relation=${relFam}`)).people.length, 1);
+    r = await mod.call('GET', `/api/contacts/orgs/${org1}`); assert.equal(r.people.length, 2); assert.equal(r.org.peopleCount, 2); assert.equal(r.org.channels.length, 3); assert.ok(r.org.createdBy);
+    // Sperren für Rollen + Kennzeichnung
+    r = await admin.call('POST', '/api/roles', { name: 'Kontakt-Geheim', permissions: [] }); const secRole = r.role.id;
+    assert.equal((await mod.call('PATCH', `/api/contacts/orgs/${org2}`, { restricted: true, roleIds: [secRole] })).status, 403); // ohne contacts.secret
+    r = await admin.call('PATCH', `/api/contacts/orgs/${org2}`, { restricted: true, flag: 'secret', roleIds: [secRole] }); assert.equal(r.org.restricted, true); assert.deepEqual(r.org.access.map((x) => x.id), [secRole]); assert.equal(r.org.flag.label, 'Geheim');
+    const pr3 = (await admin.call('POST', '/api/contacts/people', { firstName: 'Geheim', lastName: 'Kontakt', orgId: org2, restricted: false })).person.id; const pr4 = (await admin.call('POST', '/api/contacts/people', { firstName: 'Nur', lastName: 'Gesperrt', restricted: true, roleIds: [secRole] })).person.id;
+    assert.equal((await mod.call('GET', `/api/contacts/orgs/${org2}`)).status, 404); assert.equal((await mod.call('GET', '/api/contacts/orgs')).orgs.some((x) => x.id === org2), false);
+    assert.equal((await mod.call('GET', `/api/contacts/people/${pr3}`)).status, 404); // Person einer gesperrten Institution ist mit versteckt
+    assert.equal((await mod.call('GET', `/api/contacts/people/${pr4}`)).status, 404); assert.equal((await mod.call('GET', '/api/contacts/people')).people.some((x) => [pr3, pr4].includes(x.id)), false); assert.equal((await mod.call('GET', '/api/contacts/people?q=Gesperrt')).people.length, 0);
+    assert.equal((await mod.call('PATCH', `/api/contacts/orgs/${org2}`, { name: 'Hack Bau' })).status, 404); assert.equal((await mod.call('GET', '/api/contacts/orgs?q=Muster Bau')).orgs.length, 0);
+    r = await admin.call('GET', '/api/contacts/orgs'); assert.ok(r.orgs.some((x) => x.id === org2 && x.restricted)); assert.equal((await admin.call('GET', `/api/contacts/people/${pr4}`)).status, 200); assert.ok((await admin.call('GET', '/api/contacts/options')).roles.some((x) => x.id === secRole));
+    // Rolle zugewiesen → sichtbar
+    await admin.call('PATCH', `/api/contacts/orgs/${org2}`, { roleIds: [modRole] }); assert.equal((await mod.call('GET', `/api/contacts/orgs/${org2}`)).status, 200); assert.equal((await mod.call('GET', `/api/contacts/people/${pr3}`)).status, 200); assert.equal((await mod.call('GET', `/api/contacts/people/${pr4}`)).status, 404);
+    await setPerms(['contacts.view', 'contacts.secret']); assert.equal((await mod.call('GET', `/api/contacts/people/${pr4}`)).status, 200); assert.equal((await mod.call('GET', '/api/contacts/options')).canSecret, true); await setPerms(['contacts.view', 'contacts.edit']);
+    // Löschen
+    assert.equal((await mod.call('DELETE', `/api/contacts/orgs/${org1}`)).status, 403); assert.equal((await mod.call('DELETE', `/api/contacts/people/${pr2}`)).status, 403);
+    await setPerms(['contacts.view', 'contacts.edit', 'contacts.delete']); r = await mod.call('DELETE', `/api/contacts/orgs/${org1}`); assert.equal(r.status, 200); assert.equal(r.peopleKept, 2); assert.equal((await mod.call('GET', `/api/contacts/people/${pr1}`)).person.org, null); // Personen bleiben als eigenständige Kontakte
+    assert.equal((await mod.call('DELETE', `/api/contacts/people/${pr2}`)).status, 200); assert.equal((await mod.call('GET', `/api/contacts/people/${pr2}`)).status, 404);
+    const aud = await admin.call('GET', '/api/audit?module=contacts'); assert.ok(aud.rows.some((a) => a.action === 'contacts.org_created')); assert.equal(JSON.stringify(aud).includes('LS28180705'), false); // Bankdaten stehen nicht im Audit-Log
+    for (const id of [pr1, pr3, pr4]) await admin.call('DELETE', `/api/contacts/people/${id}`); await admin.call('DELETE', `/api/contacts/orgs/${org2}`); await setPerms([]);
+    ok('Kontaktbuch: Institutionen und Personen mit Kontaktdaten, Suche/Filter, Bankdaten nur mit contacts.bank, Sperren für Rollen + Kennzeichnung, Löschen'); }
+
   // Superadmin: Artikel samt Geschäften/Bestand löschen
   assert.equal((await admin.call('DELETE', `/api/warehouse/items/${ore}`)).status, 409); assert.equal((await mod.call('DELETE', `/api/warehouse/items/${ore}?force=1`)).status, 403);
   assert.equal((await admin.call('DELETE', `/api/warehouse/items/${ore}?force=1`)).status, 200); assert.equal((await admin.call('GET', '/api/market/deals')).deals.some((d) => d.item?.id === ore), false); ok('Superadmin löscht Artikel samt Geschäften, Gesuchen und Beständen');

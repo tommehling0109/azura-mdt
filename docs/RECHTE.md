@@ -11,7 +11,7 @@
 - Namen von Mitgliedern sieht man nur bei sich selbst, als Superadmin und bei Mitgliedern **unterhalb** der eigenen Hierarchie (übergeordneter Rang / Vorgesetzten-Kette); sonst nur die Personalnummer.
 - Statistik: `stats.view` öffnet die App, jeder Abschnitt erscheint zusätzlich nur mit dem Ansichtsrecht des jeweiligen Bereichs.
 
-## Rechte (73)
+## Rechte (78)
 
 ### audit
 
@@ -44,6 +44,16 @@
 | `chat.pin` | Chat: Nachrichten anpinnen |
 | `chat.send` | Chat: Nachrichten schreiben, eigene bearbeiten/löschen |
 | `chat.view` | Chat öffnen und lesen |
+
+### contacts
+
+| Recht | Bedeutung |
+|---|---|
+| `contacts.bank` | Kontaktbuch: Bankdaten ansehen und bearbeiten |
+| `contacts.delete` | Kontaktbuch: Einträge löschen |
+| `contacts.edit` | Kontaktbuch: Einträge anlegen und bearbeiten |
+| `contacts.secret` | Kontaktbuch: Einträge für Rollen sperren/freigeben und alle gesperrten Einträge sehen |
+| `contacts.view` | Kontaktbuch: Institutionen und Personen ansehen |
 
 ### credit
 
@@ -233,6 +243,17 @@
 | POST | `/api/chat/channels` | `chat.manage` |
 | PATCH | `/api/chat/channels/:id` | `chat.manage` |
 | DELETE | `/api/chat/channels/:id` | `chat.manage` |
+| GET | `/api/contacts/options` | `contacts.view` |
+| GET | `/api/contacts/orgs` | `contacts.view` |
+| GET | `/api/contacts/orgs/:id` | `contacts.view` |
+| POST | `/api/contacts/orgs` | `contacts.edit` |
+| PATCH | `/api/contacts/orgs/:id` | `contacts.edit` |
+| DELETE | `/api/contacts/orgs/:id` | `contacts.delete` |
+| GET | `/api/contacts/people` | `contacts.view` |
+| GET | `/api/contacts/people/:id` | `contacts.view` |
+| POST | `/api/contacts/people` | `contacts.edit` |
+| PATCH | `/api/contacts/people/:id` | `contacts.edit` |
+| DELETE | `/api/contacts/people/:id` | `contacts.delete` |
 | GET | `/api/credit/options` | `credit.view` |
 | GET | `/api/credit/summary` | `credit.view` |
 | GET | `/api/credit/loans` | `credit.view` |

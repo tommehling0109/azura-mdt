@@ -714,4 +714,61 @@ export const SCHEMA_MIGRATIONS = [
   );
   CREATE INDEX idx_changelog_order ON changelog_entries(released_at, id);
   `,
+  // 20: Kontaktbuch (Institutionen, Personen, Kontaktdaten, Sperren fuer Rollen)
+  `
+  CREATE TABLE contact_orgs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    type_id     INTEGER REFERENCES lookups(id) ON DELETE SET NULL,
+    flag        TEXT,
+    description TEXT NOT NULL DEFAULT '',
+    address     TEXT NOT NULL DEFAULT '',
+    notes       TEXT NOT NULL DEFAULT '',
+    tags        TEXT NOT NULL DEFAULT '',
+    restricted  INTEGER NOT NULL DEFAULT 0,
+    created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+  );
+  CREATE INDEX idx_contact_orgs_name ON contact_orgs(name COLLATE NOCASE);
+  CREATE TABLE contact_people (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id       INTEGER REFERENCES contact_orgs(id) ON DELETE SET NULL,
+    first_name   TEXT NOT NULL DEFAULT '',
+    last_name    TEXT NOT NULL DEFAULT '',
+    relation_id  INTEGER REFERENCES lookups(id) ON DELETE SET NULL,
+    position     TEXT NOT NULL DEFAULT '',
+    flag         TEXT,
+    address      TEXT NOT NULL DEFAULT '',
+    home_address TEXT NOT NULL DEFAULT '',
+    birthday     TEXT NOT NULL DEFAULT '',
+    bank_name    TEXT NOT NULL DEFAULT '',
+    bank_account TEXT NOT NULL DEFAULT '',
+    bank_note    TEXT NOT NULL DEFAULT '',
+    notes        TEXT NOT NULL DEFAULT '',
+    tags         TEXT NOT NULL DEFAULT '',
+    restricted   INTEGER NOT NULL DEFAULT 0,
+    created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+  );
+  CREATE INDEX idx_contact_people_org ON contact_people(org_id);
+  CREATE INDEX idx_contact_people_name ON contact_people(last_name COLLATE NOCASE, first_name COLLATE NOCASE);
+  CREATE TABLE contact_channels (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_type TEXT NOT NULL CHECK (owner_type IN ('org','person')),
+    owner_id   INTEGER NOT NULL,
+    kind       TEXT NOT NULL,
+    label      TEXT NOT NULL DEFAULT '',
+    value      TEXT NOT NULL,
+    sort       INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX idx_contact_channels ON contact_channels(owner_type, owner_id);
+  CREATE TABLE contact_access (
+    owner_type TEXT NOT NULL CHECK (owner_type IN ('org','person')),
+    owner_id   INTEGER NOT NULL,
+    role_id    INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    PRIMARY KEY (owner_type, owner_id, role_id)
+  );
+  `,
 ];
