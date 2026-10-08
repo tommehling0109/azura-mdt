@@ -26,7 +26,7 @@
 /* Eigenes Logo (beliebiges Seitenverhältnis): ganz anzeigen statt zuzuschneiden */
 .custom-logo .logo-phoenix { aspect-ratio: 1 / 1; background-size: contain; background-position: center; }
 
-.desktop { position: absolute; inset: 0; display: grid; grid-template-rows: var(--panel-h) minmax(0, 1fr) var(--dock-h); }
+.desktop { position: absolute; inset: 0; display: grid; grid-template-rows: var(--panel-h) auto minmax(0, 1fr) var(--dock-h); }
 .desktop-area { position: relative; overflow: hidden; overflow: clip; z-index: 1; }
 
 /* Obere Leiste */
@@ -248,8 +248,9 @@
 /* Fenster dürfen links und rechts neben der Leiste bis an den unteren Rand – nur die Navigationsleiste (Dock) liegt im Vordergrund */
 .desktop > * { grid-column: 1; }
 .desktop > .panel { grid-row: 1; }
-.desktop-area { grid-row: 2 / 4; }
-.dock-row { grid-row: 3; }
+.desktop > .ticker { grid-row: 2; }
+.desktop-area { grid-row: 3 / 5; }
+.dock-row { grid-row: 4; }
 .win.max { inset: 0 0 var(--dock-h) 0 !important; }
 .dock-row > .dock { background: color-mix(in srgb, var(--bg-1) 80%, transparent); }
 
@@ -308,3 +309,15 @@ html.neutral { --logo-url: none; }
 
 /* Desktop-Symbole liegen über Schwarzem Brett/Changelog; nur die Symbole selbst fangen Klicks ab */
 .desktop-icons { z-index: 3; pointer-events: none; } .desk-icon { pointer-events: auto; }
+
+/* Ticker (Laufband) zwischen Kopfleiste und Desktop */
+.ticker { position: relative; z-index: 4; display: flex; align-items: stretch; height: 30px; overflow: hidden; color: #fff; font-size: 13px; font-weight: 700; letter-spacing: 0.01em;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--c, #3b6fe0) 88%, #000), color-mix(in srgb, var(--c, #3b6fe0) 68%, #000)); border-bottom: 1px solid rgba(255, 255, 255, 0.22); box-shadow: 0 3px 14px rgba(0, 0, 0, 0.35); transition: background 0.4s; }
+.ticker[hidden] { display: none; }
+.tk-tag { flex: none; display: flex; align-items: center; padding: 0 14px; background: rgba(0, 0, 0, 0.32); text-transform: uppercase; letter-spacing: 0.1em; font-size: 11px; position: relative; z-index: 1; box-shadow: 6px 0 10px -4px rgba(0, 0, 0, 0.35); }
+.tk-view { position: relative; flex: 1; overflow: hidden; }
+.tk-track { position: absolute; top: 0; left: 0; line-height: 30px; white-space: nowrap; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); will-change: transform; }
+.is-locked .ticker { visibility: hidden; }
+.bp-ticker { display: inline-flex; align-items: center; gap: 3px; margin-left: 7px; padding: 0 6px; border-radius: 5px; font-size: 10px; letter-spacing: 0.06em; background: rgba(255, 255, 255, 0.12); color: var(--text); } .bp-ticker svg { width: 11px; height: 11px; }
+/* Das Schwarze Brett soll die Uhr unten rechts nicht überdecken */
+.board:not(.changelog) { max-height: max(220px, calc(100% - var(--dock-h) - 270px)); }

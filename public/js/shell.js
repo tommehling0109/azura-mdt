@@ -9,6 +9,7 @@ import { openAccountDialog } from './views/account.js';
 import { openSettingsDialog } from './views/settings.js';
 import { createBoard } from './board.js';
 import { createChangelog } from './changelog.js';
+import { createTicker } from './ticker.js';
 import { api } from './api.js';
 import { connect, disconnect, subscribe, onStatus } from './realtime.js';
 import { initLock, clearLockState } from './lockscreen.js';
@@ -177,7 +178,8 @@ export function showApp(onLogout, opts = {}) {
       h('button', { class: 'panel-btn panel-user', type: 'button', title: opts.partner ? state.user.displayName : 'Konto & Sicherheit', onclick: opts.partner ? undefined : () => openAccountDialog() },
         opts.partner ? icon('users') : (panelAvatar = userAvatar(state.user, 'sm')), h('span', null, state.user.displayName)),
       h('button', { class: 'panel-btn', type: 'button', title: 'Abmelden', 'aria-label': 'Abmelden', onclick: () => { clearLockState(); lockCtl?.destroy(); onLogout(); } }, icon('logout'))));
-  const desktop = h('div', { class: 'desktop' }, panel, area, h('div', { class: 'dock-row' }, dock));
+  const ticker = createTicker({ partner: !!opts.partner }); // Laufband zwischen Kopfleiste und Desktop
+  const desktop = h('div', { class: 'desktop' }, panel, ticker.el, area, h('div', { class: 'dock-row' }, dock));
   const board = !opts.partner && can('board.view') ? createBoard() : null; // Schwarzes Brett: nur für Mitarbeiter
   mount(screen(), h('div', { class: 'wallpaper' }), widget, desktop, startMenu, npanel);
   const changelog = !opts.partner && can('changelog.view') ? createChangelog() : null; // Changelog links, nur für Mitarbeiter
@@ -253,7 +255,7 @@ export function showApp(onLogout, opts = {}) {
   }
   area.addEventListener('pointerdown', (e) => { if (!e.target.closest?.('.desk-icon')) iconsEl.querySelectorAll('.sel').forEach((x) => x.classList.remove('sel')); });
   // Auf- und Zuklappen der Tafeln (und Inhaltsänderungen) ordnen die Symbole ohne eigene Position neu an
-  if (typeof ResizeObserver !== 'undefined') { let t; const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(() => { if (iconsEl.isConnected) renderIcons(); }, 80); }); [board?.el, changelog?.el].forEach((e) => e && ro.observe(e)); }
+  if (typeof ResizeObserver !== 'undefined') { let t; const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(() => { if (iconsEl.isConnected) renderIcons(); }, 80); }); [board?.el, changelog?.el, area].forEach((e) => e && ro.observe(e)); }
   window.addEventListener('mdt:settings', syncIcons); window.addEventListener('mdt:config-applied', syncIcons);
 
   // ── Startmenü ──

@@ -771,4 +771,10 @@ export const SCHEMA_MIGRATIONS = [
     PRIMARY KEY (owner_type, owner_id, role_id)
   );
   `,
+  // 21: Ticker (Laufband) fuer Schwarzes-Brett-Eintraege
+  `
+  ALTER TABLE board_posts ADD COLUMN ticker INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE board_posts ADD COLUMN ticker_audience TEXT NOT NULL DEFAULT 'all';
+  ALTER TABLE board_posts ADD COLUMN ticker_until TEXT;
+  `,
 ];

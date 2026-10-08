@@ -1275,6 +1275,34 @@ try {
     for (const id of [b2, b3]) await admin.call('DELETE', `/api/board/${id}`); await setPerms([]);
     assert.ok(JSON.stringify((await admin.call('GET', '/api/roles')).roles).includes('board.view'), 'Rang-Rollen dürfen das Brett sehen'); ok('Schwarzes Brett: nur Mitarbeiter, Rechte board.view/board.manage, Hervorhebung, Anpinnen, Entfernen, Benachrichtigung bei Dringend'); }
 
+  // ══ Ticker (Laufband) ══
+  { assert.equal((await new Client().call('GET', '/api/ticker')).status, 401); assert.equal((await new Client().call('GET', '/api/p/ticker')).status, 401); assert.equal((await mod.call('GET', '/api/p/ticker')).status, 401); // Mitglieder nutzen die interne, Partner die externe Schnittstelle
+    await setPerms(['board.view', 'board.manage']);
+    for (const bad of [{ title: 'Ticker', ticker: true, tickerAudience: 'alle' }, { title: 'Ticker', ticker: true, tickerUntil: 'gestern' }]) assert.equal((await mod.call('POST', '/api/board', bad)).status, 400);
+    assert.equal((await mod.call('GET', '/api/ticker')).items.length, 0);
+    const mkT = async (title, extra) => (await mod.call('POST', '/api/board', { title, body: 'Details zum Ticker', level: 'urgent', ...extra })).post;
+    const tAll = await mkT('Für alle', { ticker: true, tickerAudience: 'all' }), tIn = await mkT('Nur intern', { ticker: true, tickerAudience: 'internal', level: 'important' }), tEx = await mkT('Nur extern', { ticker: true, tickerAudience: 'external', level: 'success' });
+    const tOld = await mkT('Abgelaufen', { ticker: true, tickerUntil: new Date(Date.now() - 3600_000).toISOString() }), tNo = await mkT('Kein Ticker', { ticker: false });
+    assert.equal(tAll.ticker, true); assert.equal(tAll.tickerAudience, 'all'); assert.equal(tNo.ticker, false); assert.equal(tNo.tickerAudience, 'all');
+    const labels = (x) => x.items.map((i) => i.text.split(' – ')[0]).sort();
+    assert.deepEqual(labels(await admin.call('GET', '/api/ticker')), ['Für alle', 'Nur intern']); // Mitglieder: alle + intern, nicht extern/abgelaufen/ohne Ticker
+    assert.deepEqual(labels(await tp.call('GET', '/api/p/ticker')), ['Für alle', 'Nur extern']); // Partner: alle + extern
+    r = await admin.call('GET', '/api/ticker'); assert.equal(r.items.find((i) => i.text.startsWith('Nur intern')).level, 'important'); assert.ok(r.items[0].text.includes('Details zum Ticker'));
+    assert.equal((await mod.call('GET', '/api/ticker')).status, 200); // auch ohne board.view (sichtbar für alle aktiven Mitglieder)
+    // Ende setzen, abschalten, entfernen
+    r = await mod.call('PATCH', `/api/board/${tIn.id}`, { tickerUntil: new Date(Date.now() + 3600_000).toISOString() }); assert.ok(r.post.tickerUntil); assert.equal((await admin.call('GET', '/api/ticker')).items.length, 2);
+    await mod.call('PATCH', `/api/board/${tIn.id}`, { tickerUntil: new Date(Date.now() - 1000).toISOString() }); assert.deepEqual(labels(await admin.call('GET', '/api/ticker')), ['Für alle']); // Enddatum überschritten
+    await mod.call('PATCH', `/api/board/${tIn.id}`, { tickerUntil: null, ticker: true }); assert.equal((await admin.call('GET', '/api/ticker')).items.length, 2);
+    await mod.call('PATCH', `/api/board/${tAll.id}`, { ticker: false }); assert.deepEqual(labels(await tp.call('GET', '/api/p/ticker')), ['Nur extern']);
+    assert.equal((await mod.call('PATCH', `/api/board/${tAll.id}`, { tickerAudience: 'x' })).status, 400);
+    // Live-Ereignis für Mitglieder und Partner
+    const sseS = await openSse(admin.cookie, '/api/events'), sseP = await openSse(tp.cookie, '/api/p/events'); await sleep(150);
+    await mod.call('PATCH', `/api/board/${tEx.id}`, { ticker: false }); await sleep(250);
+    assert.ok(sseS.events.some((e) => e.event === 'change' && e.data.topic === 'ticker')); assert.ok(sseP.events.some((e) => e.event === 'change' && e.data.topic === 'ticker')); sseS.close(); sseP.close();
+    await mod.call('DELETE', `/api/board/${tIn.id}`); assert.equal((await admin.call('GET', '/api/ticker')).items.length, 0);
+    for (const t of [tAll, tEx, tOld, tNo]) await admin.call('DELETE', `/api/board/${t.id}`); await setPerms([]);
+    ok('Ticker: Laufband für Mitglieder/Externe/alle getrennt, Enddatum, Abschalten, Live-Ereignis'); }
+
   // ══ Subdomain für Externe (neutral) ══
   { const CH = { 'X-Forwarded-Host': 'coop.az.ulife.sevenv.de' }; const g = (p, h = CH) => fetch(base + p, { headers: h });
     r = await (await g('/api/bootstrap')).json(); assert.equal(r.neutral, true); assert.equal(r.commit, null); assert.equal(r.config['system.name'], 'Partnerportal'); assert.equal(r.config['system.subtitle'], ''); assert.equal(r.config['branding.logo_version'], 0); assert.equal(r.config['ui.show_watermark'], false); assert.deepEqual(r.mask, ['AZ-', 'Azura']); assert.equal(r.setupRequired, false);
