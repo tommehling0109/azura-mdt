@@ -119,6 +119,8 @@ export default async function render(container, ctx) {
     const dept = select([{ value: '', label: '— keine Abteilung —' }, ...data.departments.map((d) => ({ value: d.id, label: d.name }))], rank?.departmentId ?? '');
     const parent = select([{ value: '', label: '— kein Vorgesetzter (oberste Ebene) —' }, ...data.ranks.filter((r) => r.id !== rank?.id).map((r) => ({ value: r.id, label: r.name }))], rank?.parentRankId ?? '');
     const have = new Set(rank?.permissions ?? []);
+    const lowerSel = rank ? null : select([{ value: '', label: '— ans Ende der Rangfolge (keine Vererbung) —' }, ...data.ranks.map((r) => ({ value: r.id, label: r.name }))], '');
+    const inhNote = h('div'); let inherited = new Set();
     const groups = {};
     const boxes = permissions.map((p) => {
       const mine = state.user.isAdmin || state.user.permissions.includes(p.key) || have.has(p.key);
@@ -126,6 +128,19 @@ export default async function render(container, ctx) {
       (groups[p.module] ??= []).push(c);
       return [p, c];
     });
+    // Rechte der darunterliegenden Rang übernehmen (nur solche, die man selbst vergeben darf); manuell weiter änderbar
+    function inheritFrom(low, replace) {
+      if (replace) boxes.forEach(([p, c]) => { if (inherited.has(p.key) && !c.input.disabled) c.input.checked = false; });
+      inherited = new Set(); let skipped = 0;
+      for (const [p, c] of boxes) { if (!low.permissions.includes(p.key)) continue; if (c.input.disabled) { skipped++; continue; } c.input.checked = true; inherited.add(p.key); }
+      inhNote.replaceChildren(low.permissions.length ? note(`${inherited.size} Recht${inherited.size === 1 ? '' : 'e'} von „${low.name}“ übernommen${skipped ? ` (${skipped} nicht, da du sie selbst nicht besitzt)` : ''}. Du kannst einzelne Häkchen unten wieder entfernen.`) : note(`„${low.name}“ hat keine Rechte, die übernommen werden könnten.`));
+    }
+    if (lowerSel) lowerSel.addEventListener('change', () => {
+      const low = rankById(Number(lowerSel.value));
+      if (!low) { boxes.forEach(([p, c]) => { if (inherited.has(p.key) && !c.input.disabled) c.input.checked = false; }); inherited = new Set(); inhNote.replaceChildren(); return; }
+      parent.value = low.parentRankId ?? ''; inheritFrom(low, true);
+    });
+    const below = rank ? data.ranks[data.ranks.indexOf(rank) + 1] : null;
     const permUI = Object.entries(groups).map(([m, items]) => h('div', { class: 'perm-group' }, h('h4', null, MODULE_LABELS[m] ?? m), h('div', { class: 'perm-grid' }, items)));
     const body = h('div', null, err,
       h('div', { class: 'form-row' }, field('Name', name), field('Beschreibung', desc)),
@@ -133,8 +148,11 @@ export default async function render(container, ctx) {
       h('div', { class: 'form-row' },
         field('Abteilung', dept, { help: 'Optional – z. B. für Legal-Ränge.' }),
         field('Vorgesetzter Rang', parent, { help: 'Bestimmt die Position im Organigramm.' })),
+      lowerSel && field('Steht direkt über', lowerSel, { help: 'Der neue Rang wird über diesen Rang einsortiert, rückt in der Hierarchie über ihn und erbt seine Rechte (bereits vorhandene). Danach kannst du Rechte manuell wieder entfernen.' }),
+      inhNote,
       h('div', { class: 'sep' }),
       h('div', { class: 'label', style: { marginBottom: '8px' } }, 'Rechte dieses Rangs'),
+      below && h('div', { style: { marginBottom: '10px' } }, button(`Rechte von „${below.name}“ (darunter) hinzufügen`, { size: 'sm', icon: 'plus', onClick: () => inheritFrom(below, false) })),
       note('Rang und Rechte sind getrennt: Ein Rang hat standardmäßig keine Rechte. Hier konfigurierte Rechte gelten zusätzlich zu Rollen und direkten Rechten.'),
       h('div', { style: { height: '14px' } }),
       permissions.length ? permUI : h('div', { class: 'muted' }, 'Rechte-Katalog nicht verfügbar.'));
@@ -152,6 +170,7 @@ export default async function render(container, ctx) {
           departmentId: dept.value ? Number(dept.value) : null, parentRankId: parent.value ? Number(parent.value) : null,
           permissions: boxes.filter(([, c]) => c.input.checked).map(([p]) => p.key),
         };
+        if (lowerSel?.value) payload.placeAbove = Number(lowerSel.value);
         try {
           if (rank) await api.patch(`/api/ranks/${rank.id}`, payload); else await api.post('/api/ranks', payload);
           m.close(); toast(rank ? 'Rang gespeichert.' : 'Rang erstellt.'); reload();

@@ -86,13 +86,20 @@ export default {
       checkGrantable(ctx.user, perms);
       if (get('SELECT 1 x FROM ranks WHERE name = ?', name)) throw conflict('Ein Rang mit diesem Namen existiert bereits.');
       const departmentId = optId(b.departmentId, 'departments', 'Abteilung');
-      const parentRankId = optId(b.parentRankId, 'ranks', 'Vorgesetzter Rang');
+      // placeAbove: der neue Rang wird direkt über diesen Rang einsortiert und rückt in der Hierarchie über ihn
+      const lowerId = optId(b.placeAbove, 'ranks', 'Rang darunter');
+      const lower = lowerId ? get('SELECT sort_order, parent_rank_id FROM ranks WHERE id = ?', lowerId) : null;
+      const parentRankId = b.parentRankId === undefined && lower ? lower.parent_rank_id : optId(b.parentRankId, 'ranks', 'Vorgesetzter Rang');
       const id = tx(() => {
-        const max = get('SELECT COALESCE(MAX(sort_order),0) m FROM ranks').m;
+        let order;
+        if (lower) { order = lower.sort_order; run('UPDATE ranks SET sort_order = sort_order + 1 WHERE sort_order >= ?', order); }
+        else order = get('SELECT COALESCE(MAX(sort_order),0) m FROM ranks').m + 1;
         const res = run('INSERT INTO ranks (name,description,color,sort_order,department_id,parent_rank_id,created_at) VALUES (?,?,?,?,?,?,?)',
-          name, description, color(b.color), max + 1, departmentId, parentRankId, now());
-        setRankPerms(Number(res.lastInsertRowid), perms);
-        return Number(res.lastInsertRowid);
+          name, description, color(b.color), order, departmentId, parentRankId, now());
+        const nid = Number(res.lastInsertRowid);
+        setRankPerms(nid, perms);
+        if (lowerId) run('UPDATE ranks SET parent_rank_id = ? WHERE id = ?', nid, lowerId);
+        return nid;
       });
       audit(ctx, { action: 'rank.created', module: 'org', targetType: 'rank', targetId: id, targetLabel: name, after: loadRank(id) });
       ctx.status = 201;

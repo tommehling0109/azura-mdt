@@ -151,6 +151,15 @@ try {
   r = await admin.call('POST', '/api/ranks', { name: 'Abogado', departmentId: legal, parentRankId: rJefe }); const rAbogado = r.rank.id;
   ok('Abteilung und Ränge mit Vorgesetzten-Hierarchie anlegen');
   assert.equal((await admin.call('PATCH', `/api/ranks/${rConsejero}`, { parentRankId: rAbogado })).status, 400); ok('Zyklen in der Rang-Hierarchie werden abgelehnt');
+  { // Neuer Rang über einem bestehenden: einsortiert, übernimmt Position im Organigramm
+    const before = (await admin.call('GET', '/api/org')).ranks, low = before[2];
+    const rr = await admin.call('POST', '/api/ranks', { name: 'Vererbungstest', placeAbove: low.id, permissions: [] }); assert.equal(rr.status, 201);
+    const after = (await admin.call('GET', '/api/org')).ranks, ids = after.map((x) => x.id);
+    assert.equal(ids.indexOf(rr.rank.id) + 1, ids.indexOf(low.id)); assert.equal(rr.rank.parentRankId, low.parentRankId);
+    assert.equal(after.find((x) => x.id === low.id).parentRankId, rr.rank.id);
+    assert.equal((await admin.call('POST', '/api/ranks', { name: 'Vererbungstest2', placeAbove: 99999 })).status, 400);
+    await admin.call('PATCH', `/api/ranks/${low.id}`, { parentRankId: low.parentRankId }); await admin.call('DELETE', `/api/ranks/${rr.rank.id}`);
+    ok('Neuer Rang „steht über“ einem Rang: Reihenfolge und Hierarchie angepasst'); }
   assert.equal((await mod.call('POST', '/api/ranks', { name: 'Hacker' })).status, 403); ok('Rang anlegen ohne org.manage → 403');
   const allRanks = (await admin.call('GET', '/api/org')).ranks.map((x) => x.id); assert.equal(allRanks.length, 16); // 13 Standard-Ränge + 3 Test-Ränge
   r = await admin.call('POST', '/api/ranks/order', { ids: [rAbogado, rJefe, rConsejero, ...allRanks.filter((x) => ![rAbogado, rJefe, rConsejero].includes(x))] });
