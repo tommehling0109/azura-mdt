@@ -1,0 +1,277 @@
+[
+ {
+  "file": "01-einrichtung.jpg",
+  "name": "einrichtung",
+  "title": "Ersteinrichtung"
+ },
+ {
+  "file": "02-anmeldung.jpg",
+  "name": "anmeldung",
+  "title": "Anmeldung"
+ },
+ {
+  "file": "03-registrierung.jpg",
+  "name": "registrierung",
+  "title": "Registrierung"
+ },
+ {
+  "file": "04-desktop.jpg",
+  "name": "desktop",
+  "title": "Der Desktop mit Schwarzem Brett"
+ },
+ {
+  "file": "05-startmenue.jpg",
+  "name": "startmenue",
+  "title": "Das Startmenü"
+ },
+ {
+  "file": "06-benachrichtigungen.jpg",
+  "name": "benachrichtigungen",
+  "title": "Benachrichtigungen"
+ },
+ {
+  "file": "07-einstellungen.jpg",
+  "name": "einstellungen",
+  "title": "Einstellungen (Ton, Lautstärke)"
+ },
+ {
+  "file": "08-konto.jpg",
+  "name": "konto",
+  "title": "Konto & Sicherheit"
+ },
+ {
+  "file": "09-ticket-melden.jpg",
+  "name": "ticket-melden",
+  "title": "Fehler melden / Ticket"
+ },
+ {
+  "file": "10-dashboard.jpg",
+  "name": "dashboard",
+  "title": "Dashboard"
+ },
+ {
+  "file": "11-boerse.jpg",
+  "name": "boerse",
+  "title": "Börse"
+ },
+ {
+  "file": "12-boerse-katalog.jpg",
+  "name": "boerse-katalog",
+  "title": "Börse: Katalog"
+ },
+ {
+  "file": "13-boerse-gesuche.jpg",
+  "name": "boerse-gesuche",
+  "title": "Börse: Gesuche"
+ },
+ {
+  "file": "14-karte.jpg",
+  "name": "karte",
+  "title": "Karte"
+ },
+ {
+  "file": "15-lager.jpg",
+  "name": "lager",
+  "title": "Lager"
+ },
+ {
+  "file": "16-lager-uebersicht.jpg",
+  "name": "lager-uebersicht",
+  "title": "Lager: Übersicht"
+ },
+ {
+  "file": "17-lager-detail.jpg",
+  "name": "lager-detail",
+  "title": "Lager: Bestand mit Slots"
+ },
+ {
+  "file": "18-lager-einlagern.jpg",
+  "name": "lager-einlagern",
+  "title": "Einlagern mit Slot-Berechnung"
+ },
+ {
+  "file": "19-lager-artikel.jpg",
+  "name": "lager-artikel",
+  "title": "Lager: Artikel & Preise"
+ },
+ {
+  "file": "20-lager-artikel-dialog.jpg",
+  "name": "lager-artikel-dialog",
+  "title": "Artikel mit Slots und Stapelgröße"
+ },
+ {
+  "file": "21-brett-neu.jpg",
+  "name": "brett-neu",
+  "title": "Schwarzes Brett: Ankündigung anlegen"
+ },
+ {
+  "file": "22-fahrzeuge.jpg",
+  "name": "fahrzeuge",
+  "title": "Fahrzeuge"
+ },
+ {
+  "file": "23-fahrzeug-neu.jpg",
+  "name": "fahrzeug-neu",
+  "title": "Fahrzeug anlegen"
+ },
+ {
+  "file": "24-finanzen.jpg",
+  "name": "finanzen",
+  "title": "Finanzen: Überblick"
+ },
+ {
+  "file": "25-finanzen-journal.jpg",
+  "name": "finanzen-journal",
+  "title": "Finanzen: Journal"
+ },
+ {
+  "file": "26-finanzen-buchung.jpg",
+  "name": "finanzen-buchung",
+  "title": "Manuelle Buchung"
+ },
+ {
+  "file": "27-statistik.jpg",
+  "name": "statistik",
+  "title": "Statistik"
+ },
+ {
+  "file": "28-kredit.jpg",
+  "name": "kredit",
+  "title": "Kredit"
+ },
+ {
+  "file": "29-deckel.jpg",
+  "name": "deckel",
+  "title": "Deckel"
+ },
+ {
+  "file": "30-deckel-firmen.jpg",
+  "name": "deckel-firmen",
+  "title": "Deckel: Firmen"
+ },
+ {
+  "file": "31-deckel-firma-neu.jpg",
+  "name": "deckel-firma-neu",
+  "title": "Firma anlegen"
+ },
+ {
+  "file": "32-tickets.jpg",
+  "name": "tickets",
+  "title": "Tickets"
+ },
+ {
+  "file": "33-chat.jpg",
+  "name": "chat",
+  "title": "Chat"
+ },
+ {
+  "file": "34-chat-kanaele.jpg",
+  "name": "chat-kanaele",
+  "title": "Kanäle verwalten"
+ },
+ {
+  "file": "35-chat-privat.jpg",
+  "name": "chat-privat",
+  "title": "Neue Privatnachricht"
+ },
+ {
+  "file": "36-benutzer.jpg",
+  "name": "benutzer",
+  "title": "Benutzer"
+ },
+ {
+  "file": "37-benutzer-neu.jpg",
+  "name": "benutzer-neu",
+  "title": "Benutzer anlegen (Personalakte)"
+ },
+ {
+  "file": "38-rollen.jpg",
+  "name": "rollen",
+  "title": "Rollen & Rechte"
+ },
+ {
+  "file": "39-organisation.jpg",
+  "name": "organisation",
+  "title": "Organisation: Ränge & Abteilungen"
+ },
+ {
+  "file": "40-organisation-abt.jpg",
+  "name": "organisation-abt",
+  "title": "Organisation: Abteilungen"
+ },
+ {
+  "file": "41-partner.jpg",
+  "name": "partner",
+  "title": "Externe Zugänge"
+ },
+ {
+  "file": "42-partner-neu.jpg",
+  "name": "partner-neu",
+  "title": "Externen Zugang anlegen"
+ },
+ {
+  "file": "43-lookups.jpg",
+  "name": "lookups",
+  "title": "Kategorien & Status"
+ },
+ {
+  "file": "44-konfig.jpg",
+  "name": "konfig",
+  "title": "Konfiguration"
+ },
+ {
+  "file": "45-konfig-hack.jpg",
+  "name": "konfig-hack",
+  "title": "Konfiguration: Exekutive-Zugang"
+ },
+ {
+  "file": "46-konfig-updates.jpg",
+  "name": "konfig-updates",
+  "title": "Konfiguration: Updates & Datensicherung"
+ },
+ {
+  "file": "47-audit.jpg",
+  "name": "audit",
+  "title": "Audit-Log"
+ },
+ {
+  "file": "48-sperre.jpg",
+  "name": "sperre",
+  "title": "Sperrbildschirm"
+ },
+ {
+  "file": "49-hack-start.jpg",
+  "name": "hack-start",
+  "title": "Exekutive-Zugang: Startbildschirm"
+ },
+ {
+  "file": "50-hack-stufe.jpg",
+  "name": "hack-stufe",
+  "title": "Exekutive-Zugang: ein Minigame"
+ },
+ {
+  "file": "51-partner-login.jpg",
+  "name": "partner-login",
+  "title": "Partner-Portal: Anmeldung per Code"
+ },
+ {
+  "file": "52-partner-portal.jpg",
+  "name": "partner-portal",
+  "title": "Partner-Portal: Desktop"
+ },
+ {
+  "file": "53-partner-boerse.jpg",
+  "name": "partner-boerse",
+  "title": "Partner-Portal: Börse"
+ },
+ {
+  "file": "54-partner-kredit.jpg",
+  "name": "partner-kredit",
+  "title": "Partner-Portal: Kredit"
+ },
+ {
+  "file": "55-firmenportal.jpg",
+  "name": "firmenportal",
+  "title": "Firmenportal (Deckel-Abrechnung)"
+ }
+]

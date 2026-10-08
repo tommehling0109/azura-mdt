@@ -253,7 +253,7 @@
 .dock-row > .dock { background: color-mix(in srgb, var(--bg-1) 80%, transparent); }
 
 /* Schwarzes Brett auf dem Desktop (oben rechts, unter den Fenstern) */
-.board { position: absolute; z-index: 2; top: calc(var(--panel-h) + 12px); right: 16px; width: min(340px, calc(100vw - 32px)); max-height: calc(100% - var(--panel-h) - var(--dock-h) - 24px); display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; background: rgba(12, 12, 28, 0.62); border: 1px solid rgba(255, 255, 255, 0.14); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4); backdrop-filter: blur(14px) saturate(1.2); }
+.board { position: absolute; z-index: 2; top: 12px; right: 16px; width: min(340px, calc(100vw - 32px)); max-height: calc(100% - var(--dock-h) - 24px); display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; background: rgba(12, 12, 28, 0.62); border: 1px solid rgba(255, 255, 255, 0.14); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4); backdrop-filter: blur(14px) saturate(1.2); }
 html.no-glass .board { backdrop-filter: none; background: var(--bg-2); }
 .board[hidden] { display: none; }
 .board-head { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 8px 6px 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
@@ -274,5 +274,5 @@ html.no-glass .board { backdrop-filter: none; background: var(--bg-2); }
 .bp-body { margin-top: 4px; font-size: 12.5px; color: var(--text-2); white-space: pre-wrap; word-break: break-word; }
 .bp-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 11px; min-height: 22px; }
 .bp-tools { display: inline-flex; gap: 0; opacity: 0.55; } .board-post:hover .bp-tools { opacity: 1; }
-@media (max-width: 700px) { .board { top: calc(var(--panel-h) + 6px); right: 8px; width: calc(100vw - 16px); max-height: 42vh; } }
+@media (max-width: 700px) { .board { top: 6px; right: 8px; width: calc(100vw - 16px); max-height: 42vh; } }
 .is-locked .board { visibility: hidden; }

@@ -178,7 +178,8 @@ export function showApp(onLogout, opts = {}) {
       h('button', { class: 'panel-btn', type: 'button', title: 'Abmelden', 'aria-label': 'Abmelden', onclick: () => { clearLockState(); lockCtl?.destroy(); onLogout(); } }, icon('logout'))));
   const desktop = h('div', { class: 'desktop' }, panel, area, h('div', { class: 'dock-row' }, dock));
   const board = !opts.partner && can('board.view') ? createBoard() : null; // Schwarzes Brett: nur für Mitarbeiter
-  mount(screen(), h('div', { class: 'wallpaper' }), widget, board?.el, desktop, startMenu, npanel);
+  mount(screen(), h('div', { class: 'wallpaper' }), widget, desktop, startMenu, npanel);
+  if (board) area.append(board.el); // im Desktop-Bereich: Fenster liegen darüber, die Fensterleisten bleiben bedienbar
   if (state.config['ui.desktop_icons']) area.append(iconsEl);
 
   // ── Desktop-Icons (frei verschiebbar, Position wird pro Benutzer im Browser gemerkt) ──
