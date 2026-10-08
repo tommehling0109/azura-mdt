@@ -576,3 +576,6 @@ tr.row-flash td { animation: row-flash 2.4s ease-out; } @keyframes row-flash { 0
 .ct-orglink { margin: 2px 0 6px; color: var(--text-2); } .ct-meta { margin-top: 20px; font-size: 11.5px; }
 .ct-roles { max-height: 180px; overflow-y: auto; padding: 4px 2px; } .sep-top { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
 @media (max-width: 760px) { .ct { grid-template-columns: 1fr; grid-template-rows: minmax(0, 45%) minmax(0, 1fr); } .ct-side { border-right: 0; border-bottom: 1px solid var(--line); } }
+
+/* Legal: eingebettetes Google-Dokument */
+.legal-frame { width: 100%; height: calc(100vh - 260px); min-height: 420px; border: 1px solid var(--line); border-radius: 10px; background: #fff; display: block; }

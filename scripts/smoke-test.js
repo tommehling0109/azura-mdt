@@ -202,10 +202,10 @@ try {
   r = await admin.call('POST', '/api/lookups/market.handover_place', { label: 'Lager Nord', description: 'Hintereingang, Tor 3' });
   const placeId = r.entry.id;
 
-  assert.equal((await admin.call('POST', '/api/permissions', { key: 'legal.view', description: 'Legal ansehen' })).status, 201);
+  assert.equal((await admin.call('POST', '/api/permissions', { key: 'dossier.view', description: 'Legal ansehen' })).status, 201);
   assert.equal((await admin.call('POST', '/api/permissions', { key: 'Ungültig' })).status, 400);
   assert.equal((await admin.call('PATCH', '/api/permissions/users.view', { description: 'Posten x' })).status, 403);
-  assert.equal((await admin.call('DELETE', '/api/permissions/legal.view')).status, 200); ok('Eigene Rechte: anlegen, validieren, Systemrechte geschützt, löschen');
+  assert.equal((await admin.call('DELETE', '/api/permissions/dossier.view')).status, 200); ok('Eigene Rechte: anlegen, validieren, Systemrechte geschützt, löschen');
 
   // ── Externe Zugänge (Partner): Link + Code ──
   const partnerClient = new Client(), other = new Client();
@@ -1284,6 +1284,18 @@ try {
     await setPerms(['board.view', 'board.manage']); assert.equal((await mod.call('DELETE', `/api/board/${b1}`)).status, 200); assert.equal((await admin.call('GET', '/api/board')).posts.some((p) => p.id === b1), false); assert.equal((await admin.call('GET', '/api/board')).canManage, true);
     for (const id of [b2, b3]) await admin.call('DELETE', `/api/board/${id}`); await setPerms([]);
     assert.ok(JSON.stringify((await admin.call('GET', '/api/roles')).roles).includes('board.view'), 'Rang-Rollen dürfen das Brett sehen'); ok('Schwarzes Brett: nur Mitarbeiter, Rechte board.view/board.manage, Hervorhebung, Anpinnen, Entfernen, Benachrichtigung bei Dringend'); }
+
+  // ══ Legal ══
+  { assert.equal((await mod.call('GET', '/api/legal')).status, 403); assert.equal((await new Client().call('GET', '/api/legal')).status, 401); assert.equal((await tp.call('GET', '/api/legal')).status, 401);
+    await setPerms(['legal.view']); r = await mod.call('GET', '/api/legal'); assert.equal(r.status, 200); assert.equal(r.canManage, false);
+    assert.equal(r.docs.length, 1); assert.equal(r.docs[0].title, 'Gesetzessammlung'); assert.ok(r.docs[0].embedUrl.startsWith('https://docs.google.com/document/d/') && r.docs[0].embedUrl.endsWith('/preview'));
+    assert.equal((await mod.call('POST', '/api/legal/docs', { title: 'X1', url: 'https://docs.google.com/document/d/abcdefghijklmnopqrstuvwxyz/edit' })).status, 403);
+    await setPerms(['legal.view', 'legal.manage']);
+    for (const url of ['http://docs.google.com/document/d/abcdefghijklmnopqrstuvwxyz/edit', 'https://evil.example/document/d/abcdefghijklmnopqrstuvwxyz', 'https://docs.google.com.evil.example/document/d/abcdefghijklmnopqrstuvwxyz', 'https://docs.google.com/forms/d/abcdefghijklmnopqrstuvwxyz', 'kein link']) assert.equal((await mod.call('POST', '/api/legal/docs', { title: 'Böse', url })).status, 400, url);
+    r = await mod.call('POST', '/api/legal/docs', { title: 'Tabelle', url: 'https://docs.google.com/spreadsheets/d/abcdefghijklmnopqrstuvwxyz/edit#gid=0' }); assert.equal(r.status, 201); assert.equal(r.doc.kind, 'spreadsheets'); const ld = r.doc.id;
+    r = await mod.call('PATCH', `/api/legal/docs/${ld}`, { title: 'Tabelle neu' }); assert.equal(r.doc.title, 'Tabelle neu'); assert.equal((await mod.call('GET', '/api/legal')).docs.length, 2);
+    assert.equal((await mod.call('DELETE', `/api/legal/docs/${ld}`)).status, 200); assert.equal((await mod.call('GET', '/api/legal')).docs.length, 1); await setPerms([]);
+    ok('Legal: Gesetzessammlung vorbelegt, nur Google-Docs-Links, Rechte legal.view/manage'); }
 
   // ══ Ticker (Laufband) ══
   { assert.equal((await new Client().call('GET', '/api/ticker')).status, 401); assert.equal((await new Client().call('GET', '/api/p/ticker')).status, 401); assert.equal((await mod.call('GET', '/api/p/ticker')).status, 401); // Mitglieder nutzen die interne, Partner die externe Schnittstelle

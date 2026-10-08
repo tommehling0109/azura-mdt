@@ -777,4 +777,18 @@ export const SCHEMA_MIGRATIONS = [
   ALTER TABLE board_posts ADD COLUMN ticker_audience TEXT NOT NULL DEFAULT 'all';
   ALTER TABLE board_posts ADD COLUMN ticker_until TEXT;
   `,
+  // 22: Legal (Google-Dokumente wie die Gesetzessammlung, live eingebettet)
+  `
+  CREATE TABLE legal_docs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    title      TEXT NOT NULL,
+    kind       TEXT NOT NULL CHECK (kind IN ('document','spreadsheets','presentation')),
+    doc_id     TEXT NOT NULL,
+    tab        TEXT,
+    url        TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  `,
 ];

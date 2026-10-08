@@ -11,7 +11,7 @@
 - Namen von Mitgliedern sieht man nur bei sich selbst, als Superadmin und bei Mitgliedern **unterhalb** der eigenen Hierarchie (übergeordneter Rang / Vorgesetzten-Kette); sonst nur die Personalnummer.
 - Statistik: `stats.view` öffnet die App, jeder Abschnitt erscheint zusätzlich nur mit dem Ansichtsrecht des jeweiligen Bereichs.
 
-## Rechte (78)
+## Rechte (80)
 
 ### audit
 
@@ -79,6 +79,13 @@
 | Recht | Bedeutung |
 |---|---|
 | `hack.manage` | Exekutive-Zugang: Link ansehen/erneuern, Einstellungen und Zugriffsprotokoll |
+
+### legal
+
+| Recht | Bedeutung |
+|---|---|
+| `legal.manage` | Legal: Dokumente (Google-Links) hinterlegen, ändern und entfernen |
+| `legal.view` | Legal: Gesetzessammlung und Rechts-Bereiche ansehen |
 
 ### lookups
 
@@ -221,6 +228,7 @@
 | POST | `/api/auth/sessions/revoke-others` | *angemeldet (eigene Daten)* |
 | POST | `/api/auth/password` | *angemeldet (eigene Daten)* |
 | GET | `/api/board` | `board.view` |
+| GET | `/api/ticker` | *angemeldet (eigene Daten)* |
 | POST | `/api/board` | `board.manage` |
 | PATCH | `/api/board/:id` | `board.manage` |
 | DELETE | `/api/board/:id` | `board.manage` |
@@ -281,6 +289,10 @@
 | POST | `/api/h/:token/start` | *öffentlich* |
 | POST | `/api/h/:token/hint` | *öffentlich* |
 | POST | `/api/h/:token/answer` | *öffentlich* |
+| GET | `/api/legal` | `legal.view` |
+| POST | `/api/legal/docs` | `legal.manage` |
+| PATCH | `/api/legal/docs/:id` | `legal.manage` |
+| DELETE | `/api/legal/docs/:id` | `legal.manage` |
 | GET | `/api/lookups` | `lookups.view` \| `market.view` |
 | POST | `/api/lookups/:list` | `lookups.manage` |
 | PATCH | `/api/lookups/:list/:id` | `lookups.manage` |
@@ -416,6 +428,7 @@
 
 | Methode | Pfad | Voraussetzung |
 |---|---|---|
+| GET | `/api/p/ticker` | externer Zugang |
 | GET | `/api/p/chat/channels` | externer Zugang, App „chat“ freigeschaltet |
 | GET | `/api/p/chat/dms` | externer Zugang, App „chat“ freigeschaltet |
 | GET | `/api/p/chat/people` | externer Zugang, App „chat“ freigeschaltet |
