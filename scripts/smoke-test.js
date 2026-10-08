@@ -1141,6 +1141,18 @@ try {
     const page = await fetch(base + adm.path); const html = await page.text(); assert.equal(page.status, 200); assert.match(html, /\/hack\/hack\.js\?v=/); assert.equal(/azura|logo|mdt|\.webp/i.test(html), false, 'Seite darf nichts vom System verraten');
     const css = await (await fetch(base + '/hack/hack.css')).text(); assert.equal(/azura/i.test(css), false);
     const guest = new Client(); const st0 = await guest.call('GET', H + '/status'); assert.equal(st0.enabled, true); assert.equal(st0.cooldownSec, 0);
+    // Eigene Subdomain: nur die neutrale Seite, kein Zugriff auf das eigentliche System
+    { const HH = { 'X-Forwarded-Host': 'sidegate.ulife.sevenv.de' }; assert.equal(adm.host, 'sidegate.ulife.sevenv.de');
+      const root = await fetch(base + '/', { headers: HH }); const rt = await root.text(); assert.equal(root.status, 200); assert.ok(rt.includes('/hack/hack.js?v=')); assert.equal(/azura|logo|mdt|.webp/i.test(rt), false);
+      for (const p of ['/api/bootstrap', '/api/auth/me', '/api/hack/admin', '/js/main.js', '/img/logo.webp', '/css/theme.css', '/branding/logo']) assert.equal((await fetch(base + p, { headers: HH })).status, 404, p + ' darf über die Subdomain nicht erreichbar sein');
+      assert.equal((await fetch(base + '/hack/hack.css', { headers: HH })).status, 200);
+      const sv = await fetch(base + '/api/h/-/status', { headers: HH }); assert.equal(sv.status, 200); assert.equal((await sv.json()).enabled, true);
+      assert.equal((await fetch(base + '/api/h/-/status')).status, 404); // ohne die Subdomain gibt es den Zugang über '-' nicht
+      assert.equal((await fetch(base + '/', { headers: { 'X-Forwarded-Host': 'ulife.sevenv.de' } })).status, 200); // normale Domain: normales System
+      assert.equal(/azura|mdt/i.test(await (await fetch(base + '/', { headers: { 'X-Forwarded-Host': 'ulife.sevenv.de' } })).text()), true);
+      assert.equal((await mod.call('PUT', '/api/config', { values: { 'hack.host': 'x.example.com' } })).status, 403);
+      await admin.call('PUT', '/api/config', { values: { 'hack.host': 'anders.example.com' } }); assert.equal((await fetch(base + '/api/h/-/status', { headers: HH })).status, 404); assert.equal((await fetch(base + '/api/h/-/status', { headers: { 'X-Forwarded-Host': 'anders.example.com' } })).status, 200); assert.equal((await admin.call('GET', '/api/hack/admin')).host, 'anders.example.com');
+      await admin.call('PUT', '/api/config', { values: { 'hack.host': 'sidegate.ulife.sevenv.de' } }); }
     // Lösung der jeweils aktuellen Stufe (Lösungen liegen nur im Server-Speicher)
     const solve = (sess) => { const st = sess.stage; switch (st.type) {
       case 'typing': return { text: st.secret.lines.join('\n'), ms: 20000 };

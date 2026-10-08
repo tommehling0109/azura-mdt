@@ -1,5 +1,6 @@
 // Terminal-Minigame (Exekutive-Zugang). Bewusst eigenständig: keine Verbindung zur Hauptoberfläche, keine Namen/Logos.
-const token = decodeURIComponent(location.pathname.split('/')[2] ?? '');
+const m = location.pathname.match(/^\/x\/([^/]+)/);
+const token = m && m[1] !== '-' ? decodeURIComponent(m[1]) : '-'; // '-' = über die eigene Subdomain (kein Schlüssel im Pfad)
 const API = `/api/h/${encodeURIComponent(token)}`;
 const out = document.getElementById('out'), panel = document.getElementById('panel'), hud = document.getElementById('hud');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

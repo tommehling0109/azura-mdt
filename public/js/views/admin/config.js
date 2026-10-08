@@ -66,15 +66,15 @@ function hackCard(host) {
     const hkHost = h('div');
     host.append(card('Exekutive-Zugang (Hack-Link)', hkHost, { icon: 'lock', flush: true }));
     const drawHack = (d) => {
-      const url = `${location.origin}${d.path}`;
+      const url = d.host ? `https://${d.host}` : `${location.origin}${d.path}`;
       const urlBox = input({ value: url, readOnly: true, class: 'input mono' }); urlBox.addEventListener('focus', () => urlBox.select());
       mount(hkHost,
         h('div', { class: 'setting-row', style: { gridTemplateColumns: 'minmax(0,1fr)' } },
-          h('div', null, h('div', { class: 'lbl' }, 'Dauerhafter Link für die Exekutive'),
+          h('div', null, h('div', { class: 'lbl' }, d.host ? 'Link für die Exekutive (eigene Subdomain)' : 'Dauerhafter Link für die Exekutive'),
             h('div', { class: 'hlp' }, 'Ohne Anmeldung nutzbar, zeigt weder Namen noch Logo des Systems. Mehrere zufällig gezogene Minigames, danach zufällige Datenschnipsel (nur Personalkennungen, Teilbestände, Kennzeichen, Vorgangsnummern – nie Klarnamen oder Telefonnummern) und eine Sperrzeit. Einstellungen (aktiv, Sperrzeit, Anzahl Schnipsel) stehen oben unter „Exekutive-Zugang“.'), urlBox,
             h('div', { class: 'row', style: { marginTop: '10px' } },
               button('Link kopieren', { icon: 'link', size: 'sm', onClick: async () => { try { await navigator.clipboard.writeText(url); toast('Link kopiert.'); } catch { urlBox.select(); toast('Zum Kopieren Strg+C drücken.', 'info'); } } }),
-              button('Link erneuern', { icon: 'refresh', size: 'sm', variant: 'ghost', onClick: async () => {
+              !d.host && button('Link erneuern', { icon: 'refresh', size: 'sm', variant: 'ghost', onClick: async () => {
                 try { await api.post('/api/hack/admin/regenerate'); toast('Neuer Link erstellt – der alte funktioniert nicht mehr.'); drawHack(await api.get('/api/hack/admin')); } catch (ex) { toast(ex.message, 'err'); }
               } }),
               button(d.cooldownLeftSec > 0 ? `Sperrzeit aufheben (noch ${Math.ceil(d.cooldownLeftSec / 60)} Min.)` : 'Keine Sperrzeit aktiv', { size: 'sm', variant: 'ghost', disabled: d.cooldownLeftSec <= 0, onClick: async () => {

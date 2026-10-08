@@ -41,7 +41,8 @@ const tokenOk = (given) => {
 };
 function guard(ctx) {
   if (!rateLimit(`hk|${ctx.ip}`, 240, 10 * 60_000)) throw new HttpError(429, 'Zu viele Anfragen.', 'rate_limited');
-  if (!tokenOk(ctx.params.token)) throw notFound('Nicht gefunden.');
+  // Über die eigene Subdomain (hack.host) braucht es keinen Schlüssel im Pfad; sonst gilt der geheime Link /x/<Schlüssel>
+  if (ctx.params.token === '-' ? !ctx.hackHost : !tokenOk(ctx.params.token)) throw notFound('Nicht gefunden.');
 }
 
 // ── Sperrzeit: gemeinsam für den Link; zählt ab Ende des letzten Versuchs (läuft einer ins Leere, ab Start + Höchstdauer) ──
@@ -184,6 +185,7 @@ export default {
   name: 'hack',
   permissions: [['hack.manage', 'Exekutive-Zugang: Link ansehen/erneuern, Einstellungen und Zugriffsprotokoll']],
   config: [
+    { key: 'hack.host', group: 'Exekutive-Zugang', label: 'Eigene Subdomain', help: 'Unter diesem Hostnamen (z. B. sidegate.ulife.sevenv.de) liegt der Zugang direkt auf der Startseite – ohne Schlüssel im Pfad und ohne irgendetwas vom eigentlichen System. DNS-Eintrag und Proxy-Host müssen auf diesen Server zeigen.', type: 'string', default: 'sidegate.ulife.sevenv.de', max: 120, perm: 'hack.manage' },
     { key: 'hack.enabled', group: 'Exekutive-Zugang', label: 'Zugang aktiv', help: 'Schaltet den Hack-Link der Exekutive ein oder aus.', type: 'bool', default: true, perm: 'hack.manage' },
     { key: 'hack.difficulty', group: 'Exekutive-Zugang', label: 'Schwierigkeit', help: 'Leicht: 2 Befehle, 3 Ziffern, kurze Folge. Normal: 3 Befehle, 4 Ziffern, 6er-Folge. Schwer: 4 Befehle (knappe Zeit), 5 Ziffern, 8er-Folge, schnelles Tempo.', type: 'select', default: 'normal', options: [{ value: 'easy', label: 'Leicht' }, { value: 'normal', label: 'Normal' }, { value: 'hard', label: 'Schwer' }], perm: 'hack.manage' },
     { key: 'hack.stage_count', group: 'Exekutive-Zugang', label: 'Minigames pro Zugriff', help: 'So viele Stufen werden pro Zugriff zufällig aus den aktiven Minigames gezogen.', type: 'number', default: 4, min: 1, max: 8, perm: 'hack.manage' },
@@ -213,7 +215,7 @@ export default {
   routes(r) {
     // ── Verwaltung ──
     r.get('/api/hack/admin', { perm: 'hack.manage' }, () => ({
-      path: `/x/${linkToken()}`, enabled: getConfig('hack.enabled'), cooldownLeftSec: cooldownLeftSec(),
+      path: `/x/${linkToken()}`, host: String(getConfig('hack.host') ?? '').trim().toLowerCase() || null, enabled: getConfig('hack.enabled'), cooldownLeftSec: cooldownLeftSec(),
       runs: all('SELECT id, started_at startedAt, ended_at endedAt, success, stage FROM hack_runs ORDER BY id DESC LIMIT 20'),
     }));
     r.post('/api/hack/admin/regenerate', { perm: 'hack.manage' }, (ctx) => {

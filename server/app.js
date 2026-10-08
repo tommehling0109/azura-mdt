@@ -7,7 +7,7 @@ import { COOKIE, userFromToken } from './core/auth.js';
 import { registerPermissions, syncPermissions, can } from './core/permissions.js';
 import { PARTNER_COOKIE, partnerFromToken } from './core/partner-auth.js';
 import { syncLookups } from './core/lookups.js';
-import { registerConfig } from './core/config.js';
+import { registerConfig, getConfig } from './core/config.js';
 import { migrate, DB_PATH } from './core/db.js';
 import { setReinit } from './core/reset.js';
 import { APP_VERSION } from './core/version.js';
@@ -44,6 +44,10 @@ const MODULES = [systemModule, authModule, usersModule, rolesModule, orgModule, 
 /** Hinter nginx o. ä.: TRUST_PROXY=1 ⇒ Client-IP und Protokoll aus X-Forwarded-* übernehmen (sonst ignorieren – nicht fälschbar). */
 const TRUST_PROXY = process.env.TRUST_PROXY === '1';
 const clientIp = (req) => (TRUST_PROXY ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim() : '') || req.socket.remoteAddress;
+/** Angefragte Hostnamen (hinter dem Proxy zuerst X-Forwarded-Host, sonst Host), kleingeschrieben und ohne Port. */
+export const hostsOf = (req) => [TRUST_PROXY ? req.headers['x-forwarded-host'] : null, req.headers.host].filter(Boolean).map((h) => String(h).split(',')[0].trim().toLowerCase().replace(/:\d+$/, ''));
+/** Läuft die Anfrage über die eigene Subdomain des Exekutive-Zugangs (Einstellung hack.host)? */
+export const isHackHost = (req) => { const h = String(getConfig('hack.host') ?? '').trim().toLowerCase(); return !!h && hostsOf(req).includes(h); };
 const isSecure = (req) => !!req.socket.encrypted || (TRUST_PROXY && req.headers['x-forwarded-proto'] === 'https');
 
 const PUBLIC_DIR = fileURLToPath(new URL('../public/', import.meta.url));
@@ -89,6 +93,7 @@ export function buildApp() {
       req, res, params, user, token, partner, partnerToken,
       actorName: partner ? `Partner ${partner.number ?? ''}`.trim() : undefined,
       ip: clientIp(req),
+      hackHost: isHackHost(req),
       secure: isSecure(req),
       query: Object.fromEntries(url.searchParams),
       body: req.method === 'GET' ? {} : await readJson(req, route.opts.bodyLimit),
@@ -185,6 +190,10 @@ export function buildApp() {
     try {
       const url = new URL(req.url, 'http://localhost');
       if (url.pathname === '/healthz') { res.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' }); res.end('ok'); }
+      else if (isHackHost(req) && !url.pathname.startsWith('/api/h/') && !url.pathname.startsWith('/hack/')) {
+        // Eigene Subdomain des Exekutive-Zugangs: nur die neutrale Terminal-Seite, nichts vom eigentlichen System
+        if (req.method === 'GET' && url.pathname === '/') { url.pathname = '/x/-'; await serveStatic(req, res, url); } else { res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Not found'); }
+      }
       else if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
       else if (req.method === 'GET' || req.method === 'HEAD') await serveStatic(req, res, url);
       else { res.writeHead(405); res.end(); }

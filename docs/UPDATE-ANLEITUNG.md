@@ -139,3 +139,16 @@ sudo docker compose logs --tail 50
 sudo docker compose exec mdt node --disable-warning=ExperimentalWarning scripts/backup.js
 ```
 (oder im MDT unter Konfiguration → Datensicherung → „Backup erstellen“)
+
+---
+
+## F) Subdomain für den Exekutive-Zugang (sidegate.ulife.sevenv.de)
+
+Der Hack-Zugang der Exekutive hat eine eigene Subdomain (einstellbar unter Konfiguration → „Exekutive-Zugang“ → „Eigene Subdomain“, Standard `sidegate.ulife.sevenv.de`). Unter dieser Adresse liegt nur die neutrale Terminal-Seite auf der Startseite – ohne Schlüssel im Pfad und ohne Name/Logo; alles andere (das eigentliche System, Anmeldung, Bilder, Skripte) antwortet dort mit „Not found“.
+
+Einrichtung (einmalig):
+1. **DNS:** `sidegate.ulife.sevenv.de` als A-/CNAME-Eintrag auf denselben Server wie `azura.ulife.sevenv.de`.
+2. **Nginx Proxy Manager → Proxy Host → Add:** Domain `sidegate.ulife.sevenv.de`, Ziel **dieselbe** IP und derselbe Port (`3847`) wie beim Haupt-Host, **Cache Assets AUS**, SSL-Zertifikat anfordern (Let's Encrypt) + „Force SSL“. Websockets sind hier nicht nötig.
+3. Der Container braucht `TRUST_PROXY=1` (steht im Update-Skript), damit der Hostname aus `X-Forwarded-Host` erkannt wird.
+
+Wer den Hostnamen kennt, kann spielen – die Sperrzeit gilt für alle gemeinsam. Der Link mit Schlüssel (`/x/<Schlüssel>`) auf der Hauptdomain funktioniert weiterhin.
