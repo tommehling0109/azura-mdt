@@ -8,6 +8,7 @@ import { PARTNER_NAV } from './modules.js';
 import { toast } from './ui/kit.js';
 import { h } from './ui/dom.js';
 import { syncVersion, watchVersion, resetLocal, hardRefresh } from './version.js';
+import { startNeutral } from './neutral.js';
 
 // Externer Zugang: /p/<link-token> – eigene Anmeldung per Code, nur freigeschaltete Apps
 const partnerToken = (() => { const m = location.pathname.match(/^\/p\/([^/]+)\/?$/); return m ? decodeURIComponent(m[1]) : null; })();
@@ -57,7 +58,9 @@ async function showDiagnose(b) {
 async function boot() {
   try {
     const b = await api.get('/api/bootstrap');
+    if (b.neutral) { document.documentElement.classList.add('neutral'); startNeutral(b.mask); } // Subdomain für Externe: neutral, ohne Logo/Namen
     document.getElementById('build-tag')?.remove();
+    if (b.neutral) { syncVersion(b.version); watchVersion(b.version); return b; }
     const tag = h('div', { id: 'build-tag', class: 'build-tag', title: 'Installierter Programmstand – klicken für Diagnose', onclick: () => showDiagnose(b) }, `Build ${b.commit ?? '?'}`);
     const screenEl = document.getElementById('screen');
     // Die Pille lebt im Hintergrund-Layer des Bildschirms (unter Fenstern und Dock) und wird nach jedem Neuaufbau des Bildschirms wieder eingesetzt
@@ -84,6 +87,7 @@ async function start() {
     if (firstRun) openApp('config');
   };
 
+  if (b.neutral) return showLock(h('div', { class: 'lock-card' }, h('h2', null, state.config['system.name'] || ''), h('p', { class: 'lead' }, 'Bitte öffne den persönlichen Link, den du erhalten hast.')));
   if (b.setupRequired) return showSetup({ onAuthed });
   try {
     const { user } = await api.get('/api/auth/me');

@@ -152,3 +152,11 @@ Einrichtung (einmalig):
 3. Der Container braucht `TRUST_PROXY=1` (steht im Update-Skript), damit der Hostname aus `X-Forwarded-Host` erkannt wird.
 
 Wer den Hostnamen kennt, kann spielen – die Sperrzeit gilt für alle gemeinsam. Der Link mit Schlüssel (`/x/<Schlüssel>`) auf der Hauptdomain funktioniert weiterhin.
+
+---
+
+## G) Subdomain für Externe (coop.az.ulife.sevenv.de)
+
+Partner (Börse/Chat/Kredit) und Firmen (Deckel-Portal) erreichen ihre Portale über eine **eigene, neutrale Subdomain** (einstellbar unter Konfiguration → „Externe Zugänge (neutral)“, Standard `coop.az.ulife.sevenv.de`). Dort gibt es **kein Logo, keinen Panel-/Firmennamen** und nichts zum eigentlichen System: Titel ist „Partnerportal“ (einstellbar), Begriffe wie „AZ-“ und „Azura“ werden in der Oberfläche ausgeblendet (aus „AZ-P-100002“ wird „P-100002“; die Liste ist einstellbar). Erreichbar sind nur `/p/<link>` (Partner), `/deckel/firma/<link>` (Firmen) und deren Schnittstellen – die Mitarbeiter-Anmeldung, die Verwaltung, Branding-Dateien und Karten antworten dort mit „Not found“.
+
+Einrichtung wie bei F: DNS-Eintrag auf den Server, Proxy-Host in Nginx Proxy Manager mit gleichem Ziel/Port (3847), **Websockets AN** (Live-Updates der Portale), Cache Assets AUS, SSL. Die Links, die im Panel unter „Externe Zugänge“ und „Deckel“ zum Kopieren angezeigt werden, nutzen automatisch diese Subdomain.

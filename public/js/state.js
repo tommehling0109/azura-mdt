@@ -29,13 +29,14 @@ export function applyVars(cfg) {
   root.style.setProperty('--dock-size', `${Number(cfg['ui.dock_size']) || 52}px`);
   // Eigenes Logo / Hintergrundbild aus dem Admin-Panel (Version = Cache-Buster)
   const lv = cfg['branding.logo_version'], wv = cfg['branding.wallpaper_version'];
-  const logo = lv ? `/branding/logo?v=${lv}` : '/img/logo.webp';
-  root.style.setProperty('--logo-url', `url(${logo})`);
+  const neutral = root.classList.contains('neutral'); // Subdomain für Externe: kein Logo
+  const logo = neutral ? null : lv ? `/branding/logo?v=${lv}` : '/img/logo.webp';
+  root.style.setProperty('--logo-url', logo ? `url(${logo})` : 'none');
   root.classList.toggle('custom-logo', !!lv);
   if (wv) root.style.setProperty('--wallpaper-url', `url(/branding/wallpaper?v=${wv})`); else root.style.removeProperty('--wallpaper-url');
   root.classList.toggle('has-wallpaper', !!wv);
   const fav = document.querySelector('link[rel="icon"]');
-  if (fav) fav.href = logo;
+  if (fav && logo) fav.href = logo;
 }
 
 export function applyConfig(cfg) {

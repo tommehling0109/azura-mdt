@@ -276,3 +276,9 @@ html.no-glass .board { backdrop-filter: none; background: var(--bg-2); }
 .bp-tools { display: inline-flex; gap: 0; opacity: 0.55; } .board-post:hover .bp-tools { opacity: 1; }
 @media (max-width: 700px) { .board { top: 6px; right: 8px; width: calc(100vw - 16px); max-height: 42vh; } }
 .is-locked .board { visibility: hidden; }
+
+/* Subdomain für Externe: keine Logos, keine Wasserzeichen, nichts vom System */
+html.neutral { --logo-url: none; }
+.neutral .logo-phoenix, .neutral .brand-mark, .neutral .ls-logo, .neutral .build-tag, .neutral .brand-sub { display: none !important; }
+.neutral .wallpaper::after { display: none; }
+.neutral .start-btn::before { content: '\2630'; font-size: 17px; line-height: 1; }

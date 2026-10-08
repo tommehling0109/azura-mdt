@@ -1275,6 +1275,23 @@ try {
     for (const id of [b2, b3]) await admin.call('DELETE', `/api/board/${id}`); await setPerms([]);
     assert.ok(JSON.stringify((await admin.call('GET', '/api/roles')).roles).includes('board.view'), 'Rang-Rollen dürfen das Brett sehen'); ok('Schwarzes Brett: nur Mitarbeiter, Rechte board.view/board.manage, Hervorhebung, Anpinnen, Entfernen, Benachrichtigung bei Dringend'); }
 
+  // ══ Subdomain für Externe (neutral) ══
+  { const CH = { 'X-Forwarded-Host': 'coop.az.ulife.sevenv.de' }; const g = (p, h = CH) => fetch(base + p, { headers: h });
+    r = await (await g('/api/bootstrap')).json(); assert.equal(r.neutral, true); assert.equal(r.commit, null); assert.equal(r.config['system.name'], 'Partnerportal'); assert.equal(r.config['system.subtitle'], ''); assert.equal(r.config['branding.logo_version'], 0); assert.equal(r.config['ui.show_watermark'], false); assert.deepEqual(r.mask, ['AZ-', 'Azura']); assert.equal(r.setupRequired, false);
+    const main = await (await fetch(base + '/api/bootstrap')).json(); assert.equal(main.neutral, undefined); assert.ok(main.config['system.name'] && main.config['system.name'] !== 'Partnerportal'); // normale Domain unverändert
+    assert.equal(JSON.stringify(r).includes(main.config['system.name']), false, 'Systemname darf nicht durchkommen');
+    const page = await g('/'); const html = await page.text(); assert.equal(page.status, 200); assert.ok(html.includes('<title>Partnerportal</title>')); assert.equal(/logo|webp|azura|MDT/i.test(html), false); assert.ok(html.includes('class="neutral"'));
+    assert.equal((await g(`/p/${ptok}`)).status, 200); assert.equal((await g(`/deckel/firma/${tokA ?? 'x'}`)).status, 200);
+    for (const p of ['/admin/users', '/dashboard', '/branding/logo', '/branding/wallpaper', '/img/logo.webp', '/img/map.webp', '/maptiles/1/1/1.png', '/hack/hack.js', '/api/auth/me', '/api/users', '/api/setup', '/api/hack/admin', '/api/h/-/status', '/api/notifications']) assert.equal((await g(p)).status, 404, p + ' darf auf der Subdomain nicht erreichbar sein');
+    assert.equal((await fetch(base + '/api/auth/login', { method: 'POST', headers: { ...CH, 'Content-Type': 'application/json', 'X-Requested-With': 'mdt' }, body: JSON.stringify({ username: 'admin', password: 'passwort123' }) })).status, 404); // keine Mitarbeiter-Anmeldung
+    assert.equal((await g('/js/main.js')).status, 200); assert.equal((await g('/css/theme.css')).status, 200);
+    assert.equal((await g(`/api/p/${ptok}/session`)).status, 200); // Partner-API funktioniert
+    assert.equal((await new Client().call('GET', '/api/p/' + ptok + '/session')).status, 200);
+    assert.equal((await mod.call('PUT', '/api/config', { values: { 'coop.title': 'Hallo' } })).status, 403);
+    await admin.call('PUT', '/api/config', { values: { 'coop.title': 'Handelsportal', 'coop.host': 'extern.example.com' } }); assert.equal((await (await g('/api/bootstrap')).json()).neutral, undefined); assert.equal((await (await g('/api/bootstrap', { 'X-Forwarded-Host': 'extern.example.com' })).json()).config['system.name'], 'Handelsportal');
+    await admin.call('PUT', '/api/config', { values: { 'coop.title': 'Partnerportal', 'coop.host': 'coop.az.ulife.sevenv.de' } });
+    ok('Subdomain für Externe: neutral (kein Logo/Name), nur Partner-/Firmenportal, keine Mitarbeiter-Anmeldung, Host einstellbar'); }
+
   // Superadmin: Artikel samt Geschäften/Bestand löschen
   assert.equal((await admin.call('DELETE', `/api/warehouse/items/${ore}`)).status, 409); assert.equal((await mod.call('DELETE', `/api/warehouse/items/${ore}?force=1`)).status, 403);
   assert.equal((await admin.call('DELETE', `/api/warehouse/items/${ore}?force=1`)).status, 200); assert.equal((await admin.call('GET', '/api/market/deals')).deals.some((d) => d.item?.id === ore), false); ok('Superadmin löscht Artikel samt Geschäften, Gesuchen und Beständen');

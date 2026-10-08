@@ -47,6 +47,7 @@ const clientIp = (req) => (TRUST_PROXY ? String(req.headers['x-forwarded-for'] ?
 /** Angefragte Hostnamen (hinter dem Proxy zuerst X-Forwarded-Host, sonst Host), kleingeschrieben und ohne Port. */
 export const hostsOf = (req) => [TRUST_PROXY ? req.headers['x-forwarded-host'] : null, req.headers.host].filter(Boolean).map((h) => String(h).split(',')[0].trim().toLowerCase().replace(/:\d+$/, ''));
 /** Läuft die Anfrage über die eigene Subdomain des Exekutive-Zugangs (Einstellung hack.host)? */
+export const isCoopHost = (req) => { const h = String(getConfig('coop.host') ?? '').trim().toLowerCase(); return !!h && hostsOf(req).includes(h); };
 export const isHackHost = (req) => { const h = String(getConfig('hack.host') ?? '').trim().toLowerCase(); return !!h && hostsOf(req).includes(h); };
 const isSecure = (req) => !!req.socket.encrypted || (TRUST_PROXY && req.headers['x-forwarded-proto'] === 'https');
 
@@ -56,6 +57,7 @@ const MIME = {
   '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.ico': 'image/x-icon',
   '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2',
 };
+const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
@@ -94,6 +96,7 @@ export function buildApp() {
       actorName: partner ? `Partner ${partner.number ?? ''}`.trim() : undefined,
       ip: clientIp(req),
       hackHost: isHackHost(req),
+      coopHost: isCoopHost(req),
       secure: isSecure(req),
       query: Object.fromEntries(url.searchParams),
       body: req.method === 'GET' ? {} : await readJson(req, route.opts.bodyLimit),
@@ -174,7 +177,8 @@ export function buildApp() {
       file = join(PUBLIC_DIR, 'index.html');
     }
     const ext = extname(file);
-    const body = ext === '.js' || ext === '.html' ? await readVersioned(file, ext) : await readFile(file);
+    let body = ext === '.js' || ext === '.html' ? await readVersioned(file, ext) : await readFile(file);
+    if (ext === '.html' && file.endsWith('index.html') && isCoopHost(req)) body = body.replace(/<title>[^<]*<\/title>/, () => `<title>${esc(String(getConfig('coop.title') ?? ''))}</title>`).replace(/<link rel="icon"[^>]*>/, () => '<link rel="icon" href="data:,">').replace('<body>', () => '<body class="neutral">');
     // Einmal je neuer Version beim Aufruf der Seite: den HTTP-Cache dieses Browsers für die Seite leeren lassen (Clear-Site-Data) – so verschwinden auch ältere, falsch zwischengespeicherte Dateien
     const extra = {};
     if (ext === '.html' && req.method === 'GET') {
@@ -190,6 +194,13 @@ export function buildApp() {
     try {
       const url = new URL(req.url, 'http://localhost');
       if (url.pathname === '/healthz') { res.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' }); res.end('ok'); }
+      else if (isCoopHost(req)) {
+        // Subdomain für externe Partner/Firmen: nur deren Portale, keine Anmeldung der Mitarbeiter, keine Logos/Branding/Karten
+        const p = url.pathname;
+        if (p.startsWith('/api/')) { if (/^\/api\/(p|c)\//.test(p) || p === '/api/bootstrap' || p === '/api/version') await handleApi(req, res, url); else { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end('{"error":"Nicht gefunden."}'); } }
+        else if ((req.method === 'GET' || req.method === 'HEAD') && (p === '/' || p === '/reset' || /^\/p\/[^/]+\/?$/.test(p) || /^\/deckel\/firma\/[^/]+\/?$/.test(p) || /^\/(js|css|vendor)\//.test(p) || p === '/img/wallpaper-lines.svg')) await serveStatic(req, res, url);
+        else { res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Not found'); }
+      }
       else if (isHackHost(req) && !url.pathname.startsWith('/api/h/') && !url.pathname.startsWith('/hack/')) {
         // Eigene Subdomain des Exekutive-Zugangs: nur die neutrale Terminal-Seite, nichts vom eigentlichen System
         if (req.method === 'GET' && url.pathname === '/') { url.pathname = '/x/-'; await serveStatic(req, res, url); } else { res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Not found'); }

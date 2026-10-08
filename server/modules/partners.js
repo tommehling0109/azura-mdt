@@ -102,6 +102,9 @@ export default {
     ['partners.delete', 'Externe Zugänge samt aller Geschäfte, Kredite und Daten endgültig löschen'],
   ],
   config: [
+    { key: 'coop.host', group: 'Externe Zugänge (neutral)', label: 'Eigene Subdomain für Externe', help: 'Unter diesem Hostnamen (z. B. coop.az.ulife.sevenv.de) sehen Partner und Firmen nur ihren Zugang – ohne Logo, Panelname oder Firmenname und ohne Zugriff auf das eigentliche System. DNS-Eintrag und Proxy-Host müssen auf diesen Server zeigen. Die Links der Zugänge werden mit diesem Host angezeigt.', type: 'string', default: 'coop.az.ulife.sevenv.de', max: 120, public: true, perm: 'partners.manage' },
+    { key: 'coop.title', group: 'Externe Zugänge (neutral)', label: 'Neutraler Titel auf der Subdomain', help: 'Erscheint statt des Systemnamens (Browser-Tab, Anmeldung, Desktop).', type: 'string', default: 'Partnerportal', max: 40, perm: 'partners.manage' },
+    { key: 'coop.mask', group: 'Externe Zugänge (neutral)', label: 'Auf der Subdomain ausblenden (kommagetrennt)', help: 'Diese Texte werden in der Oberfläche der Externen entfernt – Standard: das Nummernpräfix „AZ-“ und der Name „Azura“.', type: 'string', default: 'AZ-,Azura', max: 200, perm: 'partners.manage' },
     { key: 'partners.number_prefix', group: 'Zugang', label: 'Präfix der Partner-Nummer', help: 'Im Partner-Portal erscheint nur diese Nummer, nie der Name (z. B. AZ-P-100001).', type: 'string', default: 'AZ-P-', max: 12 },
     { key: 'partners.number_start', group: 'Zugang', label: 'Startnummer der Partner', type: 'number', default: 100001, min: 1, max: 99999999 },
     { key: 'partners.session_hours', group: 'Zugang', label: 'Sitzungsdauer externer Zugänge (Stunden)', type: 'number', default: 24, min: 1, max: 720 },

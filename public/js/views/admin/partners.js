@@ -2,9 +2,9 @@ import { h, mount, fmtDateTime, timeAgo } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import { button, busy, card, field, input, select, checkbox, formError, openModal, confirmDialog, toast, skeletons, empty, note, badge, avatar } from '../../ui/kit.js';
 import { api } from '../../api.js';
-import { can } from '../../state.js';
+import { can, state } from '../../state.js';
 
-const fullLink = (path) => `${location.origin}${path}`;
+const fullLink = (path) => { const h = state.config['coop.host']; return `${h ? `https://${h}` : location.origin}${path}`; }; // Links für Externe laufen über deren eigene Subdomain
 
 async function copy(text, label = 'Kopiert.') {
   try { await navigator.clipboard.writeText(text); toast(label); } catch { toast('Kopieren nicht möglich – bitte manuell markieren.', 'warn'); }

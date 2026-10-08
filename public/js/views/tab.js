@@ -16,7 +16,7 @@ export function parseMoney(text) {
 }
 const statusBadge = (s) => h('span', { class: 'badge', style: { '--c': s.statusColor } }, s.statusLabel);
 const copyText = async (t) => { try { await navigator.clipboard.writeText(t); toast('Link kopiert.'); } catch { toast('Kopieren nicht möglich – bitte manuell markieren.', 'warn'); } };
-const fullLink = (path) => `${location.origin}${path}`;
+const fullLink = (path) => { const h = state.config['coop.host']; return `${h ? `https://${h}` : location.origin}${path}`; }; // Links für Externe laufen über deren eigene Subdomain
 const money = (c) => (c / 100).toFixed(2).replace('.', ',');
 
 /**

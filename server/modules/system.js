@@ -84,7 +84,14 @@ export default {
   },
   routes(r) {
     // Öffentlich: Konfiguration für Login/Setup-Bildschirm
-    r.get('/api/bootstrap', { auth: false }, () => ({ setupRequired: setupRequired(), config: publicConfig(), version: APP_VERSION, commit: APP_COMMIT }));
+    r.get('/api/bootstrap', { auth: false }, (ctx) => {
+      if (ctx.coopHost) { // Subdomain für Externe: nichts, was auf das System hinweist
+        const mask = String(getConfig('coop.mask') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+        return { setupRequired: false, neutral: true, mask, version: APP_VERSION, commit: null,
+          config: { ...publicConfig(), 'system.name': getConfig('coop.title'), 'system.subtitle': '', 'branding.logo_version': 0, 'branding.wallpaper_version': 0, 'ui.show_watermark': false, 'ui.show_build': false } };
+      }
+      return { setupRequired: setupRequired(), config: publicConfig(), version: APP_VERSION, commit: APP_COMMIT };
+    });
     r.get('/api/admin/update', { perm: 'config.view' }, () => ({ installed: APP_COMMIT, ...updateState }));
     r.post('/api/admin/update/check', { perm: 'config.view' }, async () => ({ installed: APP_COMMIT, ...(await checkForUpdate({ force: true })) }));
     r.get('/api/version', { auth: false }, () => ({ version: APP_VERSION, commit: APP_COMMIT }));
