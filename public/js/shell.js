@@ -144,6 +144,7 @@ export function showApp(onLogout, opts = {}) {
   const reportBtn = h('button', { class: 'panel-btn', type: 'button', title: opts.partner ? 'Fehler melden / Meine Tickets' : 'Fehler melden / Ticket eröffnen', 'aria-label': 'Fehler melden', onclick: () => import('./views/tickets.js').then((m) => (opts.partner ? m.openPartnerTickets() : m.openReportDialog({ app: document.querySelector('.win.active .wt')?.textContent ?? '' }))) }, icon('bug'));
   const lockBtn = h('button', { class: 'panel-btn', type: 'button', title: 'Bildschirm sperren', 'aria-label': 'Bildschirm sperren', onclick: () => lockCtl?.lock() }, icon('lockClosed'));
   const settingsBtn = h('button', { class: 'panel-btn', type: 'button', title: 'Einstellungen (Ton, Lautstärke, Hinweise)', 'aria-label': 'Einstellungen', onclick: () => openSettingsDialog() }, icon('settings'));
+  const iconResetBtn = h('button', { class: 'panel-btn', type: 'button', hidden: true, title: 'Desktop-Symbole zurücksetzen (eigene Positionen verwerfen)', 'aria-label': 'Desktop-Symbole zurücksetzen', onclick: () => resetIcons() }, icon('refresh'));
   const bellBadge = h('span', { class: 'bell-badge', hidden: true });
   const bell = h('button', { class: 'panel-btn', type: 'button', title: 'Benachrichtigungen', 'aria-label': 'Benachrichtigungen', 'aria-haspopup': 'true' }, icon('bell'), bellBadge);
   const npanel = h('div', { class: 'notif-panel', hidden: true, role: 'dialog', 'aria-label': 'Benachrichtigungen' });
@@ -174,7 +175,7 @@ export function showApp(onLogout, opts = {}) {
     h('div', { class: 'panel-left' }, startBtn),
     h('div', { class: 'panel-center' }, clock),
     h('div', { class: 'panel-right' },
-      liveDot, bell, reportBtn, settingsBtn, lockBtn,
+      liveDot, bell, reportBtn, iconResetBtn, settingsBtn, lockBtn,
       h('button', { class: 'panel-btn panel-user', type: 'button', title: opts.partner ? state.user.displayName : 'Konto & Sicherheit', onclick: opts.partner ? undefined : () => openAccountDialog() },
         opts.partner ? icon('users') : (panelAvatar = userAvatar(state.user, 'sm')), h('span', null, state.user.displayName)),
       h('button', { class: 'panel-btn', type: 'button', title: 'Abmelden', 'aria-label': 'Abmelden', onclick: () => { clearLockState(); lockCtl?.destroy(); onLogout(); } }, icon('logout'))));
@@ -187,8 +188,11 @@ export function showApp(onLogout, opts = {}) {
   if (board) area.append(board.el); // im Desktop-Bereich: Fenster liegen darüber, die Fensterleisten bleiben bedienbar
   // Desktop-Symbole: Voreinstellung des Administrators, jeder Benutzer kann sie in seinen Einstellungen für sich an-/ausschalten
   const iconsWanted = () => { const u = getSetting('icons'); return u === 'on' ? true : u === 'off' ? false : !!state.config['ui.desktop_icons']; };
-  const syncIcons = () => { const want = iconsWanted(); if (want && !iconsEl.isConnected) { area.append(iconsEl); renderIcons(); } else if (!want && iconsEl.isConnected) iconsEl.remove(); };
+  const syncIcons = () => { const want = iconsWanted(); if (want && !iconsEl.isConnected) { area.append(iconsEl); renderIcons(); } else if (!want && iconsEl.isConnected) iconsEl.remove(); iconResetBtn.hidden = !iconsEl.isConnected || compact(); };
   if (iconsWanted()) area.append(iconsEl);
+  iconResetBtn.hidden = !iconsEl.isConnected || compact();
+  // Zurücksetzen: alle selbst verschobenen Symbole kehren auf ihre automatischen Plätze zurück
+  function resetIcons() { try { localStorage.removeItem(POS_KEY); } catch { /* egal */ } renderIcons(); toast('Desktop-Symbole zurückgesetzt.'); }
 
   // ── Desktop-Icons (frei verschiebbar, Position wird pro Benutzer im Browser gemerkt) ──
   const POS_KEY = `azura.iconpos.v1.${state.user?.id ?? 0}`;

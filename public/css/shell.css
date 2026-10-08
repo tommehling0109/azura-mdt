@@ -321,3 +321,5 @@ html.neutral { --logo-url: none; }
 .bp-ticker { display: inline-flex; align-items: center; gap: 3px; margin-left: 7px; padding: 0 6px; border-radius: 5px; font-size: 10px; letter-spacing: 0.06em; background: rgba(255, 255, 255, 0.12); color: var(--text); } .bp-ticker svg { width: 11px; height: 11px; }
 /* Das Schwarze Brett soll die Uhr unten rechts nicht überdecken */
 .board:not(.changelog) { max-height: max(220px, calc(100% - var(--dock-h) - 270px)); }
+
+.panel-btn[hidden] { display: none; }
