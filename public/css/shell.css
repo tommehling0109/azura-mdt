@@ -283,3 +283,25 @@ html.neutral { --logo-url: none; }
 .neutral .logo-phoenix, .neutral .brand-mark, .neutral .ls-logo, .neutral .build-tag, .neutral .brand-sub { display: none !important; }
 .neutral .wallpaper::after { display: none; }
 .neutral .start-btn::before { content: '\2630'; font-size: 17px; line-height: 1; }
+
+/* Changelog links auf dem Desktop */
+.board.changelog { right: auto; left: 16px; }
+.cl-entry { padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.07); }
+.cl-head { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.cl-ver { display: inline-block; padding: 0 7px; border-radius: 99px; font-size: 11px; font-weight: 700; background: color-mix(in srgb, var(--accent) 28%, transparent); color: #fff; font-variant-numeric: tabular-nums; }
+.board-title .cl-ver { flex: none; margin-right: 2px; }
+.cl-date { margin-left: auto; color: var(--text-3); font-size: 11px; }
+.cl-head .cl-date { margin-left: auto; }
+.cl-title { margin: 3px 0 4px; font-weight: 700; font-size: 13px; line-height: 1.3; }
+.cl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.cl-list li { display: flex; align-items: baseline; gap: 7px; font-size: 12px; color: var(--text-2); min-width: 0; }
+.cl-list.compact li span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cl-kind { flex: none; min-width: 62px; text-align: center; padding: 0 6px; border-radius: 5px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); border: 1px solid color-mix(in srgb, var(--c) 35%, transparent); }
+.cl-list .cl-more { color: var(--text-3); font-size: 11px; padding-left: 69px; }
+.cl-all-btn { width: 100%; padding: 8px; border: 0; border-top: 1px solid rgba(255, 255, 255, 0.1); background: transparent; color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; flex: none; }
+.cl-all-btn:hover { background: rgba(255, 255, 255, 0.06); }
+.cl-full { padding: 12px 4px; border-bottom: 1px solid var(--line); } .cl-full:last-child { border-bottom: 0; }
+.cl-full-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; } .cl-full-top b { font-size: 14.5px; }
+.cl-full .cl-list li { font-size: 13px; }
+.cl-tools { display: inline-flex; opacity: 0.6; } .cl-full:hover .cl-tools { opacity: 1; }
+@media (max-width: 700px) { .board.changelog { display: none; } }

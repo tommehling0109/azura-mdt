@@ -1292,6 +1292,29 @@ try {
     await admin.call('PUT', '/api/config', { values: { 'coop.title': 'Partnerportal', 'coop.host': 'coop.az.ulife.sevenv.de' } });
     ok('Subdomain für Externe: neutral (kein Logo/Name), nur Partner-/Firmenportal, keine Mitarbeiter-Anmeldung, Host einstellbar'); }
 
+  // ══ Changelog ══
+  { assert.equal((await mod.call('GET', '/api/changelog')).status, 403); assert.equal((await new Client().call('GET', '/api/changelog')).status, 401); assert.equal((await tp.call('GET', '/api/changelog')).status, 401); // Partner: kein Changelog
+    await setPerms(['changelog.view']); r = await mod.call('GET', '/api/changelog'); assert.equal(r.status, 200); assert.equal(r.canManage, false); assert.equal(r.total, 0); assert.ok(r.kinds.fixed);
+    assert.equal((await mod.call('POST', '/api/changelog', { title: 'Test', items: [{ kind: 'new', text: 'Etwas' }] })).status, 403);
+    await setPerms(['changelog.view', 'changelog.manage']);
+    for (const bad of [{ title: 'x', items: [{ kind: 'new', text: 'Etwas' }] }, { title: 'Ohne Punkte', items: [] }, { title: 'Falsche Art', items: [{ kind: 'magic', text: 'Etwas' }] }, { title: 'Falsches Datum', releasedAt: '31.12.2026', items: [{ kind: 'new', text: 'Etwas' }] }, { title: 'Leerer Text', items: [{ kind: 'new', text: ' ' }] }]) assert.equal((await mod.call('POST', '/api/changelog', bad)).status, 400);
+    const mkE = async (version, title, releasedAt, items) => (await mod.call('POST', '/api/changelog', { version, title, releasedAt, items })).entry;
+    const e1 = await mkE('1.0.0', 'Erster Stand', '2026-09-01', [{ kind: 'new', text: 'Börse und Lager' }]);
+    const e2 = await mkE('1.1.0', 'Chat und Tickets', '2026-09-10', [{ kind: 'new', text: 'Privatnachrichten' }, { kind: 'fixed', text: 'Chat lud nicht neu' }]);
+    const e3 = await mkE('1.2.0', 'Karte', '2026-09-20', [{ kind: 'changed', text: 'Neue Kalibrierung' }, { kind: 'removed', text: 'Alte Kartenquelle' }, { kind: 'security', text: 'Neue Prüfung' }]);
+    const e4 = await mkE('', 'Ohne Version', '2026-09-25', [{ kind: 'new', text: 'Schwarzes Brett' }]);
+    assert.equal(e1.items[0].kind, 'new'); assert.equal(e4.version, null);
+    r = await mod.call('GET', '/api/changelog'); assert.equal(r.total, 4); assert.equal(r.canManage, true); assert.deepEqual(r.entries.map((e) => e.id), [e4.id, e3.id, e2.id]); // neueste zuerst, standardmäßig 3
+    r = await mod.call('GET', '/api/changelog?limit=3&offset=3'); assert.deepEqual(r.entries.map((e) => e.id), [e1.id]); assert.equal((await mod.call('GET', '/api/changelog?limit=500')).entries.length, 4);
+    assert.ok(JSON.stringify(r).includes('AZ-') || r.entries[0].author, 'Verfasser nur als Kennung');
+    assert.ok((await admin.call('GET', '/api/notifications')).notifications.some((n) => /Update 1.2.0/.test(n.title)));
+    r = await mod.call('PATCH', `/api/changelog/${e1.id}`, { title: 'Erster Stand (bearbeitet)', items: [{ kind: 'new', text: 'Börse' }, { kind: 'new', text: 'Lager' }] }); assert.equal(r.entry.items.length, 2); assert.equal((await mod.call('PATCH', '/api/changelog/99999', { title: 'abc' })).status, 404);
+    await setPerms(['changelog.view']); assert.equal((await mod.call('DELETE', `/api/changelog/${e1.id}`)).status, 403); assert.equal((await mod.call('PATCH', `/api/changelog/${e1.id}`, { title: 'abc' })).status, 403);
+    await setPerms(['changelog.view', 'changelog.manage']); assert.equal((await mod.call('DELETE', `/api/changelog/${e1.id}`)).status, 200); assert.equal((await admin.call('GET', '/api/changelog')).total, 3);
+    for (const e of [e2, e3, e4]) await admin.call('DELETE', `/api/changelog/${e.id}`); await setPerms([]);
+    assert.ok(JSON.stringify((await admin.call('GET', '/api/roles')).roles).includes('changelog.view'), 'Rang-Rollen dürfen das Changelog sehen');
+    ok('Changelog: nur Mitarbeiter, Rechte changelog.view/changelog.manage, Arten (neu/geändert/behoben/entfernt/Sicherheit), Seiten, Benachrichtigung'); }
+
   // Superadmin: Artikel samt Geschäften/Bestand löschen
   assert.equal((await admin.call('DELETE', `/api/warehouse/items/${ore}`)).status, 409); assert.equal((await mod.call('DELETE', `/api/warehouse/items/${ore}?force=1`)).status, 403);
   assert.equal((await admin.call('DELETE', `/api/warehouse/items/${ore}?force=1`)).status, 200); assert.equal((await admin.call('GET', '/api/market/deals')).deals.some((d) => d.item?.id === ore), false); ok('Superadmin löscht Artikel samt Geschäften, Gesuchen und Beständen');

@@ -42,7 +42,7 @@ export function seedRanks() {
  * Der Superadmin braucht keine Rolle – er hat immer alles.
  */
 const LEVELS = [
-  ['chat.view', 'chat.send', 'map.view', 'vehicles.view', 'warehouse.view', 'market.view', 'org.view', 'board.view'],
+  ['chat.view', 'chat.send', 'map.view', 'vehicles.view', 'warehouse.view', 'market.view', 'org.view', 'board.view', 'changelog.view'],
   ['warehouse.stock', 'vehicles.view_location', 'vehicles.edit'],
   ['map.edit', 'chat.pin'],
   ['market.deals.manage', 'vehicles.create', 'warehouse.view_access'],
@@ -52,7 +52,7 @@ const LEVELS = [
   ['warehouse.manage', 'warehouse.prices', 'tab.statements', 'credit.manage', 'lookups.view'],
   ['partners.manage', 'users.create', 'users.edit', 'credit.payments', 'chat.partners', 'chat.manage', 'tickets.manage', 'board.manage'],
   ['partners.documents', 'tab.manage_companies', 'credit.limits', 'finance.manual', 'finance.export', 'audit.view', 'roles.view', 'lookups.manage'],
-  ['users.personnel_view', 'users.personnel_edit', 'users.avatar_edit', 'users.avatar_remove', 'audit.export', 'org.manage', 'admin.access', 'config.view'],
+  ['users.personnel_view', 'users.personnel_edit', 'users.avatar_edit', 'users.avatar_remove', 'audit.export', 'org.manage', 'admin.access', 'config.view', 'changelog.manage'],
   ['users.password_reset', 'roles.manage', 'system.backup', 'config.edit', 'market.delete', 'credit.delete', 'tab.delete', 'partners.delete', 'finance.delete', 'tickets.delete', 'users.delete'],
   [], // Stufe 13: Administrator-Rolle (alle Rechte)
 ];

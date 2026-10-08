@@ -11,7 +11,7 @@
 - Namen von Mitgliedern sieht man nur bei sich selbst, als Superadmin und bei Mitgliedern **unterhalb** der eigenen Hierarchie (übergeordneter Rang / Vorgesetzten-Kette); sonst nur die Personalnummer.
 - Statistik: `stats.view` öffnet die App, jeder Abschnitt erscheint zusätzlich nur mit dem Ansichtsrecht des jeweiligen Bereichs.
 
-## Rechte (71)
+## Rechte (73)
 
 ### audit
 
@@ -26,6 +26,13 @@
 |---|---|
 | `board.manage` | Schwarzes Brett: Ankündigungen anlegen, bearbeiten, anpinnen und entfernen |
 | `board.view` | Schwarzes Brett: Ankündigungen auf dem Desktop sehen |
+
+### changelog
+
+| Recht | Bedeutung |
+|---|---|
+| `changelog.manage` | Changelog: Einträge anlegen, bearbeiten und löschen |
+| `changelog.view` | Changelog: Updates auf dem Desktop und alle älteren Einträge ansehen |
 
 ### chat
 
@@ -207,6 +214,10 @@
 | POST | `/api/board` | `board.manage` |
 | PATCH | `/api/board/:id` | `board.manage` |
 | DELETE | `/api/board/:id` | `board.manage` |
+| GET | `/api/changelog` | `changelog.view` |
+| POST | `/api/changelog` | `changelog.manage` |
+| PATCH | `/api/changelog/:id` | `changelog.manage` |
+| DELETE | `/api/changelog/:id` | `changelog.manage` |
 | GET | `/api/chat/channels` | `chat.view` |
 | GET | `/api/chat/unread` | `chat.view` |
 | GET | `/api/chat/people` | `chat.view` |

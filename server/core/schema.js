@@ -700,4 +700,18 @@ export const SCHEMA_MIGRATIONS = [
   `
   ALTER TABLE market_items ADD COLUMN stack_size INTEGER NOT NULL DEFAULT 1;
   `,
+  // 19: Changelog (Update-Eintraege auf dem Desktop)
+  `
+  CREATE TABLE changelog_entries (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    version     TEXT NOT NULL DEFAULT '',
+    title       TEXT NOT NULL,
+    released_at TEXT NOT NULL,
+    items       TEXT NOT NULL DEFAULT '[]',
+    author_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+  );
+  CREATE INDEX idx_changelog_order ON changelog_entries(released_at, id);
+  `,
 ];

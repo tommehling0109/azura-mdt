@@ -37,9 +37,10 @@ import partnersModule from './modules/partners.js';
 import marketModule from './modules/market.js';
 import hackModule from './modules/hack.js';
 import boardModule from './modules/board.js';
+import changelogModule from './modules/changelog.js';
 
 /** Modulliste – spätere Phasen hängen hier weitere Module an (vehicles, storage, purchasing, chat, …). */
-const MODULES = [systemModule, authModule, usersModule, rolesModule, orgModule, auditModule, dashboardModule, lookupsModule, partnersModule, marketModule, chatModule, vehiclesModule, mapModule, warehouseModule, financeModule, tabModule, creditModule, profileModule, statsModule, personnelModule, ticketsModule, hackModule, boardModule, realtimeModule];
+const MODULES = [systemModule, authModule, usersModule, rolesModule, orgModule, auditModule, dashboardModule, lookupsModule, partnersModule, marketModule, chatModule, vehiclesModule, mapModule, warehouseModule, financeModule, tabModule, creditModule, profileModule, statsModule, personnelModule, ticketsModule, hackModule, boardModule, changelogModule, realtimeModule];
 
 /** Hinter nginx o. ä.: TRUST_PROXY=1 ⇒ Client-IP und Protokoll aus X-Forwarded-* übernehmen (sonst ignorieren – nicht fälschbar). */
 const TRUST_PROXY = process.env.TRUST_PROXY === '1';

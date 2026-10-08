@@ -8,6 +8,7 @@ import { NAV, allItems } from './modules.js';
 import { openAccountDialog } from './views/account.js';
 import { openSettingsDialog } from './views/settings.js';
 import { createBoard } from './board.js';
+import { createChangelog } from './changelog.js';
 import { api } from './api.js';
 import { connect, disconnect, subscribe, onStatus } from './realtime.js';
 import { initLock, clearLockState } from './lockscreen.js';
@@ -179,6 +180,8 @@ export function showApp(onLogout, opts = {}) {
   const desktop = h('div', { class: 'desktop' }, panel, area, h('div', { class: 'dock-row' }, dock));
   const board = !opts.partner && can('board.view') ? createBoard() : null; // Schwarzes Brett: nur für Mitarbeiter
   mount(screen(), h('div', { class: 'wallpaper' }), widget, desktop, startMenu, npanel);
+  const changelog = !opts.partner && can('changelog.view') ? createChangelog() : null; // Changelog links, nur für Mitarbeiter
+  if (changelog) area.append(changelog.el);
   if (board) area.append(board.el); // im Desktop-Bereich: Fenster liegen darüber, die Fensterleisten bleiben bedienbar
   if (state.config['ui.desktop_icons']) area.append(iconsEl);
 
