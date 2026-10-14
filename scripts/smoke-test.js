@@ -1511,6 +1511,7 @@ try {
 
   // ══ Changelog: Pflicht-Bestätigung ══
   { assert.equal((await new Client().call('GET', '/api/changelog/unread')).status, 401); assert.equal((await mod.call('GET', '/api/changelog/unread')).status, 403);
+    const modId = (await mod.call('GET', '/api/auth/me')).user.id;
     const before = (await admin.call('GET', '/api/changelog?limit=50')).entries.map((e) => e.id); for (const id of before) await admin.call('DELETE', `/api/changelog/${id}`);
     await setPerms(['changelog.view']); const ids = [];
     for (let i = 1; i <= 7; i++) { r = await admin.call('POST', '/api/changelog', { title: `Update ${i}`, version: `1.${i}`, items: [{ kind: 'new', text: `Neuerung ${i}` }] }); assert.equal(r.status, 201); ids.push(r.entry.id); await sleep(5); }
@@ -1519,10 +1520,15 @@ try {
     assert.equal((await mod.call('POST', '/api/changelog/ack', {})).status, 400); assert.equal((await mod.call('POST', '/api/changelog/ack', { upTo: 'gestern' })).status, 400);
     r = await mod.call('POST', '/api/changelog/ack', { upTo }); assert.equal(r.status, 200); assert.equal(r.acknowledged, 7); // auch die älteren, nicht angezeigten gelten als gelesen
     assert.equal((await mod.call('GET', '/api/changelog/unread')).entries.length, 0);
+    // Protokoll: Audit-Log und Verlauf im Profil
+    r = await admin.call('GET', '/api/audit?action=changelog.acknowledged'); assert.ok(r.total >= 1);
+    const hist = await admin.call('GET', `/api/users/${modId}/changelog`); assert.equal(hist.history.length, 7); assert.equal(hist.open.length, 0); assert.ok(hist.lastAckAt); assert.equal(hist.history[0].changed, false);
+    assert.equal((await new Client().call('GET', `/api/users/${modId}/changelog`)).status, 401); assert.equal((await admin.call('GET', '/api/users/99999/changelog')).status, 404);
     assert.equal((await admin.call('GET', '/api/changelog/unread')).total, 7); // andere Personen sehen sie weiterhin (erstmalig die neuesten fünf)
     await sleep(5); assert.equal((await admin.call('PATCH', `/api/changelog/${ids[2]}`, { title: 'Update 3 (korrigiert)' })).status, 200); // geänderter Eintrag erscheint erneut
     r = await mod.call('GET', '/api/changelog/unread'); assert.equal(r.entries.length, 1); assert.equal(r.entries[0].changed, true); assert.equal(r.entries[0].title, 'Update 3 (korrigiert)');
     await mod.call('POST', '/api/changelog/ack', { upTo: r.entries[0].updatedAt }); assert.equal((await mod.call('GET', '/api/changelog/unread')).entries.length, 0);
+    { const h2 = await admin.call('GET', `/api/users/${modId}/changelog`); assert.equal(h2.history.length, 8); assert.equal(h2.history[0].changed, true); assert.match(h2.history[0].title, /korrigiert/); } // Verlauf: erneute Bestätigung nach Änderung
     await sleep(5); r = await admin.call('POST', '/api/changelog', { title: 'Update 8', items: [{ kind: 'fixed', text: 'Fehler behoben' }] }); ids.push(r.entry.id);
     r = await mod.call('GET', '/api/changelog/unread'); assert.equal(r.entries.length, 1); assert.equal(r.entries[0].changed, false);
     // Bestätigung gilt nur bis zum gezeigten Stand: zwischenzeitlich geänderte Einträge bleiben ungelesen

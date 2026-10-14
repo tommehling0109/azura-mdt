@@ -981,4 +981,18 @@ export const SCHEMA_MIGRATIONS = [
     PRIMARY KEY (user_id, entry_id)
   );
   `,
+  // 30: Changelog – Verlauf aller Bestaetigungen (wer hat wann welchen Stand gelesen)
+  `
+  CREATE TABLE changelog_ack_log (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    entry_id     INTEGER,
+    entry_title  TEXT NOT NULL,
+    entry_version TEXT NOT NULL DEFAULT '',
+    entry_updated_at TEXT NOT NULL,
+    first_ack    INTEGER NOT NULL DEFAULT 1,
+    acked_at     TEXT NOT NULL
+  );
+  CREATE INDEX idx_cl_ack_log_user ON changelog_ack_log(user_id, id);
+  `,
 ];

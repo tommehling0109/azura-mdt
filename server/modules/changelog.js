@@ -67,12 +67,27 @@ export default {
     r.post('/api/changelog/ack', { perm: 'changelog.view' }, (ctx) => {
       const upTo = ctx.body.upTo ? new Date(ctx.body.upTo) : null;
       if (!upTo || Number.isNaN(upTo.getTime())) throw bad('Stand der angezeigten Einträge fehlt.');
-      const t = now();
+      const t = now(), titles = [];
       let n = 0;
-      for (const e of all('SELECT e.id, e.updated_at FROM changelog_entries e LEFT JOIN changelog_ack a ON a.entry_id = e.id AND a.user_id = ? WHERE (a.user_id IS NULL OR a.acked_updated_at < e.updated_at) AND e.updated_at <= ?', ctx.user.id, upTo.toISOString())) {
-        run('INSERT INTO changelog_ack (user_id,entry_id,acked_updated_at,acked_at) VALUES (?,?,?,?) ON CONFLICT(user_id,entry_id) DO UPDATE SET acked_updated_at = excluded.acked_updated_at, acked_at = excluded.acked_at', ctx.user.id, e.id, e.updated_at, t); n++;
+      for (const e of all('SELECT e.id, e.title, e.version, e.updated_at, a.user_id seen FROM changelog_entries e LEFT JOIN changelog_ack a ON a.entry_id = e.id AND a.user_id = ? WHERE (a.user_id IS NULL OR a.acked_updated_at < e.updated_at) AND e.updated_at <= ?', ctx.user.id, upTo.toISOString())) {
+        run('INSERT INTO changelog_ack (user_id,entry_id,acked_updated_at,acked_at) VALUES (?,?,?,?) ON CONFLICT(user_id,entry_id) DO UPDATE SET acked_updated_at = excluded.acked_updated_at, acked_at = excluded.acked_at', ctx.user.id, e.id, e.updated_at, t);
+        run('INSERT INTO changelog_ack_log (user_id,entry_id,entry_title,entry_version,entry_updated_at,first_ack,acked_at) VALUES (?,?,?,?,?,?,?)', ctx.user.id, e.id, e.title, e.version, e.updated_at, e.seen ? 0 : 1, t);
+        titles.push(`${e.version ? e.version + ' · ' : ''}${e.title}${e.seen ? ' (geändert)' : ''}`); n++;
       }
+      if (n) audit(ctx, { action: 'changelog.acknowledged', module: 'changelog', targetType: 'changelog', targetLabel: `${n} Update${n === 1 ? '' : 's'} bestätigt`, after: { entries: titles } });
       return { acknowledged: n };
+    });
+
+    // Verwaltung: wann hat dieses Mitglied zuletzt Updates bestätigt, was liegt noch offen, Verlauf der Bestätigungen
+    r.get('/api/users/:id/changelog', { perm: 'users.view' }, (ctx) => {
+      const id = Number(ctx.params.id);
+      if (!get('SELECT 1 x FROM users WHERE id = ?', id)) throw notFound('Benutzer nicht gefunden.');
+      const open = all('SELECT e.id, e.title, e.version, a.user_id seen FROM changelog_entries e LEFT JOIN changelog_ack a ON a.entry_id = e.id AND a.user_id = ? WHERE a.user_id IS NULL OR a.acked_updated_at < e.updated_at ORDER BY e.released_at DESC, e.id DESC', id);
+      return {
+        lastAckAt: get('SELECT MAX(acked_at) t FROM changelog_ack_log WHERE user_id = ?', id)?.t ?? null,
+        open: open.map((e) => ({ id: e.id, title: e.title, version: e.version || null, changed: !!e.seen })),
+        history: all('SELECT * FROM changelog_ack_log WHERE user_id = ? ORDER BY id DESC LIMIT 200', id).map((h) => ({ id: h.id, title: h.entry_title, version: h.entry_version || null, entryUpdatedAt: h.entry_updated_at, changed: !h.first_ack, ackedAt: h.acked_at })),
+      };
     });
 
     r.post('/api/changelog', { perm: 'changelog.manage' }, (ctx) => {

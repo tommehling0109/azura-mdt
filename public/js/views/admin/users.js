@@ -2,7 +2,7 @@ import { h, mount, fmtDateTime, timeAgo, debounce } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import {
   button, busy, table, tabs, avatar, userAvatar, statusBadge, roleChip, memberNo, rankBadge, deptBadge, field, input, select, checkbox, formError,
-  openModal, confirmDialog, toast, skeletons, empty, note,
+  openModal, confirmDialog, toast, skeletons, empty, note, badge,
 } from '../../ui/kit.js';
 import { api } from '../../api.js';
 import { can, state } from '../../state.js';
@@ -176,13 +176,24 @@ export default async function render(container, ctx) {
         user.statusReason && [h('dt', null, 'Begründung'), h('dd', null, user.statusReason)]));
 
     const showPersonnel = !!user; // Tab immer sichtbar; ohne Recht erklärt er, welches Recht fehlt
-    const personnelBody = h('div');
-    const panes = { general, roles: roleBody, perms: permBody, eff: effBody, personnel: personnelBody };
+    const personnelBody = h('div'), changelogBody = h('div');
+    const panes = { general, roles: roleBody, perms: permBody, eff: effBody, personnel: personnelBody, changelog: changelogBody };
+    let changelogLoaded = false;
+    async function loadChangelog() {
+      mount(changelogBody, skeletons(2, 60));
+      let d; try { d = await api.get(`/api/users/${user.id}/changelog`); } catch (e) { mount(changelogBody, note(e.message, 'alert')); changelogLoaded = false; return; }
+      mount(changelogBody,
+        h('div', { class: 'row', style: { gap: '10px', marginBottom: '12px' } }, d.open.length ? badge(`${d.open.length} unbestätigt`, 'b-warn', false) : badge('Alles bestätigt', 'b-ok', false), h('span', { class: 'muted' }, d.lastAckAt ? `Zuletzt bestätigt: ${fmtDateTime(d.lastAckAt)}` : 'Noch nie ein Update bestätigt')),
+        d.open.length > 0 && h('div', { style: { marginBottom: '12px' } }, h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Noch nicht bestätigt'), d.open.map((e) => h('div', { class: 'list-row' }, h('div', { class: 'grow' }, e.version && h('span', { class: 'cl-ver' }, e.version), ' ', e.title), e.changed && badge('Geändert', 'b-warn', false)))),
+        h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Verlauf der Bestätigungen'),
+        d.history.length ? d.history.map((x) => h('div', { class: 'list-row' }, h('div', { class: 'dot-icon' }, icon('check')), h('div', { class: 'grow' }, h('div', { class: 't', style: { whiteSpace: 'normal' } }, x.version && h('span', { class: 'cl-ver' }, `${x.version} `), x.title), h('div', { class: 's' }, `Bestätigt am ${fmtDateTime(x.ackedAt)}`)), x.changed && badge('Geändert', 'b-info', false)))
+          : h('div', { class: 'muted' }, 'Noch keine Bestätigungen.'));
+    }
     const body = h('div');
     let personnelLoaded = false;
-    const show = (k) => { mount(body, panes[k]); if (k === 'personnel' && !personnelLoaded) { personnelLoaded = true; loadPersonnel(); } };
+    const show = (k) => { mount(body, panes[k]); if (k === 'personnel' && !personnelLoaded) { personnelLoaded = true; loadPersonnel(); } if (k === 'changelog' && !changelogLoaded) { changelogLoaded = true; loadChangelog(); } };
     show('general');
-    const tabBar = user ? tabs([{ id: 'general', label: 'Allgemein' }, { id: 'roles', label: 'Rollen' }, { id: 'perms', label: 'Direkte Rechte' }, { id: 'eff', label: 'Effektiv' }, showPersonnel && { id: 'personnel', label: 'Personalakte' }].filter(Boolean), 'general', show) : null;
+    const tabBar = user ? tabs([{ id: 'general', label: 'Allgemein' }, { id: 'roles', label: 'Rollen' }, { id: 'perms', label: 'Direkte Rechte' }, { id: 'eff', label: 'Effektiv' }, showPersonnel && { id: 'personnel', label: 'Personalakte' }, can('users.view') && { id: 'changelog', label: 'Changelog' }].filter(Boolean), 'general', show) : null;
     if (tabBar) tabBar.style.marginBottom = '16px';
 
     const footer = [];
