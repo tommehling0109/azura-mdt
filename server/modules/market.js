@@ -372,6 +372,11 @@ export default {
     for (const r of all('SELECT id FROM market_deals WHERE deal_number IS NULL ORDER BY id')) {
       tx(() => run('UPDATE market_deals SET deal_number = ? WHERE id = ?', allocateNumber('deal_number', 'market.deal_prefix', 'market.deal_start'), r.id));
     }
+    // Einmalig: bestehende Rollen dürfen als Mitglied in der Börse handeln (greift erst, wenn der Admin „Mitglieder dürfen wie Partner handeln“ einschaltet)
+    if (!get("SELECT 1 x FROM sequences WHERE name = 'market_trade_granted'")) {
+      run("INSERT INTO sequences (name,next_value) VALUES ('market_trade_granted',1)");
+      if (get("SELECT 1 x FROM permissions WHERE key = 'market.trade'")) run("INSERT OR IGNORE INTO role_permissions (role_id,permission_key) SELECT id, 'market.trade' FROM roles");
+    }
   },
   routes(r) {
     // ══ Mitarbeiter-Seite ══
