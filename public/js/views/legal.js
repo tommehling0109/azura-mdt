@@ -6,7 +6,7 @@ import { api } from '../api.js';
 export default async function render(container, ctx) {
   let data = await api.get('/api/legal');
   const TABS = [{ id: 'laws', label: 'Gesetzessammlung' }, { id: 'fines', label: 'Bußgeldrechner' }, { id: 'cases', label: 'Rechtsfälle' }];
-  let tab = 'laws', docId = null;
+  let tab = 'laws', docId = null, casesApi = null;
   const tabHost = h('div', { style: { marginBottom: '12px' } }), host = h('div', { class: 'legal-host' });
   mount(container, tabHost, host);
 
@@ -39,12 +39,16 @@ export default async function render(container, ctx) {
 
   function show(t) {
     tab = t; mount(tabHost, tabs(TABS, tab, show));
+    if (t !== 'cases') delete host.dataset.lc; // Rechtsfälle schreiben nur, solange ihr Reiter offen ist
     if (t === 'laws') laws();
-    else {
+    else if (t === 'cases' && data.canCases) {
+      mount(host, h('div', { class: 'muted' }, 'Lade …'));
+      import('./legal-cases.js').then(async (mod) => { if (tab !== 'cases') return; try { casesApi = await mod.default(host, ctx, { setActions: (a) => ctx.setActions(a) }); } catch (e) { mount(host, empty('Fehler beim Laden', e.message, 'alert')); } });
+    } else {
       drawActions();
       mount(host, t === 'fines'
         ? todo('Bußgeldrechner – to be done', 'Der Bußgeldrechner ist noch in Arbeit und folgt in einem späteren Update.')
-        : todo('Rechtsfälle / Aktensystem – to be done', 'Das Aktensystem für Rechtsfälle ist noch in Planung und folgt in einem späteren Update.'));
+        : todo('Rechtsfälle', 'Für das Aktensystem fehlt dir das Recht „legal.cases.view“.'));
     }
   }
 
@@ -77,5 +81,6 @@ export default async function render(container, ctx) {
     const m = openModal({ title: 'Dokumente verwalten', body: h('div', null, note('Hier hinterlegte Google-Dokumente werden live im MDT angezeigt.'), list), footer: [button('Dokument hinzufügen', { icon: 'plus', onClick: () => edit(null) }), h('span', { class: 'grow' }), button('Schließen', { onClick: () => m.close() })] });
   }
 
+  ctx.live?.(['legal', 'contacts'], () => { if (tab === 'cases') casesApi?.refresh(); });
   show('laws');
 }

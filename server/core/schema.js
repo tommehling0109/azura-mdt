@@ -835,4 +835,114 @@ export const SCHEMA_MIGRATIONS = [
   INSERT INTO market_items (name, description, unit, is_active, is_other, partner_access, created_at, updated_at)
     VALUES ('Sonstiges', 'Platzhalter fuer Artikel, die noch nicht angelegt sind (Freitext des Partners)', 'Stück', 1, 1, 'none', datetime('now'), datetime('now'));
   `,
+  // 26: Rechtsfaelle (Aktensystem der Legal-App)
+  `
+  CREATE TABLE legal_cases (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_number          TEXT NOT NULL UNIQUE,
+    title                TEXT NOT NULL,
+    status_id            INTEGER REFERENCES lookups(id) ON DELETE SET NULL,
+    area_id              INTEGER REFERENCES lookups(id) ON DELETE SET NULL,
+    measure_id           INTEGER REFERENCES lookups(id) ON DELETE SET NULL,
+    priority             TEXT NOT NULL DEFAULT 'normal',
+    court                TEXT NOT NULL DEFAULT '',
+    summary              TEXT NOT NULL DEFAULT '',
+    facts                TEXT NOT NULL DEFAULT '',
+    charges              TEXT NOT NULL DEFAULT '',
+    exposure_fine_cents  INTEGER NOT NULL DEFAULT 0,
+    exposure_jail_days   INTEGER NOT NULL DEFAULT 0,
+    exposure_damage_cents INTEGER NOT NULL DEFAULT 0,
+    exposure_note        TEXT NOT NULL DEFAULT '',
+    strategy             TEXT NOT NULL DEFAULT '',
+    tags                 TEXT NOT NULL DEFAULT '',
+    power_of_attorney    INTEGER NOT NULL DEFAULT 0,
+    confidential         INTEGER NOT NULL DEFAULT 0,
+    billing_mode         TEXT NOT NULL DEFAULT 'billable',
+    lead_user_id         INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    opened_at            TEXT NOT NULL,
+    closed_at            TEXT,
+    created_by           INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at           TEXT NOT NULL,
+    updated_at           TEXT NOT NULL
+  );
+  CREATE INDEX idx_legal_cases_updated ON legal_cases(updated_at);
+  CREATE TABLE legal_case_team (
+    case_id INTEGER NOT NULL REFERENCES legal_cases(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (case_id, user_id)
+  );
+  CREATE TABLE legal_case_parties (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id    INTEGER NOT NULL REFERENCES legal_cases(id) ON DELETE CASCADE,
+    side       TEXT NOT NULL,
+    kind       TEXT NOT NULL,
+    ref_id     INTEGER NOT NULL,
+    role       TEXT NOT NULL DEFAULT '',
+    note       TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_legal_parties_case ON legal_case_parties(case_id);
+  CREATE INDEX idx_legal_parties_ref ON legal_case_parties(kind, ref_id);
+  CREATE TABLE legal_case_evidence (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id     INTEGER NOT NULL REFERENCES legal_cases(id) ON DELETE CASCADE,
+    side        TEXT NOT NULL DEFAULT 'for',
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at  TEXT NOT NULL
+  );
+  CREATE TABLE legal_case_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id     INTEGER NOT NULL REFERENCES legal_cases(id) ON DELETE CASCADE,
+    occurred_at TEXT NOT NULL,
+    kind        TEXT NOT NULL DEFAULT 'note',
+    text        TEXT NOT NULL,
+    created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at  TEXT NOT NULL
+  );
+  CREATE INDEX idx_legal_events_case ON legal_case_events(case_id, occurred_at);
+  CREATE TABLE legal_case_appointments (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id    INTEGER NOT NULL REFERENCES legal_cases(id) ON DELETE CASCADE,
+    title      TEXT NOT NULL,
+    kind       TEXT NOT NULL DEFAULT 'other',
+    starts_at  TEXT NOT NULL,
+    location   TEXT NOT NULL DEFAULT '',
+    note       TEXT NOT NULL DEFAULT '',
+    done       INTEGER NOT NULL DEFAULT 0,
+    reminded   INTEGER NOT NULL DEFAULT 0,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_legal_appts ON legal_case_appointments(starts_at);
+  CREATE TABLE legal_case_costs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id      INTEGER NOT NULL REFERENCES legal_cases(id) ON DELETE CASCADE,
+    kind         TEXT NOT NULL DEFAULT 'fee',
+    description  TEXT NOT NULL,
+    amount_cents INTEGER NOT NULL DEFAULT 0,
+    status       TEXT NOT NULL DEFAULT 'open',
+    billed_at    TEXT,
+    created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at   TEXT NOT NULL
+  );
+  CREATE TABLE legal_case_docs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id     INTEGER NOT NULL REFERENCES legal_cases(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    kind        TEXT NOT NULL CHECK (kind IN ('link','file')),
+    url         TEXT,
+    ext         TEXT,
+    size        INTEGER NOT NULL DEFAULT 0,
+    created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at  TEXT NOT NULL
+  );
+  CREATE TABLE legal_case_links (
+    case_id    INTEGER NOT NULL REFERENCES legal_cases(id) ON DELETE CASCADE,
+    related_id INTEGER NOT NULL REFERENCES legal_cases(id) ON DELETE CASCADE,
+    PRIMARY KEY (case_id, related_id)
+  );
+  `,
 ];

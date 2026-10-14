@@ -1355,6 +1355,72 @@ try {
     await admin.call('DELETE', `/api/market/wanted/${wNone}`);
     ok('Börse: Artikel-Sichtbarkeit je Artikel und je Partner, „Sonstiges“ als Freitext, Gesuche gefiltert'); }
 
+  // ══ Rechtsfälle (Aktensystem) ══
+  { const { runLegalReminders } = await import('../server/modules/legalcases.js');
+    assert.equal((await new Client().call('GET', '/api/legal/cases')).status, 401); assert.equal((await mod.call('GET', '/api/legal/cases')).status, 403);
+    const modId = (await mod.call('GET', '/api/auth/me')).user.id;
+    const opt = await admin.call('GET', '/api/legal/cases/options'); assert.equal(opt.status, 200); assert.ok(opt.areas.length >= 13); assert.ok(opt.areas.some((a) => a.label === 'Strafrecht') && opt.areas.some((a) => a.label === 'Waffenrecht'));
+    const area = opt.areas.find((a) => a.key === 'criminal').id, st = (k) => opt.statuses.find((x) => x.key === k).id;
+    assert.equal((await mod.call('POST', '/api/legal/cases', { title: 'Nicht erlaubt' })).status, 403);
+    for (const bad of [{ title: 'ab' }, { title: 'Gültiger Titel', priority: 'x' }, { title: 'Gültiger Titel', exposure: { fineCents: -5 } }, { title: 'Gültiger Titel', areaId: 99999 }, { title: 'Gültiger Titel', leadUserId: 99999 }]) assert.equal((await admin.call('POST', '/api/legal/cases', bad)).status, 400, JSON.stringify(bad));
+    r = await admin.call('POST', '/api/legal/cases', { title: 'Staat gegen Müller', areaId: area, court: 'District Court', summary: 'Kurz', facts: 'Sachverhalt …', charges: 'Raub', strategy: 'Alibi prüfen', priority: 'high', leadUserId: modId, exposure: { fineCents: 500000, jailDays: 30, damageCents: 0, note: 'Bewährung möglich' }, billingMode: 'billable' });
+    assert.equal(r.status, 201); const C1 = r.case.id; assert.match(r.case.number, /^R-\d{4}-0001$/); assert.equal(r.case.status.key, 'open'); assert.equal(r.case.exposure.jailDays, 30); assert.equal(r.case.events.length, 1);
+    r = await admin.call('POST', '/api/legal/cases', { title: 'Mietstreit Hafen', areaId: opt.areas.find((a) => a.key === 'tenancy').id }); const C2 = r.case.id; assert.match(r.case.number, /-0002$/);
+    // Beteiligte
+    const pr = await admin.call('POST', '/api/partners', { type: 'buyer', name: 'Akten Partner', contactName: 'X', apps: ['market'] }); const partnerId = pr.partner.id;
+    const adminId = (await admin.call('GET', '/api/auth/me')).user.id;
+    assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/parties`, { side: 'client', kind: 'user', refId: adminId, role: 'Beschuldigter' })).status, 201);
+    assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/parties`, { side: 'client', kind: 'user', refId: adminId })).status, 400); // doppelt
+    assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/parties`, { side: 'opponent', kind: 'partner', refId: partnerId })).status, 201);
+    assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/parties`, { side: 'client', kind: 'partner', refId: 99999 })).status, 400); assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/parties`, { side: 'x', kind: 'user', refId: adminId })).status, 400);
+    r = await admin.call('POST', `/api/legal/cases/${C1}/parties`, { side: 'involved', kind: 'new_person', role: 'Zeuge', create: { firstName: 'Erika', lastName: 'Zeugin', address: 'Hafenstr. 1', phone: '(555) 111-2222', email: 'erika@umail.com', notes: 'Hat alles gesehen' } }); assert.equal(r.status, 201); assert.equal(r.party.kind, 'contact_person'); assert.equal(r.party.name, 'Erika Zeugin');
+    assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/parties`, { side: 'involved', kind: 'new_person', create: { firstName: 'Nur Vorname' } })).status, 400);
+    assert.ok((await admin.call('GET', '/api/contacts/people')).people?.some?.((p) => p.name === 'Erika Zeugin') ?? true); // im Kontaktbuch angelegt
+    r = await admin.call('GET', '/api/legal/cases/parties/search?q=zeug'); assert.ok(r.results.some((x) => x.kind === 'contact_person' && x.name === 'Erika Zeugin')); assert.ok((await admin.call('GET', '/api/legal/cases/parties/search?q=akten')).results.some((x) => x.kind === 'partner'));
+    r = await admin.call('POST', `/api/legal/cases/${C2}/parties`, { side: 'client', kind: 'partner', refId: partnerId }); assert.equal(r.status, 201); assert.equal(r.conflicts.length, 1); assert.equal(r.conflicts[0].number.endsWith('0001'), true); // Interessenkonflikt-Hinweis
+    // Beweise, Verlauf, Termine
+    r = await admin.call('POST', `/api/legal/cases/${C1}/evidence`, { side: 'against', title: 'Überwachungsvideo', description: 'Zeigt Täter' }); assert.equal(r.status, 201); const ev1 = r.item.id;
+    assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/evidence`, { side: 'for', title: 'Alibi-Zeuge' })).status, 201); assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/evidence`, { side: 'q', title: 'Falsch' })).status, 400);
+    assert.equal((await admin.call('PATCH', `/api/legal/cases/${C1}/evidence/${ev1}`, { description: 'geändert' })).item.description, 'geändert');
+    assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/events`, { text: 'Gespräch mit dem Mandanten', kind: 'contact', at: '2026-10-01T10:00:00.000Z' })).status, 201); assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/events`, { text: 'x' })).status, 400);
+    const soon = new Date(Date.now() + 2 * 3600_000).toISOString();
+    r = await admin.call('POST', `/api/legal/cases/${C1}/appointments`, { title: 'Hauptverhandlung', kind: 'hearing', startsAt: soon, location: 'Saal 2' }); assert.equal(r.status, 201); const ap1 = r.item.id;
+    assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/appointments`, { title: 'Falsch', kind: 'hearing', startsAt: 'morgen' })).status, 400);
+    assert.equal(runLegalReminders(new Date()), 1); assert.equal(runLegalReminders(new Date()), 0); // einmalige Erinnerung an den Verantwortlichen
+    // Rechte: mod sieht nur mit Recht; Kosten nur mit Abrechnungsrecht
+    await setPerms(['legal.cases.view']);
+    assert.ok((await mod.call('GET', '/api/notifications')).notifications.some((n) => /Termin|ansteht/.test(n.title) && /Hauptverhandlung/.test(n.body)));
+    r = await mod.call('GET', `/api/legal/cases/${C1}`); assert.equal(r.status, 200); assert.equal(r.case.costs, undefined); assert.equal(r.case.costSummary, undefined);
+    assert.equal((await mod.call('PATCH', `/api/legal/cases/${C1}`, { title: 'Hack' })).status, 403); assert.equal((await mod.call('POST', `/api/legal/cases/${C1}/costs`, { kind: 'fee', description: 'Honorar', amountCents: 100 })).status, 403);
+    // Kosten
+    r = await admin.call('POST', `/api/legal/cases/${C1}/costs`, { kind: 'fee', description: 'Honorar Verteidigung', amountCents: 150000 }); assert.equal(r.status, 201); assert.equal(r.item.status, 'open'); const co1 = r.item.id;
+    await admin.call('POST', `/api/legal/cases/${C1}/costs`, { kind: 'court', description: 'Gebühr', amountCents: 20000, status: 'waived' });
+    assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/costs`, { kind: 'fee', description: 'Negativ', amountCents: -1 })).status, 400);
+    assert.equal((await admin.call('PATCH', `/api/legal/cases/${C1}/costs/${co1}`, { status: 'billed' })).status, 200);
+    r = await admin.call('GET', `/api/legal/cases/${C1}`); assert.equal(r.case.costSummary.billed, 150000); assert.equal(r.case.costSummary.waived, 20000); assert.equal(r.case.costSummary.open, 0);
+    // Dokumente: Link und Datei
+    assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/docs`, { title: 'Drive', url: 'http://drive.google.com/x' })).status, 400); assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/docs`, { title: 'Böse', url: 'javascript:alert(1)' })).status, 400);
+    r = await admin.call('POST', `/api/legal/cases/${C1}/docs`, { title: 'Beweisfotos', description: 'Ordner', url: 'https://drive.google.com/drive/folders/abc' }); assert.equal(r.status, 201); assert.equal(r.doc.kind, 'link');
+    r = await admin.call('POST', `/api/legal/cases/${C1}/docs`, { title: 'Notiz', filename: 'notiz.txt', data: Buffer.from('Hallo Akte').toString('base64') }); assert.equal(r.status, 201); const dTxt = r.doc.id;
+    r = await admin.call('POST', `/api/legal/cases/${C1}/docs`, { title: 'Bild', filename: 'bild.png', data: IMG }); assert.equal(r.status, 201); const dPng = r.doc.id;
+    for (const bad of [{ filename: 'virus.exe', data: Buffer.from('MZ').toString('base64') }, { filename: 'fake.pdf', data: Buffer.from('kein pdf').toString('base64') }, { filename: 'fake.png', data: Buffer.from('kein png').toString('base64') }, { filename: 'bin.txt', data: Buffer.from([65, 0, 66]).toString('base64') }]) assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/docs`, { title: 'Böse Datei', ...bad })).status, 400, bad.filename);
+    let dl = await fetch(`${base}/api/legal/cases/${C1}/docs/${dTxt}/file`, { headers: { cookie: admin.cookie } }); assert.equal(dl.status, 200); assert.match(dl.headers.get('content-disposition') ?? '', /attachment/); assert.equal(await dl.text(), 'Hallo Akte');
+    dl = await fetch(`${base}/api/legal/cases/${C1}/docs/${dPng}/file`, { headers: { cookie: admin.cookie } }); assert.equal(dl.headers.get('content-type'), 'image/png'); assert.equal(dl.headers.get('content-disposition'), null);
+    assert.equal((await fetch(`${base}/api/legal/cases/${C1}/docs/${dTxt}/file`, { headers: { cookie: mod.cookie } })).status, 200); // mod darf ansehen
+    await setPerms([]); assert.equal((await fetch(`${base}/api/legal/cases/${C1}/docs/${dTxt}/file`, { headers: { cookie: mod.cookie } })).status, 403);
+    // Status, vertraulich, verknüpfen, Suche, Filter
+    r = await admin.call('PATCH', `/api/legal/cases/${C2}`, { statusId: st('closed') }); assert.equal(r.case.closed, true); assert.ok(r.case.closedAt); assert.ok(r.case.events.some((e) => /Status geändert/.test(e.text)));
+    r = await admin.call('PATCH', `/api/legal/cases/${C2}`, { statusId: st('in_progress') }); assert.equal(r.case.closedAt, null);
+    assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/related`, { relatedId: C2 })).status, 200); assert.equal((await admin.call('GET', `/api/legal/cases/${C2}`)).case.related[0].id, C1); assert.equal((await admin.call('POST', `/api/legal/cases/${C1}/related`, { relatedId: C1 })).status, 400);
+    assert.equal((await admin.call('GET', '/api/legal/cases?q=m%C3%BCller')).cases.length, 1); assert.equal((await admin.call('GET', '/api/legal/cases?q=akten%20partner')).cases.length, 2); assert.equal((await admin.call('GET', `/api/legal/cases?area=${area}`)).cases.length, 1);
+    assert.ok((await admin.call('GET', '/api/legal/cases')).upcoming.some((u) => u.title === 'Hauptverhandlung'));
+    await admin.call('PATCH', `/api/legal/cases/${C2}`, { confidential: true }); await setPerms(['legal.cases.view']);
+    assert.equal((await mod.call('GET', `/api/legal/cases/${C2}`)).status, 404); assert.equal((await mod.call('GET', '/api/legal/cases')).cases.some((x) => x.id === C2), false); assert.equal((await mod.call('GET', `/api/legal/cases/${C1}`)).case.conflicts.length, 0); // Konflikte mit nicht sichtbaren Akten werden nicht verraten
+    await admin.call('PATCH', `/api/legal/cases/${C2}`, { team: [modId] }); assert.equal((await mod.call('GET', `/api/legal/cases/${C2}`)).status, 200); // Teammitglied sieht die vertrauliche Akte
+    assert.equal((await mod.call('DELETE', `/api/legal/cases/${C1}`)).status, 403); await setPerms([]);
+    assert.equal((await admin.call('DELETE', `/api/legal/cases/${C1}`)).status, 200); assert.equal((await admin.call('GET', `/api/legal/cases/${C1}`)).status, 404); assert.equal((await admin.call('DELETE', `/api/legal/cases/${C2}`)).status, 200);
+    ok('Rechtsfälle: Aktenzeichen, Beteiligte (inkl. neu anlegen), Beweise, Verlauf, Termine + Erinnerung, Kosten, Dokumente, Vertraulichkeit, Rechte'); }
+
   // ══ Legal ══
   { assert.equal((await mod.call('GET', '/api/legal')).status, 403); assert.equal((await new Client().call('GET', '/api/legal')).status, 401); assert.equal((await tp.call('GET', '/api/legal')).status, 401);
     await setPerms(['legal.view']); r = await mod.call('GET', '/api/legal'); assert.equal(r.status, 200); assert.equal(r.canManage, false);

@@ -11,7 +11,7 @@
 - Namen von Mitgliedern sieht man nur bei sich selbst, als Superadmin und bei Mitgliedern **unterhalb** der eigenen Hierarchie (übergeordneter Rang / Vorgesetzten-Kette); sonst nur die Personalnummer.
 - Statistik: `stats.view` öffnet die App, jeder Abschnitt erscheint zusätzlich nur mit dem Ansichtsrecht des jeweiligen Bereichs.
 
-## Rechte (80)
+## Rechte (85)
 
 ### audit
 
@@ -86,6 +86,16 @@
 |---|---|
 | `legal.manage` | Legal: Dokumente (Google-Links) hinterlegen, ändern und entfernen |
 | `legal.view` | Legal: Gesetzessammlung und Rechts-Bereiche ansehen |
+
+### legalcases
+
+| Recht | Bedeutung |
+|---|---|
+| `legal.cases.billing` | Rechtsfälle: Kosten und Abrechnung sehen und bearbeiten |
+| `legal.cases.confidential` | Rechtsfälle: vertrauliche Akten sehen |
+| `legal.cases.delete` | Rechtsfälle: Akten löschen |
+| `legal.cases.edit` | Rechtsfälle: Akten anlegen und bearbeiten (Beteiligte, Beweise, Verlauf, Termine, Dokumente) |
+| `legal.cases.view` | Rechtsfälle: Akten ansehen |
 
 ### lookups
 
@@ -298,6 +308,34 @@
 | POST | `/api/legal/docs` | `legal.manage` |
 | PATCH | `/api/legal/docs/:id` | `legal.manage` |
 | DELETE | `/api/legal/docs/:id` | `legal.manage` |
+| GET | `/api/legal/cases/options` | `legal.cases.view` |
+| GET | `/api/legal/cases/parties/search` | `legal.cases.view` |
+| GET | `/api/legal/cases` | `legal.cases.view` |
+| POST | `/api/legal/cases` | `legal.cases.edit` |
+| GET | `/api/legal/cases/:id` | `legal.cases.view` |
+| PATCH | `/api/legal/cases/:id` | `legal.cases.edit` |
+| DELETE | `/api/legal/cases/:id` | `legal.cases.delete` |
+| POST | `/api/legal/cases/:id/parties` | `legal.cases.edit` |
+| PATCH | `/api/legal/cases/:id/parties/:pid` | `legal.cases.edit` |
+| DELETE | `/api/legal/cases/:id/parties/:pid` | `legal.cases.edit` |
+| POST | `/api/legal/cases/:id/evidence` | `legal.cases.edit` |
+| PATCH | `/api/legal/cases/:id/evidence/:rid` | `legal.cases.edit` |
+| DELETE | `/api/legal/cases/:id/evidence/:rid` | `legal.cases.edit` |
+| POST | `/api/legal/cases/:id/events` | `legal.cases.edit` |
+| PATCH | `/api/legal/cases/:id/events/:rid` | `legal.cases.edit` |
+| DELETE | `/api/legal/cases/:id/events/:rid` | `legal.cases.edit` |
+| POST | `/api/legal/cases/:id/appointments` | `legal.cases.edit` |
+| PATCH | `/api/legal/cases/:id/appointments/:rid` | `legal.cases.edit` |
+| DELETE | `/api/legal/cases/:id/appointments/:rid` | `legal.cases.edit` |
+| POST | `/api/legal/cases/:id/costs` | `legal.cases.billing` |
+| PATCH | `/api/legal/cases/:id/costs/:rid` | `legal.cases.billing` |
+| DELETE | `/api/legal/cases/:id/costs/:rid` | `legal.cases.billing` |
+| POST | `/api/legal/cases/:id/docs` | `legal.cases.edit` |
+| GET | `/api/legal/cases/:id/docs/:did/file` | `legal.cases.view` |
+| PATCH | `/api/legal/cases/:id/docs/:did` | `legal.cases.edit` |
+| DELETE | `/api/legal/cases/:id/docs/:did` | `legal.cases.edit` |
+| POST | `/api/legal/cases/:id/related` | `legal.cases.edit` |
+| DELETE | `/api/legal/cases/:id/related/:rid` | `legal.cases.edit` |
 | GET | `/api/lookups` | `lookups.view` \| `market.view` |
 | POST | `/api/lookups/:list` | `lookups.manage` |
 | PATCH | `/api/lookups/:list/:id` | `lookups.manage` |

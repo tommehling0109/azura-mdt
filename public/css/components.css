@@ -579,3 +579,14 @@ tr.row-flash td { animation: row-flash 2.4s ease-out; } @keyframes row-flash { 0
 
 /* Legal: eingebettetes Google-Dokument */
 .legal-frame { width: 100%; height: calc(100vh - 260px); min-height: 420px; border: 1px solid var(--line); border-radius: 10px; background: #fff; display: block; }
+
+/* Rechtsfälle (Aktensystem) */
+.lc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; align-items: start; }
+.lc-text { white-space: pre-wrap; word-break: break-word; font-size: 13.5px; line-height: 1.5; }
+.lc-results { max-height: 240px; overflow-y: auto; margin-top: 6px; }
+.lc-tl { position: relative; padding-left: 6px; }
+.lc-tl-item { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.lc-tl-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); margin-top: 6px; flex: none; }
+.lc-tl-item.sys .lc-tl-dot { background: var(--text-3); }
+.lc-tl-item.sys .lc-text { color: var(--text-2); }
+.lc-grid .label svg { width: 15px; height: 15px; vertical-align: -3px; margin-right: 2px; }

@@ -45,14 +45,14 @@ const LEVELS = [
   ['chat.view', 'chat.send', 'map.view', 'vehicles.view', 'warehouse.view', 'market.view', 'org.view', 'board.view', 'changelog.view', 'legal.view'],
   ['warehouse.stock', 'vehicles.view_location', 'vehicles.edit', 'contacts.view'],
   ['map.edit', 'chat.pin'],
-  ['market.deals.manage', 'vehicles.create', 'warehouse.view_access', 'contacts.edit'],
+  ['market.deals.manage', 'vehicles.create', 'warehouse.view_access', 'contacts.edit', 'legal.cases.view'],
   ['market.wanted.manage', 'warehouse.items', 'partners.view'],
   ['users.view', 'tab.view', 'credit.view', 'stats.view'],
   ['users.approve', 'chat.moderate', 'market.catalog.manage', 'finance.view', 'vehicles.delete'],
   ['warehouse.manage', 'warehouse.prices', 'tab.statements', 'credit.manage', 'lookups.view'],
-  ['partners.manage', 'users.create', 'users.edit', 'credit.payments', 'chat.partners', 'chat.manage', 'tickets.manage', 'board.manage', 'contacts.delete', 'contacts.bank'],
+  ['partners.manage', 'users.create', 'users.edit', 'credit.payments', 'chat.partners', 'chat.manage', 'tickets.manage', 'board.manage', 'contacts.delete', 'contacts.bank', 'legal.cases.edit', 'legal.cases.billing'],
   ['partners.documents', 'tab.manage_companies', 'credit.limits', 'finance.manual', 'finance.export', 'audit.view', 'roles.view', 'lookups.manage'],
-  ['users.personnel_view', 'users.personnel_edit', 'users.avatar_edit', 'users.avatar_remove', 'audit.export', 'org.manage', 'admin.access', 'config.view', 'changelog.manage', 'contacts.secret', 'legal.manage'],
+  ['users.personnel_view', 'users.personnel_edit', 'users.avatar_edit', 'users.avatar_remove', 'audit.export', 'org.manage', 'admin.access', 'config.view', 'changelog.manage', 'contacts.secret', 'legal.manage', 'legal.cases.confidential', 'legal.cases.delete'],
   ['users.password_reset', 'roles.manage', 'system.backup', 'config.edit', 'market.delete', 'credit.delete', 'tab.delete', 'partners.delete', 'finance.delete', 'tickets.delete', 'users.delete'],
   [], // Stufe 13: Administrator-Rolle (alle Rechte)
 ];

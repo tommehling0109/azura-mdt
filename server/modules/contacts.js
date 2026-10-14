@@ -27,7 +27,7 @@ const CHANNEL_KINDS = { phone: 'Telefon', mobile: 'Handy', email: 'E-Mail', fax:
 
 // ── Sichtbarkeit: gesperrte Einträge sehen nur Rollen aus der Freigabe-Liste und wer „contacts.secret“ hat ──
 const roleIds = (user) => (user.roles ?? []).map((r) => r.id);
-const sees = (user, type, row) => {
+export const sees = (user, type, row) => {
   if (!row.restricted || user.perms.has('contacts.secret')) return true;
   const ids = roleIds(user); if (!ids.length) return false;
   return !!get(`SELECT 1 x FROM contact_access WHERE owner_type = ? AND owner_id = ? AND role_id IN (${ids.map(() => '?').join(',')})`, type, row.id, ...ids);

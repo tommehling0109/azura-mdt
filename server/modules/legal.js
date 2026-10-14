@@ -41,7 +41,7 @@ export default {
   },
   routes(r) {
     r.get('/api/legal', { perm: 'legal.view' }, (ctx) => ({
-      docs: all('SELECT * FROM legal_docs ORDER BY sort_order, id').map(dto), canManage: ctx.user.perms.has('legal.manage'),
+      docs: all('SELECT * FROM legal_docs ORDER BY sort_order, id').map(dto), canManage: ctx.user.perms.has('legal.manage'), canCases: ctx.user.perms.has('legal.cases.view'),
     }));
 
     const input = (b, partial) => {
