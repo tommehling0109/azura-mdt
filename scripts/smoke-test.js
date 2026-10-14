@@ -1285,6 +1285,22 @@ try {
     for (const id of [b2, b3]) await admin.call('DELETE', `/api/board/${id}`); await setPerms([]);
     assert.ok(JSON.stringify((await admin.call('GET', '/api/roles')).roles).includes('board.view'), 'Rang-Rollen dürfen das Brett sehen'); ok('Schwarzes Brett: nur Mitarbeiter, Rechte board.view/board.manage, Hervorhebung, Anpinnen, Entfernen, Benachrichtigung bei Dringend'); }
 
+  // ══ Lagerkosten-Erinnerung ══
+  { const { runRentReminders } = await import('../server/modules/warehouses.js');
+    const modId = (await mod.call('GET', '/api/auth/me')).user.id, tomorrow = new Date(Date.now() + 86400_000); tomorrow.setHours(12, 0, 0, 0);
+    r = await admin.call('POST', '/api/warehouses', { name: 'Miet-Lager', rent: { enabled: true, cents: 250000, weekday: (tomorrow.getDay() + 3) % 7, hour: 8, roleIds: [], userIds: [] } }); assert.equal(r.status, 201); const rw = r.warehouse.id;
+    assert.equal(r.warehouse.rent.cents, 250000); assert.equal(r.warehouse.rent.enabled, true);
+    for (const bad of [{ weekday: 7 }, { hour: 24 }, { cents: -5 }, { roleIds: [99999] }, { userIds: [99999] }]) assert.equal((await admin.call('PATCH', `/api/warehouses/${rw}`, { rent: bad })).status, 400, JSON.stringify(bad));
+    assert.equal(runRentReminders(tomorrow), 0); // falscher Wochentag
+    assert.equal((await admin.call('PATCH', `/api/warehouses/${rw}`, { rent: { weekday: tomorrow.getDay(), hour: 8, userIds: [modId] } })).status, 200);
+    const early = new Date(tomorrow); early.setHours(7, 0, 0, 0); assert.equal(runRentReminders(early), 0); // vor der Uhrzeit
+    assert.equal(runRentReminders(tomorrow), 1); assert.equal(runRentReminders(tomorrow), 0); // einmal pro Tag
+    r = await mod.call('GET', '/api/notifications'); const n = r.notifications.find((x) => x.title.includes('Lagerkosten fällig')); assert.ok(n, 'Benachrichtigung fehlt'); assert.ok(n.body.includes('2.500,00'));
+    const nextWeek = new Date(tomorrow.getTime() + 7 * 86400_000); assert.equal(runRentReminders(nextWeek), 1); // eine Woche später wieder
+    await admin.call('PATCH', `/api/warehouses/${rw}`, { rent: { enabled: false } }); assert.equal(runRentReminders(new Date(tomorrow.getTime() + 14 * 86400_000)), 0);
+    await admin.call('DELETE', `/api/warehouses/${rw}`);
+    ok('Lagerkosten-Erinnerung: Wochentag/Uhrzeit, Empfänger, einmal pro Woche, Prüfungen'); }
+
   // ══ Legal ══
   { assert.equal((await mod.call('GET', '/api/legal')).status, 403); assert.equal((await new Client().call('GET', '/api/legal')).status, 401); assert.equal((await tp.call('GET', '/api/legal')).status, 401);
     await setPerms(['legal.view']); r = await mod.call('GET', '/api/legal'); assert.equal(r.status, 200); assert.equal(r.canManage, false);

@@ -3,7 +3,9 @@ import { bad, conflict, forbidden, notFound, str } from '../core/http.js';
 import { audit } from '../core/audit.js';
 import { allocateNumber } from '../core/numbers.js';
 import { getConfig } from '../core/config.js';
-import { labelForUser } from '../core/identity.js';
+import { labelForUser, memberLabel } from '../core/identity.js';
+import { notify } from '../core/notifications.js';
+import { loadAccess } from '../core/permissions.js';
 import { registerLookup, lookupEntries, isActiveEntry } from '../core/lookups.js';
 import { bookStock, usedSpace, totalStock, quote, slotsFor } from '../core/stock.js';
 import { registerMapLayer, postalCoords } from './map.js';
@@ -71,6 +73,8 @@ function dto(w, level, user, { detail = false } = {}) {
     updatedAt: w.updated_at,
   };
   if (detail && level === 'manage') {
+    const rec = parseRecipients(w.rent_recipients);
+    out.rent = { enabled: !!w.rent_enabled, cents: w.rent_cents, weekday: w.rent_weekday, hour: w.rent_hour, roleIds: rec.roles, userIds: rec.users, lastNotified: w.rent_last_date };
     out.access = all('SELECT a.role_id, a.level, r.name role_name, r.color role_color FROM warehouse_access a JOIN roles r ON r.id = a.role_id WHERE a.warehouse_id = ? ORDER BY r.name', w.id)
       .map((a) => ({ roleId: a.role_id, roleName: a.role_name, color: a.role_color, level: a.level }));
   }
@@ -89,6 +93,52 @@ const itemRow = (i, user) => {
   };
 };
 const ITEM_SQL = 'SELECT i.*, l.label cat_label, l.color cat_color FROM market_items i LEFT JOIN lookups l ON l.id = i.category_id';
+
+/** Lagerkosten-Erinnerung: wöchentlich (Wochentag 0=Sonntag … 6=Samstag, volle Stunde) an Rollen und/oder einzelne Mitglieder. */
+const parseRecipients = (s) => { try { const r = JSON.parse(s); return { roles: Array.isArray(r.roles) ? r.roles : [], users: Array.isArray(r.users) ? r.users : [] }; } catch { return { roles: [], users: [] }; } };
+function rentFields(r) {
+  if (!r || typeof r !== 'object') throw bad('Ungültige Angaben zu den Lagerkosten.');
+  const out = {};
+  if (r.enabled !== undefined) out.rent_enabled = r.enabled ? 1 : 0;
+  if (r.cents !== undefined) out.rent_cents = nonNeg(r.cents, 'Lagerkosten', 1_000_000_000) ?? 0;
+  if (r.weekday !== undefined) { if (!Number.isInteger(r.weekday) || r.weekday < 0 || r.weekday > 6) throw bad('Ungültiger Wochentag.'); out.rent_weekday = r.weekday; }
+  if (r.hour !== undefined) { if (!Number.isInteger(r.hour) || r.hour < 0 || r.hour > 23) throw bad('Ungültige Uhrzeit (0–23).'); out.rent_hour = r.hour; }
+  if (r.roleIds !== undefined || r.userIds !== undefined) {
+    const roles = [...new Set(r.roleIds ?? [])], users = [...new Set(r.userIds ?? [])];
+    if (!roles.every((i) => Number.isInteger(i) && get('SELECT 1 x FROM roles WHERE id = ?', i))) throw bad('Unbekannte Rolle bei den Empfängern.');
+    if (!users.every((i) => Number.isInteger(i) && get("SELECT 1 x FROM users WHERE id = ? AND status = 'active'", i))) throw bad('Unbekanntes oder inaktives Mitglied bei den Empfängern.');
+    out.rent_recipients = JSON.stringify({ roles, users });
+  }
+  return out;
+}
+/** Empfänger der Erinnerung: gewählte Rollen und Mitglieder; ohne Auswahl alle mit dem Recht „Lager verwalten“. */
+function rentRecipients(w) {
+  const rec = parseRecipients(w.rent_recipients), ids = new Set(rec.users);
+  for (const rid of rec.roles) for (const u of all('SELECT user_id FROM user_roles WHERE role_id = ?', rid)) ids.add(u.user_id);
+  let list = all("SELECT id FROM users WHERE status = 'active'").map((u) => u.id).filter((id) => ids.has(id));
+  if (!rec.roles.length && !rec.users.length) list = all("SELECT id FROM users WHERE status = 'active'").map((u) => u.id).filter((id) => { const a = loadAccess(id); return a.isAdmin || a.perms.has('warehouse.manage'); });
+  return list.map((id) => ({ type: 'user', id }));
+}
+const localDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const WEEKDAYS = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+/** Sendet fällige Erinnerungen (einmal pro Woche am eingestellten Wochentag ab der eingestellten Uhrzeit). */
+export function runRentReminders(at = new Date()) {
+  const today = localDay(at);
+  let sent = 0;
+  for (const w of all('SELECT * FROM warehouses WHERE is_active = 1 AND rent_enabled = 1')) {
+    if (w.rent_last_date === today || at.getDay() !== w.rent_weekday || at.getHours() < w.rent_hour) continue;
+    run('UPDATE warehouses SET rent_last_date = ? WHERE id = ?', today, w.id);
+    const cur = getConfig('market.currency') ?? '$', amount = w.rent_cents > 0 ? ` Fällig: ${(w.rent_cents / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur}.` : '';
+    sent += notify(rentRecipients(w), { key: `warehouse:${w.id}:rent:${today}`, title: `${w.warehouse_number} · Lagerkosten fällig`, body: `${w.name}: Die wöchentlichen Lagerkosten sind zu bezahlen.${amount}`, target: { app: 'warehouse' } });
+  }
+  return sent;
+}
+
+/** Nach dem Speichern der Erinnerung: liegt der eingestellte Zeitpunkt heute schon hinter uns, wird heute nicht mehr nachträglich erinnert. */
+function armRent(id) {
+  const w = get('SELECT * FROM warehouses WHERE id = ?', id), at = new Date();
+  if (w?.rent_enabled && at.getDay() === w.rent_weekday && at.getHours() >= w.rent_hour) run('UPDATE warehouses SET rent_last_date = ? WHERE id = ?', localDay(at), id);
+}
 
 function whFields(b, partial) {
   const out = {};
@@ -119,6 +169,7 @@ function whFields(b, partial) {
   if (b.notes !== undefined) out.notes = str(b.notes, 'Notizen', { max: 1000, required: false });
   if (b.restricted !== undefined) out.restricted = b.restricted ? 1 : 0;
   if (b.isActive !== undefined) out.is_active = b.isActive ? 1 : 0;
+  if (b.rent !== undefined) Object.assign(out, rentFields(b.rent));
   if (b.departmentId !== undefined) {
     const d = b.departmentId == null || b.departmentId === '' ? null : b.departmentId;
     if (d != null && !get('SELECT 1 x FROM departments WHERE id = ?', d)) throw bad('Unbekannte Abteilung.');
@@ -181,6 +232,8 @@ export default {
     },
   ],
   init() {
+    setTimeout(() => { try { runRentReminders(); } catch { /* DB evtl. schon geschlossen */ } }, 8000).unref();
+    setInterval(() => { try { runRentReminders(); } catch { /* egal */ } }, 5 * 60_000).unref();
     for (const r of all('SELECT id FROM warehouses WHERE warehouse_number IS NULL ORDER BY id')) {
       tx(() => run('UPDATE warehouses SET warehouse_number = ? WHERE id = ?', allocateNumber('warehouse_number', 'warehouse.number_prefix', 'warehouse.number_start'), r.id));
     }
@@ -191,6 +244,8 @@ export default {
       categories: lookupEntries('market.item_category', { onlyActive: true }),
       departments: all('SELECT id, name, color FROM departments ORDER BY sort_order, name'),
       roles: ctx.user.perms.has('warehouse.manage') ? all('SELECT id, name, color FROM roles ORDER BY name') : [],
+      members: ctx.user.perms.has('warehouse.manage') ? all("SELECT id, member_number, status FROM users WHERE status = 'active' ORDER BY member_number, id").map((u) => ({ id: u.id, label: memberLabel(u) })) : [],
+      weekdays: WEEKDAYS,
       items: all('SELECT id, name, unit, space, stack_size stackSize FROM market_items WHERE is_active = 1 ORDER BY name'),
       canManage: ctx.user.perms.has('warehouse.manage'), canItems: ctx.user.perms.has('warehouse.items'), canPrices: ctx.user.perms.has('warehouse.prices'),
       currency: getConfig('market.currency') ?? '$',
@@ -225,6 +280,7 @@ export default {
         const cols = { warehouse_number: allocateNumber('warehouse_number', 'warehouse.number_prefix', 'warehouse.number_start'), ...f, created_by: ctx.user.id, created_at: t, updated_at: t };
         const res = run(`INSERT INTO warehouses (${Object.keys(cols).join(',')}) VALUES (${Object.keys(cols).map(() => '?').join(',')})`, ...Object.values(cols));
         if (ctx.body.access !== undefined) setAccess(Number(res.lastInsertRowid), ctx.body.access);
+        if (ctx.body.rent !== undefined) armRent(Number(res.lastInsertRowid));
         return Number(res.lastInsertRowid);
       });
       const w = get(`${SQL} WHERE w.id = ?`, id);
@@ -244,6 +300,7 @@ export default {
         const cols = Object.keys(f);
         if (cols.length) run(`UPDATE warehouses SET ${cols.map((c) => `${c} = ?`).join(', ')}, updated_at = ? WHERE id = ?`, ...cols.map((c) => f[c]), now(), id);
         if (ctx.body.access !== undefined) setAccess(id, ctx.body.access);
+        if (ctx.body.rent !== undefined) armRent(id);
       });
       const w = get(`${SQL} WHERE w.id = ?`, id);
       audit(ctx, { action: 'warehouse.updated', module: 'warehouse', targetType: 'warehouse', targetId: id, targetLabel: `${w.warehouse_number} · ${w.name}`, before: { name: cur.name, capacity: cur.capacity, restricted: cur.restricted }, after: { name: w.name, capacity: w.capacity, restricted: w.restricted } });

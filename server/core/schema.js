@@ -791,4 +791,13 @@ export const SCHEMA_MIGRATIONS = [
     updated_at TEXT NOT NULL
   );
   `,
+  // 23: Lagerkosten – woechentliche Erinnerung (wann, an wen, wie teuer)
+  `
+  ALTER TABLE warehouses ADD COLUMN rent_enabled INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE warehouses ADD COLUMN rent_cents INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE warehouses ADD COLUMN rent_weekday INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE warehouses ADD COLUMN rent_hour INTEGER NOT NULL DEFAULT 18;
+  ALTER TABLE warehouses ADD COLUMN rent_recipients TEXT NOT NULL DEFAULT '{"roles":[],"users":[]}';
+  ALTER TABLE warehouses ADD COLUMN rent_last_date TEXT;
+  `,
 ];

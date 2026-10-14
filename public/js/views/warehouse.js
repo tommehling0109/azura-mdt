@@ -106,6 +106,8 @@ export default async function render(container, ctx) {
         h('div', { class: 'grow' }, h('div', { class: 't', style: { whiteSpace: 'normal' } }, `${KIND[e.kind] ?? e.kind}: ${e.delta > 0 ? '+' : ''}${nf(e.delta)} ${e.unit ?? ''} ${e.item ?? ''}`, ` → ${nf(e.after)} im Lager`), h('div', { class: 's' }, `${e.actor} · ${fmtDateTime(e.createdAt)}${e.note ? ' · ' + e.note : ''}`)))) : empty('Noch keine Bewegungen', null, 'activity'));
 
       const acc = h('div', null,
+        w.rent?.enabled && note(`Lagerkosten-Erinnerung: jeden ${opts.weekdays?.[w.rent.weekday] ?? ''} ab ${String(w.rent.hour).padStart(2, '0')}:00 Uhr${w.rent.cents ? ` · ${(w.rent.cents / 100).toLocaleString('de-DE', { minimumFractionDigits: 2 })} ${opts.currency}` : ''}`, 'clock'),
+        w.rent?.enabled && h('div', { style: { height: '12px' } }),
         note(w.restricted ? 'Dieses Lager ist beschränkt: Nur die unten genannten Rollen (und Administratoren) sehen es.' : 'Dieses Lager ist offen: Alle Mitglieder mit dem Recht „Lager ansehen“ sehen es. Rollen können zusätzlich Verwaltungsrechte bekommen.', 'shield'),
         h('div', { style: { height: '12px' } }),
         w.access ? (w.access.length ? w.access.map((a) => h('div', { class: 'list-row' }, h('span', { class: 'dot', style: { width: '10px', height: '10px', borderRadius: '50%', background: a.color, flex: 'none' } }), h('div', { class: 'grow' }, h('div', { class: 't' }, a.roleName)), h('span', { class: `badge no-dot ${a.level === 'manage' ? 'b-ok' : 'b-info'}` }, a.level === 'manage' ? 'Verwalten (ein-/auslagern)' : 'Ansehen'))) : h('div', { class: 'muted' }, 'Keine rollenspezifischen Zugriffe festgelegt.'))
@@ -190,6 +192,19 @@ export default async function render(container, ctx) {
       return h('div', { class: 'list-row' }, h('span', { class: 'dot', style: { width: '10px', height: '10px', borderRadius: '50%', background: r.color, flex: 'none' } }), h('div', { class: 'grow' }, r.name), s);
     }));
     drawRoles();
+    // Lagerkosten-Erinnerung (wöchentlich)
+    const rent = w?.rent ?? { enabled: false, cents: 0, weekday: 1, hour: 18, roleIds: [], userIds: [] };
+    const rentOn = h('input', { type: 'checkbox', checked: rent.enabled });
+    const rentAmount = input({ type: 'number', min: 0, step: '0.01', value: rent.cents ? (rent.cents / 100).toFixed(2) : '', placeholder: 'z. B. 2500' });
+    const rentDay = select((opts.weekdays ?? []).map((n, i) => ({ value: i, label: n })), rent.weekday);
+    const rentHour = select(Array.from({ length: 24 }, (_, i) => ({ value: i, label: `${String(i).padStart(2, '0')}:00 Uhr` })), rent.hour);
+    const recRoles = new Set(rent.roleIds), recUsers = new Set(rent.userIds);
+    const recBox = h('div', { class: 'ct-roles' });
+    const drawRec = () => mount(recBox, [
+      ...opts.roles.map((r) => { const c = h('input', { type: 'checkbox', checked: recRoles.has(r.id) }); c.addEventListener('change', () => (c.checked ? recRoles.add(r.id) : recRoles.delete(r.id))); return h('label', { class: 'check', style: { padding: '2px 0' } }, c, h('span', { class: 'check-text' }, h('span', { class: 'dot', style: { display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: r.color, marginRight: '6px' } }), `Rolle: ${r.name}`)); }),
+      ...(opts.members ?? []).map((u) => { const c = h('input', { type: 'checkbox', checked: recUsers.has(u.id) }); c.addEventListener('change', () => (c.checked ? recUsers.add(u.id) : recUsers.delete(u.id))); return h('label', { class: 'check', style: { padding: '2px 0' } }, c, h('span', { class: 'check-text' }, `Mitglied: ${u.label}`)); }),
+    ]);
+    drawRec();
     const sec = (t) => [h('div', { class: 'sep' }), h('div', { class: 'label', style: { margin: '0 0 8px' } }, t)];
     const body = h('div', null, err,
       h('div', { class: 'form-row' }, field('Name', name), field('Lagerart', type, { help: opts.types.length ? '' : 'Arten pflegst du unter „Kategorien & Status“.' })), field('Beschreibung', desc),
@@ -202,6 +217,12 @@ export default async function render(container, ctx) {
       ...sec('Zugriffe im MDT'),
       h('label', { class: 'check', style: { padding: 0 } }, restricted, h('span', { class: 'check-text' }, 'Beschränkt – nur ausgewählte Rollen sehen dieses Lager')),
       h('div', { class: 'help', style: { margin: '6px 0 10px' } }, 'Rollen mit „Verwalten“ dürfen ein- und auslagern (Recht „Lager: Bestand buchen“ vorausgesetzt). Administratoren sehen immer alles.'), roleRows,
+      ...sec('Lagerkosten-Erinnerung'),
+      h('label', { class: 'check', style: { padding: 0 } }, rentOn, h('span', { class: 'check-text' }, 'Wöchentlich an die fälligen Lagerkosten erinnern')),
+      h('div', { class: 'form-row', style: { marginTop: '10px' } }, field(`Kosten pro Woche (${opts.currency})`, rentAmount, { help: 'Wird in der Benachrichtigung genannt. Leer = ohne Betrag.' }), field('Wochentag', rentDay)),
+      h('div', { class: 'form-row' }, field('Uhrzeit', rentHour, { help: 'Ab dieser Stunde wird erinnert (Serverzeit).' }), h('div')),
+      h('div', { class: 'label', style: { margin: '4px 0 6px' } }, 'Wer wird benachrichtigt?'), recBox,
+      h('div', { class: 'help', style: { marginTop: '6px' } }, 'Ohne Auswahl erhalten alle Mitglieder mit dem Recht „Lager verwalten“ die Erinnerung.'),
       active && h('div', { style: { marginTop: '12px' } }, h('label', { class: 'check', style: { padding: 0 } }, active, h('span', { class: 'check-text' }, 'Lager ist aktiv'))));
     const footer = [];
     if (w) footer.push(button('Löschen', { variant: 'danger', icon: 'trash', onClick: async () => {
@@ -221,6 +242,7 @@ export default async function render(container, ctx) {
         access: [...levels].filter(([, l]) => l).map(([roleId, level]) => ({ roleId, level })),
       };
       if (canAcc || !w) payload.accessInfo = access.value;
+      payload.rent = { enabled: rentOn.checked, cents: rentAmount.value === '' ? 0 : Math.round(Number(rentAmount.value) * 100), weekday: Number(rentDay.value), hour: Number(rentHour.value), roleIds: [...recRoles], userIds: [...recUsers] };
       if (active) payload.isActive = active.checked;
       try { w ? await api.patch(`/api/warehouses/${w.id}`, payload) : await api.post('/api/warehouses', payload); m.close(); toast(w ? 'Gespeichert.' : 'Lager angelegt.'); }
       catch (ex) { err.replaceChildren(formError(ex.message)); body.parentElement.scrollTop = 0; }
