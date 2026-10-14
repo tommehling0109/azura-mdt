@@ -14,6 +14,7 @@ export const NAV = [
   {
     section: 'Handel',
     items: [
+      { id: 'trade', label: 'Handel', subtitle: 'Als Mitglied anbieten und auf Gesuche antworten – wie ein Partner', icon: 'star', path: '/trade', perm: ['market.trade'], cfg: 'market.member_trade', win: { w: 1080, h: 660 }, view: () => import('./views/partner/market.js') },
       { id: 'market', label: 'Börse', subtitle: 'Ankauf & Verkauf mit externen Partnern', icon: 'tag', path: '/market', perm: ['market.view'], win: { w: 1080, h: 660 }, view: () => import('./views/market.js'), badge: 'marketAwaiting' },
     ],
   },

@@ -82,7 +82,7 @@ export default async function render(container, ctx) {
     mount(host, h('div', { class: 'toolbar' }, groups, h('div', { class: 'grow' }), h('div', { class: 'input-icon' }, icon('search'), search)), catChips, statusChips,
       table([
         { label: 'Nr.', style: { width: '1%' }, render: (d) => h('div', null, h('span', { class: 'member-no' }, d.number), h('div', { style: { marginTop: '4px' } }, dirBadge(d))) },
-        { label: 'Partner', render: (d) => h('div', null, h('b', null, d.partner.number), ' ', levelBadge(d.partner.level), h('div', { class: 'muted', style: { fontSize: '12px' } }, d.partner.name)) },
+        { label: 'Partner', render: (d) => h('div', null, h('b', null, d.partner.number), ' ', d.partner.isMember && badge('Mitglied', 'b-info', false), ' ', levelBadge(d.partner.level), h('div', { class: 'muted', style: { fontSize: '12px' } }, d.partner.name)) },
         { label: 'Item', render: (d) => h('div', null, d.item.name, ' ', catBadge(d.item.category)) },
         { label: 'Menge', render: (d) => `${d.quantity.toLocaleString('de-DE')} ${d.item.unit}` },
         { label: 'Preis/Einh.', render: (d) => money(d.unitPrice) },

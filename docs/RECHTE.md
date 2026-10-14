@@ -11,7 +11,7 @@
 - Namen von Mitgliedern sieht man nur bei sich selbst, als Superadmin und bei Mitgliedern **unterhalb** der eigenen Hierarchie (übergeordneter Rang / Vorgesetzten-Kette); sonst nur die Personalnummer.
 - Statistik: `stats.view` öffnet die App, jeder Abschnitt erscheint zusätzlich nur mit dem Ansichtsrecht des jeweiligen Bereichs.
 
-## Rechte (87)
+## Rechte (88)
 
 ### audit
 
@@ -124,6 +124,7 @@
 | `market.catalog.manage` | Börse: Item-Katalog verwalten |
 | `market.deals.manage` | Börse: Geschäfte bearbeiten (annehmen, ablehnen, Gegenangebot, Übergabe) |
 | `market.delete` | Börse: Geschäfte und Angebote endgültig löschen (jeder Status) |
+| `market.trade` | Börse: als Mitglied wie ein externer Partner handeln (nur wenn vom Admin erlaubt) |
 | `market.view` | Börse: Geschäfte, Gesuche und Katalog ansehen |
 | `market.wanted.manage` | Börse: Gesuche („Wir suchen“) verwalten |
 

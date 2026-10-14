@@ -1484,6 +1484,31 @@ try {
     await admin.call('PATCH', `/api/partners/${A.id}`, { levelEnabled: false }); assert.equal((await A.c.call('GET', '/api/p/level')).level.enabled, false); assert.equal(awardForDeal(mkDeal(A.id, 'buy', 1, 1)), null);
     ok('Level-System: pro Partner, XP automatisch/manuell, einmalig, Stufen, Sichtbarkeit, Admin-Korrektur, Benachrichtigung'); }
 
+  // ══ Mitglieder handeln in der Börse wie Partner ══
+  { await setPerms(['market.trade']);
+    assert.equal((await mod.call('GET', '/api/p/market/catalog')).status, 401); // Einstellung aus
+    assert.equal((await admin.call('PUT', '/api/config', { values: { 'market.member_trade': true } })).status, 200);
+    await setPerms([]); assert.equal((await mod.call('GET', '/api/p/market/catalog')).status, 401); // ohne Recht „market.trade“ kein Zugang
+    assert.equal((await new Client().call('GET', '/api/p/market/catalog')).status, 401);
+    await setPerms(['market.trade']);
+    const item = (await admin.call('POST', '/api/market/items', { name: 'Mitglieds-Artikel', unit: 'Stück', referencePrice: 10 })).item;
+    r = await mod.call('GET', '/api/p/market/catalog'); assert.equal(r.status, 200); assert.ok(r.items.some((i) => i.name === 'Mitglieds-Artikel')); assert.equal(r.items.some((i) => i.name === 'Sonstiges'), false);
+    assert.equal((await mod.call('GET', '/api/p/market/wanted')).status, 200);
+    assert.equal((await mod.call('GET', '/api/p/credit/loans')).status, 401); assert.equal((await mod.call('GET', '/api/p/chat/channels')).status, 401); // nur die Börse, keine anderen Partner-Apps
+    r = await mod.call('POST', '/api/p/market/offers', { itemId: item.id, quantity: 3, unitPrice: 12, note: 'Von einem Mitglied' }); assert.equal(r.status, 201); const dealId = r.deal.id;
+    assert.equal((await mod.call('GET', '/api/p/market/deals')).deals.length >= 1, true); assert.equal((await mod.call('GET', `/api/p/market/deals/${dealId}`)).status, 200);
+    const sd = (await admin.call('GET', '/api/market/deals')).deals.find((d) => d.id === dealId); assert.ok(sd); assert.equal(sd.partner.isMember, true); assert.match(sd.partner.name, /^Mitglied /);
+    assert.equal((await admin.call('GET', '/api/partners')).partners.some((p) => p.id === sd.partner.id), false); // nicht in der Partnerliste
+    assert.equal((await admin.call('GET', '/api/market/options')).partners?.some?.((p) => p.id === sd.partner.id) ?? false, false);
+    // Antwort des Teams kommt als Benachrichtigung beim Mitglied an (Ziel: App „Handel“)
+    r = await admin.call('POST', `/api/market/deals/${dealId}/accept`, {}); assert.equal(r.status, 200, JSON.stringify(r));
+    r = await mod.call('GET', '/api/notifications'); const n = r.notifications.find((x) => x.target?.dealId === dealId); assert.ok(n, 'Benachrichtigung fehlt'); assert.equal(n.target.app, 'trade');
+    // Einstellung aus: sofort gesperrt, Daten bleiben
+    assert.equal((await admin.call('PUT', '/api/config', { values: { 'market.member_trade': false } })).status, 200); assert.equal((await mod.call('GET', '/api/p/market/catalog')).status, 401);
+    await admin.call('PUT', '/api/config', { values: { 'market.member_trade': true } }); assert.equal((await mod.call('GET', '/api/p/market/deals')).deals.length >= 1, true);
+    await admin.call('PUT', '/api/config', { values: { 'market.member_trade': false } }); await setPerms([]);
+    ok('Mitglieder handeln wie Partner: Einstellung + Recht, nur Börse, Team sieht Mitglieds-Geschäfte, Benachrichtigung, nicht in Partnerlisten'); }
+
   // ══ Legal ══
   { assert.equal((await mod.call('GET', '/api/legal')).status, 403); assert.equal((await new Client().call('GET', '/api/legal')).status, 401); assert.equal((await tp.call('GET', '/api/legal')).status, 401);
     await setPerms(['legal.view']); r = await mod.call('GET', '/api/legal'); assert.equal(r.status, 200); assert.equal(r.canManage, false);

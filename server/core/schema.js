@@ -966,4 +966,9 @@ export const SCHEMA_MIGRATIONS = [
   CREATE INDEX idx_xp_partner ON partner_xp_log(partner_id, id);
   CREATE UNIQUE INDEX idx_xp_ref ON partner_xp_log(partner_id, ref_type, ref_id) WHERE ref_type IS NOT NULL;
   `,
+  // 28: Mitglieder handeln in der Boerse wie Partner (verdeckter Partner-Eintrag je Mitglied)
+  `
+  ALTER TABLE partners ADD COLUMN user_id INTEGER;
+  CREATE UNIQUE INDEX idx_partners_user ON partners(user_id) WHERE user_id IS NOT NULL;
+  `,
 ];

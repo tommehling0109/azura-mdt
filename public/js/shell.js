@@ -75,6 +75,10 @@ export async function openTarget(target) {
   if (target.app === 'tab' && target.statementId) window.dispatchEvent(new Event('mdt:tab-open'));
   if (target.app === 'tickets' && target.ticketId) window.dispatchEvent(new Event('mdt:tickets-open'));
   if (target.app === 'chat' && target.channelId) window.dispatchEvent(new Event('mdt:chat-open'));
+  if (target.app === 'trade' && target.dealId) { // Mitglied als Handelspartner: Geschäft über die Partner-Schnittstelle öffnen
+    const { openDealModal } = await import('./views/market-shared.js');
+    openDealModal({ side: 'partner', base: '/api/p/market', id: target.dealId });
+  }
   if (target.app === 'market' && target.dealId) {
     const { openDealModal } = await import('./views/market-shared.js');
     openDealModal({ side: partnerMode ? 'partner' : 'staff', base: partnerMode ? '/api/p/market' : '/api/market', id: target.dealId });
@@ -117,7 +121,7 @@ export function showApp(onLogout, opts = {}) {
   partnerMode = !!opts.partner;
   const nav = opts.nav ?? NAV;
   const appOff = (i) => (state.config['system.disabled_apps'] ?? []).includes(i.id); // vom Administrator für alle deaktiviert
-  const allowed = opts.allow ?? ((i) => (!i.perm || canAny(i.perm)) && !appOff(i));
+  const allowed = opts.allow ?? ((i) => (!i.perm || canAny(i.perm)) && !appOff(i) && (!i.cfg || !!state.config[i.cfg]));
   let z = 10;
   let activeId = null;
   let opened = 0;

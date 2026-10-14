@@ -8,6 +8,7 @@ import { registerPermissions, syncPermissions, can } from './core/permissions.js
 import { PARTNER_COOKIE, partnerFromToken } from './core/partner-auth.js';
 import { syncLookups } from './core/lookups.js';
 import { registerConfig, getConfig } from './core/config.js';
+import { memberTradeOn, memberPartner } from './core/member-trade.js';
 import { migrate, DB_PATH } from './core/db.js';
 import { setReinit } from './core/reset.js';
 import { APP_VERSION } from './core/version.js';
@@ -96,7 +97,9 @@ export function buildApp() {
     const token = cookies[COOKIE];
     const user = userFromToken(token);
     const partnerToken = cookies[PARTNER_COOKIE];
-    const partner = partnerFromToken(partnerToken);
+    let partner = partnerFromToken(partnerToken);
+    // Mitglieder handeln in der Börse wie Partner (wenn eingeschaltet und erlaubt): die Partner-Schnittstelle der Börse arbeitet dann mit ihrem verdeckten Partner-Eintrag
+    if (!partner && user && user.status === 'active' && url.pathname.startsWith('/api/p/market/') && memberTradeOn(user)) partner = memberPartner(user);
     const ctx = {
       req, res, params, user, token, partner, partnerToken,
       actorName: partner ? `Partner ${partner.number ?? ''}`.trim() : undefined,

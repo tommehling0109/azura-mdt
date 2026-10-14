@@ -84,7 +84,7 @@ const dealDto = (d, partnerView, viewerId = null) => {
     turn: d.turn, quantity: d.quantity, unitPrice: d.unit_price, suggestedPrice: d.suggested_price ?? null, total: d.quantity * d.unit_price, proposedBy: d.proposed_by, note: d.note,
     item: { id: d.item_id, name: d.item_is_other && d.other_name ? `Sonstiges: ${d.other_name}` : d.item_name, isOther: !!d.item_is_other, unit: d.item_unit, category: d.cat_id ? { id: d.cat_id, label: d.cat_label, color: d.cat_color } : null },
     // Partner sehen weder den Namen der Gegenseite noch interne Zuständigkeiten – nur die AZ-Nummer des Geschäfts
-    partner: partnerView ? undefined : { id: d.partner_id, name: d.partner_name, number: d.partner_number, level: levelBrief(d.partner_id) },
+    partner: partnerView ? undefined : { id: d.partner_id, name: d.partner_name, number: d.partner_number, level: levelBrief(d.partner_id), isMember: !!get('SELECT user_id FROM partners WHERE id = ?', d.partner_id)?.user_id },
     // Staff: Zuständiger (Personalnummer, man selbst „Du“). Partner: Ansprechpartner nur als Personalnummer – ohne Zuweisung bleibt es „Team“
     assignee: d.assignee_id ? { id: partnerView ? undefined : d.assignee_id, displayName: !partnerView && d.assignee_id === viewerId ? 'Du' : (d.assignee_number || `Mitglied #${d.assignee_id}`), number: d.assignee_number ?? null } : null,
     handover: hasHandover && (!partnerView || HANDOVER_VISIBLE.includes(d.status))
@@ -354,6 +354,7 @@ export default {
   name: 'market',
   permissions: [
     ['market.view', 'Börse: Geschäfte, Gesuche und Katalog ansehen'],
+    ['market.trade', 'Börse: als Mitglied wie ein externer Partner handeln (nur wenn vom Admin erlaubt)'],
     ['market.deals.manage', 'Börse: Geschäfte bearbeiten (annehmen, ablehnen, Gegenangebot, Übergabe)'],
     ['market.wanted.manage', 'Börse: Gesuche („Wir suchen“) verwalten'],
     ['market.catalog.manage', 'Börse: Item-Katalog verwalten'],
@@ -363,6 +364,7 @@ export default {
     { key: 'market.currency', group: 'Börse', label: 'Währungssymbol', help: 'Wird hinter Preisen angezeigt (z. B. $).', type: 'string', default: '$', max: 6, public: true },
     { key: 'market.deal_prefix', group: 'Börse', label: 'Präfix der Geschäftsnummer', help: 'Partner sehen Geschäfte nur unter dieser Nummer (z. B. AZ-G-100001).', type: 'string', default: 'AZ-G-', max: 12 },
     { key: 'market.partner_item_default', group: 'Börse', label: 'Neue Artikel: Sichtbarkeit für externe Partner', help: 'Voreinstellung beim Anlegen eines Artikels. Je Artikel lässt sich das ändern (alle Partner, nur ausgewählte oder keine). So sehen Partner nur, was sie sehen sollen – nicht, was bei uns im Lager liegt.', type: 'select', default: 'all', options: [{ value: 'all', label: 'Alle Partner' }, { value: 'selected', label: 'Nur ausgewählte Partner' }, { value: 'none', label: 'Keine Partner' }] },
+    { key: 'market.member_trade', group: 'Börse', label: 'Mitglieder dürfen wie Partner handeln', help: 'Schaltet die App „Handel“ für Mitglieder mit dem Recht „Börse: als Mitglied handeln“ frei: Angebote einstellen, auf Gesuche antworten und eigene Geschäfte verfolgen – wie ein externer Partner. Das Team bearbeitet diese Geschäfte wie alle anderen (Mitglieder erscheinen als „Mitglied <Personalnummer>“).', type: 'bool', default: false, public: true },
     { key: 'market.deal_start', group: 'Börse', label: 'Startnummer der Geschäfte', type: 'number', default: 100001, min: 1, max: 99999999 },
   ],
   init() {
@@ -426,7 +428,7 @@ export default {
 
     // Angebot an einen Partner (Verkauf aus dem Lager)
     r.get('/api/market/partners', { perm: 'market.deals.manage' }, () => ({
-      partners: all("SELECT id, partner_number, name, apps FROM partners WHERE status = 'active' ORDER BY partner_number").filter((p) => { try { return JSON.parse(p.apps).includes('market'); } catch { return false; } }).map((p) => ({ id: p.id, number: p.partner_number, name: p.name })),
+      partners: all("SELECT id, partner_number, name, apps FROM partners WHERE status = 'active' AND user_id IS NULL ORDER BY partner_number").filter((p) => { try { return JSON.parse(p.apps).includes('market'); } catch { return false; } }).map((p) => ({ id: p.id, number: p.partner_number, name: p.name })),
     }));
     r.post('/api/market/offers', { perm: 'market.deals.manage' }, (ctx) => {
       const b = ctx.body;
@@ -449,7 +451,7 @@ export default {
     r.get('/api/market/items', { perm: 'market.view' }, (ctx) => ({
       itemDefault: getConfig('market.partner_item_default') || 'all',
       items: all(`${ITEM_SQL} WHERE i.is_other = 0 ORDER BY i.is_active DESC, i.name`).map(itemDto),
-      partners: ctx.user.perms.has('market.catalog.manage') ? all("SELECT id, partner_number, name FROM partners WHERE status = 'active' ORDER BY partner_number").map((p) => ({ id: p.id, number: p.partner_number, name: p.name })) : [],
+      partners: ctx.user.perms.has('market.catalog.manage') ? all("SELECT id, partner_number, name FROM partners WHERE status = 'active' AND user_id IS NULL ORDER BY partner_number").map((p) => ({ id: p.id, number: p.partner_number, name: p.name })) : [],
     }));
 
     const itemFields = (b, partial = false) => {

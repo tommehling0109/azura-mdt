@@ -9,10 +9,12 @@ import { publish } from './realtime.js';
  * (z. B. deal:12:ev:341 = Verlaufseintrag 341). Der UNIQUE-Index (Empfänger + Schlüssel) verhindert doppelte Verarbeitung
  * desselben Ereignisses, jede neue Änderung hat aber einen neuen Schlüssel und erzeugt daher immer eine eigene Benachrichtigung.
  */
-export function notify(recipients, { key, title, body = '', target = null }) {
+export function notify(recipients, { key, title, body = '', target: target0 = null }) {
   const created = now();
   let count = 0;
-  for (const r of recipients) {
+  for (let r of recipients) {
+    let target = target0;
+    if (r.type === 'partner') { const uid = get('SELECT user_id FROM partners WHERE id = ?', r.id)?.user_id; if (uid) { r = { type: 'user', id: uid }; if (target?.app === 'market') target = { ...target, app: 'trade' }; } }
     const res = run(
       `INSERT OR IGNORE INTO notifications (recipient_type,recipient_id,event_key,title,body,target,created_at) VALUES (?,?,?,?,?,?,?)`,
       r.type, r.id, key, title, body, target ? JSON.stringify(target) : null, created,

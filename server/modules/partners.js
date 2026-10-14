@@ -132,7 +132,7 @@ export default {
     // ── Verwaltung (Mitarbeiter) ──
     r.get('/api/partners', { perm: 'partners.view' }, (ctx) => {
       const canLink = ctx.user.perms.has('partners.manage');
-      return { partners: all(`${LIST_SQL} ORDER BY p.created_at DESC`).map((p) => dto(p, { withLink: canLink })), apps: partnerApps(), items: all('SELECT id, name, unit FROM market_items WHERE is_other = 0 AND is_active = 1 ORDER BY name').map((i) => ({ id: i.id, name: i.name, unit: i.unit })) };
+      return { partners: all(`${LIST_SQL} WHERE p.user_id IS NULL ORDER BY p.created_at DESC`).map((p) => dto(p, { withLink: canLink })), apps: partnerApps(), items: all('SELECT id, name, unit FROM market_items WHERE is_other = 0 AND is_active = 1 ORDER BY name').map((i) => ({ id: i.id, name: i.name, unit: i.unit })) };
     });
 
     r.post('/api/partners', { perm: 'partners.manage', bodyLimit: 14 * 1024 * 1024 }, (ctx) => {

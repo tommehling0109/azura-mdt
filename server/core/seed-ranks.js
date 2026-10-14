@@ -42,7 +42,7 @@ export function seedRanks() {
  * Der Superadmin braucht keine Rolle – er hat immer alles.
  */
 const LEVELS = [
-  ['chat.view', 'chat.send', 'map.view', 'vehicles.view', 'warehouse.view', 'market.view', 'org.view', 'board.view', 'changelog.view', 'legal.view'],
+  ['chat.view', 'chat.send', 'map.view', 'vehicles.view', 'warehouse.view', 'market.view', 'org.view', 'board.view', 'changelog.view', 'legal.view', 'market.trade'],
   ['warehouse.stock', 'vehicles.view_location', 'vehicles.edit', 'contacts.view'],
   ['map.edit', 'chat.pin'],
   ['market.deals.manage', 'vehicles.create', 'warehouse.view_access', 'contacts.edit', 'legal.cases.view'],
