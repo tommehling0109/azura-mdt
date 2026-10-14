@@ -114,7 +114,8 @@ export function showApp(onLogout, opts = {}) {
   closeAllWindows();
   partnerMode = !!opts.partner;
   const nav = opts.nav ?? NAV;
-  const allowed = opts.allow ?? ((i) => !i.perm || canAny(i.perm));
+  const appOff = (i) => (state.config['system.disabled_apps'] ?? []).includes(i.id); // vom Administrator für alle deaktiviert
+  const allowed = opts.allow ?? ((i) => (!i.perm || canAny(i.perm)) && !appOff(i));
   let z = 10;
   let activeId = null;
   let opened = 0;
@@ -268,7 +269,12 @@ export function showApp(onLogout, opts = {}) {
   area.addEventListener('pointerdown', (e) => { if (!e.target.closest?.('.desk-icon')) iconsEl.querySelectorAll('.sel').forEach((x) => x.classList.remove('sel')); });
   // Auf- und Zuklappen der Tafeln (und Inhaltsänderungen) ordnen die Symbole ohne eigene Position neu an
   if (typeof ResizeObserver !== 'undefined') { let t; const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(() => { if (iconsEl.isConnected) renderIcons(); }, 80); }); [board?.el, changelog?.el, area].forEach((e) => e && ro.observe(e)); }
-  window.addEventListener('mdt:settings', syncIcons); window.addEventListener('mdt:config-applied', syncIcons);
+  window.addEventListener('mdt:settings', syncIcons);
+  window.addEventListener('mdt:config-applied', () => { // Apps wurden (de)aktiviert: offene Fenster schließen, Dock, Startmenü und Symbole aktualisieren
+    if (opts.partner) return syncIcons();
+    for (const id of [...wins.keys()]) { const it = findItem(id); if (it && !allowed(it)) close(id); }
+    renderTasks(); if (!startMenu.hidden) renderStart(); syncIcons(); if (iconsEl.isConnected) renderIcons();
+  });
 
   // ── Startmenü ──
   const closeStart = () => { startMenu.hidden = true; startBtn.classList.remove('open'); };

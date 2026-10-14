@@ -37,6 +37,11 @@ export function sessionCookie(ctx, token, expires) {
   return `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${ctx.secure ? '; Secure' : ''}`;
 }
 
+/** Apps, die sich für alle abschalten lassen → Beginn ihrer API-Pfade (Verwaltungs-Apps und die Konfiguration bleiben immer verfügbar). */
+export const DISABLEABLE_APPS = {
+  dashboard: ['dashboard'], market: ['market'], map: ['map'], warehouse: ['warehouse', 'warehouses'], vehicles: ['vehicles'], finance: ['finance'], stats: ['stats'], credit: ['credit'],
+  tab: ['tab'], tickets: ['tickets'], legal: ['legal'], contacts: ['contacts'], chat: ['chat'],
+};
 export default {
   name: 'system',
   permissions: [
@@ -45,8 +50,12 @@ export default {
     ['admin.access', 'Administrationsbereich öffnen'],
     ['permissions.manage', 'Eigene Rechte anlegen, ändern und löschen'],
     ['system.backup', 'Datensicherungen erstellen und einsehen'],
+    ['system.apps', 'Apps für alle Benutzer aktivieren oder deaktivieren (Superadmin)'],
   ],
   config: [
+    // Für alle deaktivierte Apps (IDs). Verwaltet über Konfiguration → Apps; die Verwaltungs-Apps (Konfiguration, Benutzer, Rollen …) lassen sich nicht abschalten.
+    { key: 'system.disabled_apps', group: 'Apps', label: 'Deaktivierte Apps', type: 'json', default: [], hidden: true, public: true, perm: 'system.apps',
+      validate: (v) => Array.isArray(v) && v.length <= 30 && new Set(v).size === v.length && v.every((x) => typeof x === 'string' && Object.hasOwn(DISABLEABLE_APPS, x)) },
     { key: 'system.name', group: 'Allgemein', label: 'Systemname', help: 'Wird im Header, Login und Browser-Tab angezeigt.', type: 'string', default: 'MDT', max: 40, public: true },
     { key: 'system.subtitle', group: 'Allgemein', label: 'Untertitel', help: 'Zweite Zeile unter dem Systemnamen.', type: 'string', default: 'Mobile Data Terminal', max: 60, public: true },
     { key: 'ui.accent', group: 'Darstellung', label: 'Akzentfarbe', help: 'Hauptfarbe für Buttons, Markierungen und Glow-Effekte.', type: 'color', default: '#5b82b8', public: true },
@@ -154,7 +163,7 @@ export default {
     r.get('/api/config', { perm: ['config.view', 'hack.manage'] }, (ctx) => ({ settings: describeConfig(ctx.user) }));
 
     // Änderungen: je Einstellung das passende Recht (Standard config.edit; Exekutive-Zugang: hack.manage)
-    r.put('/api/config', { perm: ['config.edit', 'hack.manage'] }, (ctx) => {
+    r.put('/api/config', { perm: ['config.edit', 'hack.manage', 'system.apps'] }, (ctx) => {
       const changes = ctx.body.values;
       if (!changes || typeof changes !== 'object') throw bad('Keine Werte übergeben.');
       const applied = tx(() => {

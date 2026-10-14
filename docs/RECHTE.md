@@ -11,7 +11,7 @@
 - Namen von Mitgliedern sieht man nur bei sich selbst, als Superadmin und bei Mitgliedern **unterhalb** der eigenen Hierarchie (übergeordneter Rang / Vorgesetzten-Kette); sonst nur die Personalnummer.
 - Statistik: `stats.view` öffnet die App, jeder Abschnitt erscheint zusätzlich nur mit dem Ansichtsrecht des jeweiligen Bereichs.
 
-## Rechte (85)
+## Rechte (86)
 
 ### audit
 
@@ -172,6 +172,7 @@
 | `config.edit` | Systemkonfiguration ändern |
 | `config.view` | Systemkonfiguration ansehen |
 | `permissions.manage` | Eigene Rechte anlegen, ändern und löschen |
+| `system.apps` | Apps für alle Benutzer aktivieren oder deaktivieren (Superadmin) |
 | `system.backup` | Datensicherungen erstellen und einsehen |
 
 ### tab
@@ -407,7 +408,7 @@
 | POST | `/api/admin/branding/:kind` | `config.edit` |
 | DELETE | `/api/admin/branding/:kind` | `config.edit` |
 | GET | `/api/config` | `config.view` \| `hack.manage` |
-| PUT | `/api/config` | `config.edit` \| `hack.manage` |
+| PUT | `/api/config` | `config.edit` \| `hack.manage` \| `system.apps` |
 | GET | `/api/permissions` | `roles.view` \| `users.view` \| `org.view` \| `permissions.manage` |
 | POST | `/api/permissions` | `permissions.manage` |
 | PATCH | `/api/permissions/:key` | `permissions.manage` |

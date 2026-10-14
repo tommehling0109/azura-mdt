@@ -590,3 +590,17 @@ tr.row-flash td { animation: row-flash 2.4s ease-out; } @keyframes row-flash { 0
 .lc-tl-item.sys .lc-tl-dot { background: var(--text-3); }
 .lc-tl-item.sys .lc-text { color: var(--text-2); }
 .lc-grid .label svg { width: 15px; height: 15px; vertical-align: -3px; margin-right: 2px; }
+
+/* Konfiguration: Kategorien und ausklappbare Karten */
+.cfg-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.cfg-cat-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 4px 2px; background: none; border: 0; border-bottom: 1px solid var(--line); color: var(--text); cursor: pointer; text-align: left; margin-bottom: 12px; }
+.cfg-cat-head h2 { font-size: 15px; font-weight: 700; margin: 0; }
+.cfg-cat-head svg { width: 18px; height: 18px; color: var(--accent-hi); }
+.cfg-count { font-size: 12px; }
+.cfg-cat.collapsed > :not(.cfg-cat-head) { display: none; }
+.cc-chev { margin-left: auto; display: inline-flex; transition: transform 0.15s var(--ease); }
+.cc-chev svg { width: 16px; height: 16px; color: var(--text-3); }
+.cfg-cat.collapsed > .cfg-cat-head .cc-chev, .card.cc.collapsed .cc-chev { transform: rotate(-90deg); }
+.card.cc > .card-head { cursor: pointer; user-select: none; }
+.card.cc.collapsed > .card-body { display: none; }
+.setting-row[hidden], .card[hidden], .cfg-cat[hidden] { display: none !important; }

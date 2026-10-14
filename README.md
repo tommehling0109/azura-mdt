@@ -180,3 +180,6 @@ Desktop-Symbole (Voreinstellung des Admins unter Konfiguration → *Desktop-Symb
 
 Weitere Module (Fahrzeuge, Lager, Ankauf, Chat …) werden als `server/modules/<name>.js` (Permissions + Routen + Migration) und
 Eintrag in `public/js/modules.js` ergänzt. Die Integrationsschicht (Stash/Inventar) kommt mit Phase 5/9.
+
+- **Konfiguration übersichtlich:** Die Einstellungen sind in Hauptkategorien (System & Zugang, Darstellung, Apps & Module, Externe & Sonderzugänge) gegliedert; jede Gruppe lässt sich einzeln ein- und ausklappen (der Zustand wird im Browser gemerkt). Dazu Suchfeld sowie „Alle aufklappen/zuklappen“.
+- **Apps für alle deaktivieren:** Unter Konfiguration → System & Zugang → Apps kann der Superadmin (Recht `system.apps`) einzelne Apps für alle Mitarbeiter abschalten. Die App verschwindet sofort aus Dock, Startmenü und Desktop, offene Fenster schließen sich, und auch die Schnittstelle der App ist gesperrt (Daten bleiben erhalten). Konfiguration, Benutzer, Rollen & Co. lassen sich nicht abschalten.

@@ -13,7 +13,7 @@ import { setReinit } from './core/reset.js';
 import { APP_VERSION } from './core/version.js';
 import { dirname } from 'node:path';
 
-import systemModule, { brandingFile } from './modules/system.js';
+import systemModule, { brandingFile, DISABLEABLE_APPS } from './modules/system.js';
 import authModule from './modules/auth.js';
 import usersModule from './modules/users.js';
 import rolesModule from './modules/roles.js';
@@ -108,6 +108,12 @@ export function buildApp() {
       status: 200, headers: {},
     };
 
+    // Vom Administrator für alle deaktivierte Apps: auch die Schnittstelle ist dicht (nur Mitarbeiter-Routen, Partner-Routen beginnen mit /api/p/)
+    const apiHead = url.pathname.split('/')[2];
+    if (apiHead) {
+      const off = getConfig('system.disabled_apps');
+      if (Array.isArray(off) && off.some((id) => DISABLEABLE_APPS[id]?.includes(apiHead))) throw forbidden('Diese App wurde vom Administrator deaktiviert.');
+    }
     const { auth = true, perm, partnerApp } = route.opts;
     if (auth === 'partner') {
       if (!partner) throw new HttpError(401, 'Nicht angemeldet.', 'unauthenticated_partner');

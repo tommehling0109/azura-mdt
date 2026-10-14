@@ -53,7 +53,7 @@ const LEVELS = [
   ['partners.manage', 'users.create', 'users.edit', 'credit.payments', 'chat.partners', 'chat.manage', 'tickets.manage', 'board.manage', 'contacts.delete', 'contacts.bank', 'legal.cases.edit', 'legal.cases.billing'],
   ['partners.documents', 'tab.manage_companies', 'credit.limits', 'finance.manual', 'finance.export', 'audit.view', 'roles.view', 'lookups.manage'],
   ['users.personnel_view', 'users.personnel_edit', 'users.avatar_edit', 'users.avatar_remove', 'audit.export', 'org.manage', 'admin.access', 'config.view', 'changelog.manage', 'contacts.secret', 'legal.manage', 'legal.cases.confidential', 'legal.cases.delete'],
-  ['users.password_reset', 'roles.manage', 'system.backup', 'config.edit', 'market.delete', 'credit.delete', 'tab.delete', 'partners.delete', 'finance.delete', 'tickets.delete', 'users.delete'],
+  ['users.password_reset', 'roles.manage', 'system.backup', 'system.apps', 'config.edit', 'market.delete', 'credit.delete', 'tab.delete', 'partners.delete', 'finance.delete', 'tickets.delete', 'users.delete'],
   [], // Stufe 13: Administrator-Rolle (alle Rechte)
 ];
 

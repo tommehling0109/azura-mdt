@@ -4,6 +4,7 @@ import { fmtDateTime } from '../../ui/dom.js';
 import { api } from '../../api.js';
 import { icon } from '../../ui/icons.js';
 import { can, state, applyConfig } from '../../state.js';
+import { NAV } from '../../modules.js';
 
 const SWATCHES = ['#4f8cff', '#22d3ee', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#ef4444', '#94a3b8'];
 
@@ -110,7 +111,7 @@ async function addExtras(host, editable) {
 
   // Updates: installierter Stand vs. neuester Stand auf GitHub (Superadmin/Administratoren werden zusätzlich benachrichtigt)
   const updHost = h('div');
-  host.append(card('Updates', updHost, { icon: 'refresh', flush: true }));
+  host.append(card('Programm-Updates', updHost, { icon: 'refresh', flush: true }));
   const drawUpdate = (u) => mount(updHost, h('div', { class: 'setting-row', style: { gridTemplateColumns: 'minmax(0,1fr) auto' } },
     h('div', null, h('div', { class: 'lbl' }, `Installiert: ${u.installed}`),
       h('div', { class: 'hlp' }, u.error ? `Prüfung nicht möglich: ${u.error}`
@@ -161,6 +162,40 @@ function resetDialog() {
   footer: [button('Abbrechen', { onClick: () => m.close() }), go] });
 }
 
+/** Hauptkategorien der Konfiguration: Gruppen (Karten) werden darunter einsortiert; unbekannte Gruppen landen unter „Weitere“. */
+const CATS = [
+  { id: 'system', title: 'System & Zugang', icon: 'server', groups: ['Allgemein', 'Zugang', 'Mitglieder', 'Apps', 'Updates', 'Programm-Updates', 'Datensicherung', 'Gefahrenzone'] },
+  { id: 'look', title: 'Darstellung', icon: 'palette', groups: ['Darstellung', 'Logo & Hintergrund', 'Dashboard', 'Dashboard-Widgets'] },
+  { id: 'modules', title: 'Apps & Module', icon: 'sliders', groups: ['Börse', 'Lager', 'Fahrzeuge', 'Karte', 'Kredit', 'Deckel', 'Tickets', 'Legal'] },
+  { id: 'external', title: 'Externe & Sonderzugänge', icon: 'link', groups: ['Externe Zugänge (neutral)', 'Exekutive-Zugang', 'Exekutive-Zugang (Hack-Link)'] },
+];
+const OPEN_KEY = 'azura.cfg.open.v1';
+const loadOpen = () => { try { return JSON.parse(localStorage.getItem(OPEN_KEY)) ?? {}; } catch { return {}; } };
+const saveOpen = (o) => { try { localStorage.setItem(OPEN_KEY, JSON.stringify(o)); } catch { /* egal */ } };
+
+/** Karte „Apps“: Apps für alle Benutzer aktivieren/deaktivieren (nur mit Recht „system.apps“, d. h. Superadmin). Verwaltungs-Apps lassen sich nicht abschalten. */
+function appsCard(host) {
+  const body = h('div');
+  host.append(card('Apps', body, { icon: 'dashboard', flush: true }));
+  const items = NAV.filter((s) => s.section !== 'Administration').flatMap((s) => s.items.map((i) => ({ ...i, section: s.section })));
+  const draw = () => {
+    const off = new Set(state.config['system.disabled_apps'] ?? []);
+    mount(body, h('div', { class: 'setting-row', style: { gridTemplateColumns: 'minmax(0,1fr)' } }, h('div', null, h('div', { class: 'lbl' }, 'Apps für alle Benutzer'), h('div', { class: 'hlp' }, 'Deaktivierte Apps verschwinden sofort bei allen Mitarbeitern (Dock, Startmenü, Desktop) und sind auch über die Schnittstelle gesperrt. Daten bleiben erhalten. Konfiguration, Benutzer, Rollen & Co. lassen sich nicht abschalten.'))),
+      items.map((i) => {
+        const t = toggle('', !off.has(i.id), null);
+        t.input.addEventListener('change', async () => {
+          const next = new Set(state.config['system.disabled_apps'] ?? []);
+          t.input.checked ? next.delete(i.id) : next.add(i.id);
+          try { const list = [...next]; await api.put('/api/config', { values: { 'system.disabled_apps': list } }); applyConfig({ ...state.config, 'system.disabled_apps': list }); toast(`${i.label} ${t.input.checked ? 'aktiviert' : 'deaktiviert'}.`); }
+          catch (ex) { t.input.checked = !t.input.checked; toast(ex.message, 'err'); }
+        });
+        return h('div', { class: 'setting-row', style: { gridTemplateColumns: 'minmax(0,1fr) auto', padding: '12px 20px' } },
+          h('div', { class: 'row', style: { alignItems: 'center', gap: '12px', flexWrap: 'nowrap' } }, h('div', { class: 'dot-icon' }, icon(i.icon)), h('div', null, h('div', { class: 'lbl' }, i.label), h('div', { class: 'hlp' }, `${i.section} · ${i.subtitle ?? ''}`))), t);
+      }));
+  };
+  draw();
+}
+
 export default async function render(container, ctx) {
   mount(container, skeletons(3, 120));
   const { settings } = await api.get('/api/config');
@@ -173,7 +208,8 @@ export default async function render(container, ctx) {
   for (const s of settings.filter((x) => !x.hidden)) (groups[s.group] ??= []).push(s);
 
   const err = h('div');
-  const cards = Object.entries(groups).map(([g, items]) => card(g, items.map((s) => {
+  const rowsOf = new Map(); // Karte → Zeilen (für die Suche)
+  const cards = Object.entries(groups).map(([g, items]) => { const rows = []; const el = card(g, items.map((s) => {
     const c = control(s, !mayEdit(s));
     controls.set(s.key, { ...c, initial: s.value });
     // Live-Vorschau: jede Änderung an Darstellungs-Einstellungen wirkt sofort (gespeichert wird erst per Knopf)
@@ -181,8 +217,10 @@ export default async function render(container, ctx) {
       const fire = () => window.dispatchEvent(new CustomEvent('mdt:config', { detail: Object.fromEntries([...controls].filter(([k]) => k.startsWith('ui.')).map(([k, cc]) => [k, cc.get()]).filter(([, v]) => !(typeof v === 'number' && Number.isNaN(v)))) }));
       c.el.addEventListener('input', fire); c.el.addEventListener('change', fire);
     }
-    return h('div', { class: 'setting-row' }, h('div', null, h('div', { class: 'lbl' }, s.label), s.help && h('div', { class: 'hlp' }, s.help)), c.el);
-  }), { flush: true, icon: g === 'Darstellung' ? 'palette' : g === 'Zugang' ? 'lock' : g === 'Mitglieder' ? 'users' : 'sliders' }));
+    const row = h('div', { class: 'setting-row' }, h('div', null, h('div', { class: 'lbl' }, s.label), s.help && h('div', { class: 'hlp' }, s.help)), c.el);
+    rows.push({ el: row, text: `${s.label} ${s.help ?? ''} ${s.key}`.toLowerCase() });
+    return row;
+  }), { flush: true, icon: g === 'Darstellung' ? 'palette' : g === 'Zugang' ? 'lock' : g === 'Mitglieder' ? 'users' : 'sliders' }); rowsOf.set(el, rows); return el; });
 
   const save = button('Änderungen speichern', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
     err.replaceChildren();
@@ -197,8 +235,63 @@ export default async function render(container, ctx) {
       toast('Einstellungen gespeichert.');
     } catch (ex) { err.replaceChildren(formError(ex.message)); }
   }) });
-  const extras = h('div', { class: 'stack', style: { gap: '18px' } });
-  mount(container, h('div', { class: 'stack', style: { gap: '18px' } }, err, cards, extras), settings.some((x) => !x.hidden && mayEdit(x)) && h('div', { class: 'savebar' }, save));
+  // ── Aufbau: Hauptkategorien → ausklappbare Karten, mit Suche ──
+  const openState = loadOpen();
+  const catEls = new Map(), cardEntries = [];
+  const catOf = (title) => CATS.find((c) => c.groups.includes(title)) ?? { id: 'other', title: 'Weitere', icon: 'sliders', groups: [] };
+  const catEl = (c) => {
+    if (catEls.has(c.id)) return catEls.get(c.id);
+    const bodyEl = h('div', { class: 'stack', style: { gap: '14px' } }), count = h('span', { class: 'muted cfg-count' });
+    const head = h('button', { type: 'button', class: 'cfg-cat-head' }, icon(c.icon), h('h2', null, c.title), count, h('span', { class: 'cc-chev' }, icon('chevronD')));
+    const sec = h('section', { class: 'cfg-cat' }, head, bodyEl);
+    const setOpen = (o) => { sec.classList.toggle('collapsed', !o); head.setAttribute('aria-expanded', String(o)); openState['cat:' + c.id] = o; saveOpen(openState); };
+    head.addEventListener('click', () => setOpen(sec.classList.contains('collapsed')));
+    setOpen(openState['cat:' + c.id] !== false);
+    const e = { sec, bodyEl, count, c };
+    catEls.set(c.id, e);
+    // Reihenfolge der Kategorien bleibt stabil, auch wenn Karten asynchron eintreffen
+    const order = [...CATS.map((x) => x.id), 'other'];
+    const next = [...catEls.values()].filter((x) => order.indexOf(x.c.id) > order.indexOf(c.id)).sort((a, b) => order.indexOf(a.c.id) - order.indexOf(b.c.id))[0];
+    layout.insertBefore(sec, next?.sec ?? null);
+    return e;
+  };
+  const place = (el) => {
+    const title = el.querySelector('.card-head h3')?.textContent ?? '';
+    const c = catOf(title), ce = catEl(c);
+    const head = el.querySelector('.card-head');
+    if (head) {
+      el.classList.add('cc');
+      const chev = h('span', { class: 'cc-chev' }, icon('chevronD'));
+      head.append(chev); head.setAttribute('role', 'button'); head.tabIndex = 0;
+      const set = (o) => { el.classList.toggle('collapsed', !o); head.setAttribute('aria-expanded', String(o)); };
+      const toggleIt = () => { const o = el.classList.contains('collapsed'); set(o); openState[title] = o; saveOpen(openState); };
+      head.addEventListener('click', (e) => { if (!e.target.closest('button,a,input,select')) toggleIt(); });
+      head.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === head) { e.preventDefault(); toggleIt(); } });
+      set(openState[title] === true);
+      cardEntries.push({ el, title, set, rows: rowsOf.get(el) ?? [], cat: ce });
+    }
+    const ord = c.groups.indexOf(title); el.dataset.ord = String(ord < 0 ? 999 : ord); // feste Reihenfolge innerhalb der Kategorie, auch wenn Karten später eintreffen
+    ce.bodyEl.insertBefore(el, [...ce.bodyEl.children].find((x) => Number(x.dataset.ord) > Number(el.dataset.ord)) ?? null); ce.count.textContent = `${ce.bodyEl.children.length}`;
+  };
+  const layout = h('div', { class: 'stack', style: { gap: '18px' } });
+  const search = input({ placeholder: 'Einstellungen durchsuchen …', type: 'search' });
+  const applySearch = () => {
+    const q = search.value.trim().toLowerCase();
+    for (const e of cardEntries) {
+      if (!q) { e.rows.forEach((r) => { r.el.hidden = false; }); e.el.hidden = false; e.set(openState[e.title] === true); continue; }
+      const titleHit = e.title.toLowerCase().includes(q), hits = e.rows.filter((r) => r.text.includes(q));
+      e.rows.forEach((r) => { r.el.hidden = !titleHit && !hits.includes(r); });
+      const show = titleHit || hits.length > 0; e.el.hidden = !show; if (show) e.set(true);
+    }
+    for (const ce of catEls.values()) ce.sec.hidden = !!q && ![...ce.bodyEl.children].some((x) => !x.hidden);
+  };
+  search.addEventListener('input', applySearch);
+  const toggleAll = (open) => { for (const e of cardEntries) { e.set(open); openState[e.title] = open; } for (const ce of catEls.values()) { ce.sec.classList.remove('collapsed'); openState['cat:' + ce.c.id] = true; } saveOpen(openState); };
+  const bar = h('div', { class: 'cfg-toolbar' }, h('div', { style: { flex: '1 1 260px' } }, search), button('Alle aufklappen', { size: 'sm', icon: 'chevronD', onClick: () => toggleAll(true) }), button('Alle zuklappen', { size: 'sm', icon: 'chevronU', onClick: () => toggleAll(false) }));
+  const extras = { append: (el) => { place(el); applySearch(); } };
+  cards.forEach(place);
+  mount(container, h('div', { class: 'stack', style: { gap: '18px' } }, err, bar, layout), settings.some((x) => !x.hidden && mayEdit(x)) && h('div', { class: 'savebar' }, save));
+  if (can('system.apps')) appsCard(extras);
   if (full) addExtras(extras, editable); else if (can('hack.manage')) hackCard(extras);
   // ungespeicherte Live-Vorschau der Akzentfarbe beim Verlassen zurücksetzen
   return () => applyConfig(state.config); // ungespeicherte Vorschau verwerfen

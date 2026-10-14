@@ -1421,6 +1421,18 @@ try {
     assert.equal((await admin.call('DELETE', `/api/legal/cases/${C1}`)).status, 200); assert.equal((await admin.call('GET', `/api/legal/cases/${C1}`)).status, 404); assert.equal((await admin.call('DELETE', `/api/legal/cases/${C2}`)).status, 200);
     ok('Rechtsfälle: Aktenzeichen, Beteiligte (inkl. neu anlegen), Beweise, Verlauf, Termine + Erinnerung, Kosten, Dokumente, Vertraulichkeit, Rechte'); }
 
+  // ══ Apps für alle deaktivieren ══
+  { assert.equal((await mod.call('PUT', '/api/config', { values: { 'system.disabled_apps': ['contacts'] } })).status, 403); // nur mit Recht „system.apps“
+    for (const bad of ['contacts', ['config'], ['users'], ['gibt-es-nicht'], ['contacts', 'contacts']]) assert.equal((await admin.call('PUT', '/api/config', { values: { 'system.disabled_apps': bad } })).status, 400, JSON.stringify(bad));
+    await setPerms(['contacts.view']); assert.equal((await mod.call('GET', '/api/contacts/people')).status, 200);
+    assert.equal((await admin.call('PUT', '/api/config', { values: { 'system.disabled_apps': ['contacts', 'warehouse'] } })).status, 200);
+    r = await mod.call('GET', '/api/contacts/people'); assert.equal(r.status, 403); assert.match(r.error, /deaktiviert/);
+    assert.equal((await admin.call('GET', '/api/contacts/people')).status, 403); assert.equal((await admin.call('GET', '/api/warehouses')).status, 403); // gilt auch für Administratoren
+    assert.equal((await admin.call('GET', '/api/market/items')).status, 200); assert.equal((await admin.call('GET', '/api/config')).status, 200); // andere Apps und die Konfiguration bleiben erreichbar
+    assert.ok((await admin.call('GET', '/api/bootstrap')).config['system.disabled_apps'].includes('contacts')); // Oberfläche erfährt es über die öffentliche Konfiguration
+    assert.equal((await admin.call('PUT', '/api/config', { values: { 'system.disabled_apps': [] } })).status, 200); assert.equal((await mod.call('GET', '/api/contacts/people')).status, 200); await setPerms([]);
+    ok('Apps deaktivieren: nur mit Recht, nur erlaubte Apps, Schnittstelle gesperrt, wieder aktivierbar'); }
+
   // ══ Legal ══
   { assert.equal((await mod.call('GET', '/api/legal')).status, 403); assert.equal((await new Client().call('GET', '/api/legal')).status, 401); assert.equal((await tp.call('GET', '/api/legal')).status, 401);
     await setPerms(['legal.view']); r = await mod.call('GET', '/api/legal'); assert.equal(r.status, 200); assert.equal(r.canManage, false);
