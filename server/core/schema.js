@@ -971,4 +971,14 @@ export const SCHEMA_MIGRATIONS = [
   ALTER TABLE partners ADD COLUMN user_id INTEGER;
   CREATE UNIQUE INDEX idx_partners_user ON partners(user_id) WHERE user_id IS NOT NULL;
   `,
+  // 29: Changelog – welches Mitglied hat welchen Eintrag (in welchem Stand) bestaetigt
+  `
+  CREATE TABLE changelog_ack (
+    user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    entry_id         INTEGER NOT NULL REFERENCES changelog_entries(id) ON DELETE CASCADE,
+    acked_updated_at TEXT NOT NULL,
+    acked_at         TEXT NOT NULL,
+    PRIMARY KEY (user_id, entry_id)
+  );
+  `,
 ];

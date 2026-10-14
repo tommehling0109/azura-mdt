@@ -57,6 +57,24 @@ export default {
       };
     });
 
+    // Ungelesen = neu oder seit der letzten Bestätigung geändert. Wer noch nie etwas bestätigt hat, bekommt nur die neuesten Einträge.
+    r.get('/api/changelog/unread', { perm: 'changelog.view' }, (ctx) => {
+      const rows = all('SELECT e.*, a.user_id seen FROM changelog_entries e LEFT JOIN changelog_ack a ON a.entry_id = e.id AND a.user_id = ? WHERE a.user_id IS NULL OR a.acked_updated_at < e.updated_at ORDER BY e.released_at DESC, e.id DESC', ctx.user.id);
+      const first = !get('SELECT 1 x FROM changelog_ack WHERE user_id = ?', ctx.user.id), cap = first ? 5 : 10;
+      return { entries: rows.slice(0, cap).map((e) => ({ ...dto(e, ctx.user.id), changed: !!e.seen, updatedAt: e.updated_at })), more: Math.max(0, rows.length - cap), total: rows.length };
+    });
+    // Bestätigen: alles, was bis zum angezeigten Stand (upTo = neuester Änderungszeitpunkt der gezeigten Einträge) neu oder geändert war
+    r.post('/api/changelog/ack', { perm: 'changelog.view' }, (ctx) => {
+      const upTo = ctx.body.upTo ? new Date(ctx.body.upTo) : null;
+      if (!upTo || Number.isNaN(upTo.getTime())) throw bad('Stand der angezeigten Einträge fehlt.');
+      const t = now();
+      let n = 0;
+      for (const e of all('SELECT e.id, e.updated_at FROM changelog_entries e LEFT JOIN changelog_ack a ON a.entry_id = e.id AND a.user_id = ? WHERE (a.user_id IS NULL OR a.acked_updated_at < e.updated_at) AND e.updated_at <= ?', ctx.user.id, upTo.toISOString())) {
+        run('INSERT INTO changelog_ack (user_id,entry_id,acked_updated_at,acked_at) VALUES (?,?,?,?) ON CONFLICT(user_id,entry_id) DO UPDATE SET acked_updated_at = excluded.acked_updated_at, acked_at = excluded.acked_at', ctx.user.id, e.id, e.updated_at, t); n++;
+      }
+      return { acknowledged: n };
+    });
+
     r.post('/api/changelog', { perm: 'changelog.manage' }, (ctx) => {
       const v = fields(ctx.body, false), t = now();
       const id = Number(run('INSERT INTO changelog_entries (version,title,released_at,items,author_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?)', v.version, v.title, v.released_at, v.items, ctx.user.id, t, t).lastInsertRowid);

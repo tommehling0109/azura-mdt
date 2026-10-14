@@ -1509,6 +1509,28 @@ try {
     await admin.call('PUT', '/api/config', { values: { 'market.member_trade': false } }); await setPerms([]);
     ok('Mitglieder handeln wie Partner: Einstellung + Recht, nur Börse, Team sieht Mitglieds-Geschäfte, Benachrichtigung, nicht in Partnerlisten'); }
 
+  // ══ Changelog: Pflicht-Bestätigung ══
+  { assert.equal((await new Client().call('GET', '/api/changelog/unread')).status, 401); assert.equal((await mod.call('GET', '/api/changelog/unread')).status, 403);
+    const before = (await admin.call('GET', '/api/changelog?limit=50')).entries.map((e) => e.id); for (const id of before) await admin.call('DELETE', `/api/changelog/${id}`);
+    await setPerms(['changelog.view']); const ids = [];
+    for (let i = 1; i <= 7; i++) { r = await admin.call('POST', '/api/changelog', { title: `Update ${i}`, version: `1.${i}`, items: [{ kind: 'new', text: `Neuerung ${i}` }] }); assert.equal(r.status, 201); ids.push(r.entry.id); await sleep(5); }
+    r = await mod.call('GET', '/api/changelog/unread'); assert.equal(r.entries.length, 5); assert.equal(r.more, 2); assert.equal(r.total, 7); assert.equal(r.entries[0].changed, false); // erstmalig: nur die neuesten fünf
+    const upTo = r.entries.reduce((a, e) => (e.updatedAt > a ? e.updatedAt : a), '');
+    assert.equal((await mod.call('POST', '/api/changelog/ack', {})).status, 400); assert.equal((await mod.call('POST', '/api/changelog/ack', { upTo: 'gestern' })).status, 400);
+    r = await mod.call('POST', '/api/changelog/ack', { upTo }); assert.equal(r.status, 200); assert.equal(r.acknowledged, 7); // auch die älteren, nicht angezeigten gelten als gelesen
+    assert.equal((await mod.call('GET', '/api/changelog/unread')).entries.length, 0);
+    assert.equal((await admin.call('GET', '/api/changelog/unread')).total, 7); // andere Personen sehen sie weiterhin (erstmalig die neuesten fünf)
+    await sleep(5); assert.equal((await admin.call('PATCH', `/api/changelog/${ids[2]}`, { title: 'Update 3 (korrigiert)' })).status, 200); // geänderter Eintrag erscheint erneut
+    r = await mod.call('GET', '/api/changelog/unread'); assert.equal(r.entries.length, 1); assert.equal(r.entries[0].changed, true); assert.equal(r.entries[0].title, 'Update 3 (korrigiert)');
+    await mod.call('POST', '/api/changelog/ack', { upTo: r.entries[0].updatedAt }); assert.equal((await mod.call('GET', '/api/changelog/unread')).entries.length, 0);
+    await sleep(5); r = await admin.call('POST', '/api/changelog', { title: 'Update 8', items: [{ kind: 'fixed', text: 'Fehler behoben' }] }); ids.push(r.entry.id);
+    r = await mod.call('GET', '/api/changelog/unread'); assert.equal(r.entries.length, 1); assert.equal(r.entries[0].changed, false);
+    // Bestätigung gilt nur bis zum gezeigten Stand: zwischenzeitlich geänderte Einträge bleiben ungelesen
+    const shown = r.entries[0].updatedAt; await sleep(5); await admin.call('PATCH', `/api/changelog/${ids[7]}`, { title: 'Update 8 neu' }); await mod.call('POST', '/api/changelog/ack', { upTo: shown });
+    assert.equal((await mod.call('GET', '/api/changelog/unread')).entries.length, 1);
+    for (const id of ids) await admin.call('DELETE', `/api/changelog/${id}`); await setPerms([]);
+    ok('Changelog: neue/geänderte Einträge müssen je Person bestätigt werden (erstmalig nur die neuesten, Bestätigung bis zum gezeigten Stand)'); }
+
   // ══ Legal ══
   { assert.equal((await mod.call('GET', '/api/legal')).status, 403); assert.equal((await new Client().call('GET', '/api/legal')).status, 401); assert.equal((await tp.call('GET', '/api/legal')).status, 401);
     await setPerms(['legal.view']); r = await mod.call('GET', '/api/legal'); assert.equal(r.status, 200); assert.equal(r.canManage, false);

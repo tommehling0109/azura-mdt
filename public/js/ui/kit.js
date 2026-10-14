@@ -115,7 +115,7 @@ export function toast(message, type = 'ok', { title, onClick, duration } = {}) {
 
 // ── Modals ─────────────────────────────────────────────
 /** openModal({title, body, footer, wide}) → { close, el }. ESC und Klick auf den Hintergrund schließen. */
-export function openModal({ title, body, footer, wide = false, onClose }) {
+export function openModal({ title, body, footer, wide = false, onClose, locked = false }) {
   const prevFocus = document.activeElement;
   const root = h('div', { class: 'modal-root' });
   const close = () => {
@@ -124,13 +124,13 @@ export function openModal({ title, body, footer, wide = false, onClose }) {
     prevFocus?.focus?.();
     onClose?.();
   };
-  const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+  const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); if (!locked) close(); } };
   const modal = h('div', { class: `modal ${wide ? 'wide' : ''}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
-    h('div', { class: 'modal-head' }, h('h3', null, title), button('', { variant: 'ghost', size: 'sm', icon: 'x', title: 'Schließen', onClick: close })),
+    h('div', { class: 'modal-head' }, h('h3', null, title), !locked && button('', { variant: 'ghost', size: 'sm', icon: 'x', title: 'Schließen', onClick: close })),
     h('div', { class: 'modal-body' }, body),
     footer && h('div', { class: 'modal-foot' }, footer));
   root.append(modal);
-  root.addEventListener('mousedown', (e) => { if (e.target === root) close(); });
+  root.addEventListener('mousedown', (e) => { if (e.target === root && !locked) close(); });
   document.addEventListener('keydown', onKey);
   document.getElementById('screen').append(root);
   modal.querySelector('input,select,textarea,.modal-body button')?.focus();

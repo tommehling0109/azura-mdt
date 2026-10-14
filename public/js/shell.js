@@ -9,7 +9,7 @@ import { openAccountDialog } from './views/account.js';
 import { openSettingsDialog } from './views/settings.js';
 import { openLevelDialog } from './views/partner/level.js';
 import { createBoard } from './board.js';
-import { createChangelog } from './changelog.js';
+import { createChangelog, checkChangelogAck } from './changelog.js';
 import { createTicker } from './ticker.js';
 import { api } from './api.js';
 import { connect, disconnect, subscribe, onStatus } from './realtime.js';
@@ -489,6 +489,11 @@ export function showApp(onLogout, opts = {}) {
   areaObserver.observe(area);
   renderIcons(); requestAnimationFrame(() => renderIcons()); window.addEventListener("resize", () => renderIcons());
   renderTasks();
+  if (!opts.partner && can('changelog.view')) { // neue/geänderte Updates: Pflicht-Hinweis beim Anmelden, Neuladen, bei neuen Einträgen und beim Zurückkehren auf die Seite
+    setTimeout(checkChangelogAck, 600);
+    subscribe(['changelog'], () => checkChangelogAck(), { wait: 400 });
+    let last = 0; document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - last > 30_000) { last = Date.now(); checkChangelogAck(); } });
+  }
   refreshCounters().then(renderIcons);
   // ── Echtzeit: eine Verbindung für Panel und Partner-Portal ──
   connect(opts.partner ? 'partner' : 'staff');
