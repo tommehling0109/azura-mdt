@@ -46,6 +46,7 @@ const fileOf = (d) => join(dir(), `${d.id}.${d.ext}`);
 // ── Zugriff ──
 const has = (user, p) => user.perms.has(p) || user.isAdmin;
 const inTeam = (user, c) => c.lead_user_id === user.id || c.created_by === user.id || !!get('SELECT 1 x FROM legal_case_team WHERE case_id = ? AND user_id = ?', c.id, user.id);
+export const mayAccessCase = (user, c) => mayAccess(user, c);
 const mayAccess = (user, c) => has(user, 'legal.cases.view') && (!c.confidential || has(user, 'legal.cases.confidential') || inTeam(user, c));
 function loadCase(user, id, { edit = false } = {}) {
   const c = get('SELECT * FROM legal_cases WHERE id = ?', Number(id));

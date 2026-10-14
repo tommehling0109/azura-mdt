@@ -107,6 +107,7 @@ export default async function render(container, ctx) {
 
       const acc = h('div', null,
         w.rent?.enabled && note(`Lagerkosten-Erinnerung: jeden ${opts.weekdays?.[w.rent.weekday] ?? ''} ab ${String(w.rent.hour).padStart(2, '0')}:00 Uhr${w.rent.cents ? ` · ${(w.rent.cents / 100).toLocaleString('de-DE', { minimumFractionDigits: 2 })} ${opts.currency}` : ''}`, 'clock'),
+        w.rent?.unpaid && h('div', { style: { margin: '10px 0' } }, note(`Lagerkosten seit ${w.rent.dueDate.split('-').reverse().join('.')} fällig – noch nicht als bezahlt bestätigt (steht in der Problemleiste).`, 'alert'), h('div', { style: { height: '8px' } }), button('Als bezahlt bestätigen', { variant: 'primary', icon: 'check', onClick: async (e) => busy(e.currentTarget, async () => { try { await api.post(`/api/warehouses/${w.id}/rent/paid`, {}); toast('Lagerkosten als bezahlt bestätigt.'); showDetail(); } catch (ex) { toast(ex.message, 'err'); } }) })),
         w.rent?.enabled && h('div', { style: { height: '12px' } }),
         note(w.restricted ? 'Dieses Lager ist beschränkt: Nur die unten genannten Rollen (und Administratoren) sehen es.' : 'Dieses Lager ist offen: Alle Mitglieder mit dem Recht „Lager ansehen“ sehen es. Rollen können zusätzlich Verwaltungsrechte bekommen.', 'shield'),
         h('div', { style: { height: '12px' } }),

@@ -11,6 +11,7 @@ import { openLevelDialog } from './views/partner/level.js';
 import { createBoard } from './board.js';
 import { createChangelog } from './changelog.js';
 import { checkUpdatesAck } from './updates-ack.js';
+import { createProblems } from './problems.js';
 import { createTicker } from './ticker.js';
 import { api } from './api.js';
 import { connect, disconnect, subscribe, onStatus } from './realtime.js';
@@ -210,7 +211,9 @@ export function showApp(onLogout, opts = {}) {
   drawGreet(); window.addEventListener('resize', fitGreet); if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fitGreet).observe(dock);
   const changelog = !opts.partner && can('changelog.view') ? createChangelog() : null; // Changelog links, nur für Mitarbeiter
   if (changelog) area.append(changelog.el);
-  if (board) area.append(board.el); // im Desktop-Bereich: Fenster liegen darüber, die Fensterleisten bleiben bedienbar
+  // Rechte Spalte: Schwarzes Brett, darunter die Problemleiste (nur Mitarbeiter; erscheint nur bei Problemen)
+  const problems = opts.partner ? null : createProblems({ onOpen: (t) => openTarget(t) });
+  if (board || problems) { const rightCol = h('div', { class: 'right-col' }, board?.el, problems?.el); area.append(rightCol); } // im Desktop-Bereich: Fenster liegen darüber, die Fensterleisten bleiben bedienbar
   // Desktop-Symbole: Voreinstellung des Administrators, jeder Benutzer kann sie in seinen Einstellungen für sich an-/ausschalten
   const iconsWanted = () => { const u = getSetting('icons'); if (u === 'on') return true; if (u === 'off') return false; const pc = opts.partner ? state.config['ui.desktop_icons_partner'] : null; return pc === 'on' ? true : pc === 'off' ? false : !!state.config['ui.desktop_icons']; };
   const syncIcons = () => { const want = iconsWanted(); if (want && !iconsEl.isConnected) { area.append(iconsEl); renderIcons(); } else if (!want && iconsEl.isConnected) iconsEl.remove(); iconResetBtn.hidden = !iconsEl.isConnected || compact(); };
@@ -228,7 +231,7 @@ export function showApp(onLogout, opts = {}) {
   // Anordnung der Symbole: selbst platzierte bleiben stehen – es sei denn, eine aufgeklappte Tafel (Schwarzes Brett/Changelog) läge darüber, dann
   // werden sie nur für die Anzeige auf den nächsten freien Platz geschoben (die gemerkte Position bleibt, klappt die Tafel zu, sind sie wieder dort).
   // Symbole ohne eigene Position füllen die übrigen freien Plätze – nie unter Tafeln und nie auf anderen Symbolen.
-  const panelRects = () => { const a = area.getBoundingClientRect(); return [board?.el, changelog?.el].filter((e) => e && !e.hidden && e.offsetParent).map((e) => { const r = e.getBoundingClientRect(); return { l: r.left - a.left - 8, t: r.top - a.top - 8, r: r.right - a.left + 8, b: r.bottom - a.top + 8 }; }); };
+  const panelRects = () => { const a = area.getBoundingClientRect(); return [board?.el, changelog?.el, problems?.el].filter((e) => e && !e.hidden && e.offsetParent).map((e) => { const r = e.getBoundingClientRect(); return { l: r.left - a.left - 8, t: r.top - a.top - 8, r: r.right - a.left + 8, b: r.bottom - a.top + 8 }; }); };
   const iconBox = (x, y) => ({ l: x - 2, t: y - 2, r: x + 94, b: y + 96 });
   const overlap = (p, q) => p.l < q.r && p.r > q.l && p.t < q.b && p.b > q.t;
   function layoutIcons(items, pos) {
@@ -292,7 +295,7 @@ export function showApp(onLogout, opts = {}) {
   }
   area.addEventListener('pointerdown', (e) => { if (!e.target.closest?.('.desk-icon')) iconsEl.querySelectorAll('.sel').forEach((x) => x.classList.remove('sel')); });
   // Auf- und Zuklappen der Tafeln (und Inhaltsänderungen) ordnen die Symbole ohne eigene Position neu an
-  if (typeof ResizeObserver !== 'undefined') { let t; const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(() => { if (iconsEl.isConnected) renderIcons(); }, 80); }); [board?.el, changelog?.el, area].forEach((e) => e && ro.observe(e)); }
+  if (typeof ResizeObserver !== 'undefined') { let t; const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(() => { if (iconsEl.isConnected) renderIcons(); }, 80); }); [board?.el, changelog?.el, problems?.el, area].forEach((e) => e && ro.observe(e)); }
   window.addEventListener('mdt:settings', syncIcons);
   window.addEventListener('mdt:config-applied', () => { // Apps wurden (de)aktiviert: offene Fenster schließen, Dock, Startmenü und Symbole aktualisieren
     if (opts.partner) return syncIcons();

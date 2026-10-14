@@ -1017,4 +1017,9 @@ export const SCHEMA_MIGRATIONS = [
   );
   CREATE INDEX idx_board_ack_log_user ON board_ack_log(user_id, id);
   `,
+  // 32: Lagerkosten – faellig seit / bezahlt am (Problemleiste bleibt, bis die Zahlung bestaetigt ist)
+  `
+  ALTER TABLE warehouses ADD COLUMN rent_due_date TEXT;
+  ALTER TABLE warehouses ADD COLUMN rent_paid_date TEXT;
+  `,
 ];

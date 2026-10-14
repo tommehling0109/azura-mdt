@@ -1565,6 +1565,41 @@ try {
     assert.equal((await admin.call('PUT', '/api/config', { values: { 'ui.halloween': false } })).status, 200); assert.equal((await new Client().call('GET', '/api/bootstrap')).config['ui.halloween'], false);
     ok('Halloween-Design: öffentlich lesbar, nur mit Recht system.apps (Superadmin) schaltbar'); }
 
+  // ══ Problemleiste ══
+  { const { run: dbRun } = await import('../server/core/db.js'); const { clearAttempts } = await import('../server/core/auth.js');
+    assert.equal((await new Client().call('GET', '/api/problems')).status, 401);
+    for (const ip of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) clearAttempts(`pl|${ip}`);
+    const pr = await admin.call('POST', '/api/partners', { type: 'buyer', name: 'Problem Partner', contactName: 'X', apps: ['market'] }); const ptc = new Client(); assert.equal((await ptc.call('POST', `/api/p/${pr.partner.linkPath.split('/').pop()}/login`, { code: pr.code })).status, 200);
+    assert.equal((await ptc.call('GET', '/api/problems')).status, 401); // Externe Partner: nie
+    await setPerms([]); const PERM = { vehicles: 'vehicles.view', market: 'market.view', legal: 'legal.cases.view', warehouse: 'warehouse.view', credit: 'credit.view', tab: 'tab.view', tickets: 'tickets.manage', users: 'users.approve' };
+    const scoped = async () => { const pm = (await mod.call('GET', '/api/auth/me')).user.permissions, pl = (await mod.call('GET', '/api/problems')).problems; assert.ok(pl.every((p) => pm.includes(PERM[p.area])), 'Problem ohne Zugriffsrecht sichtbar'); return pl; }; // jedes Problem nur mit dem Recht des Bereichs
+    await scoped();
+    // Fahrzeug beschädigt, TÜV überfällig
+    r = await admin.call('POST', '/api/vehicles', { name: 'Problem-Wagen', plate: 'PRB 1', fuel: 'petrol', condition: 'damaged', inspectionDue: '2020-01-01' }); assert.equal(r.status, 201); const veh = r.vehicle.id;
+    // Börse: Geschäft liegt beim Team (älter als 1 Stunde)
+    const it = (await admin.call('POST', '/api/market/items', { name: 'Problem-Erz', unit: 'Stück' })).item, old = new Date(Date.now() - 3 * 3600_000).toISOString();
+    const deal = Number(dbRun("INSERT INTO market_deals (deal_number,origin,direction,partner_id,item_id,quantity,unit_price,proposed_by,turn,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", 'PRB-1', 'offer', 'buy', pr.partner.id, it.id, 2, 10, 'partner', 'staff', 'submitted', old, old).lastInsertRowid);
+    // Rechtsfall: überfällige Frist (vertraulich + offen)
+    const lc = (await admin.call('POST', '/api/legal/cases', { title: 'Problem-Akte', confidential: true })).case.id; await admin.call('POST', `/api/legal/cases/${lc}/appointments`, { title: 'Einspruchsfrist', kind: 'deadline', startsAt: new Date(Date.now() - 86400_000).toISOString() });
+    // Lager: Lagerkosten fällig, nicht bestätigt
+    const wh = (await admin.call('POST', '/api/warehouses', { name: 'Problem-Lager', rent: { enabled: true, cents: 5000, weekday: 1, hour: 8 } })).warehouse.id; dbRun("UPDATE warehouses SET rent_due_date = ? WHERE id = ?", new Date().toISOString().slice(0, 10), wh);
+    r = await admin.call('GET', '/api/problems'); const ids = r.problems.map((p) => p.id);
+    for (const id of [`vehicle:${veh}:cond`, `vehicle:${veh}:insp`, `deal:${deal}`, `wh:${wh}:rent`]) assert.ok(ids.includes(id), id + ' fehlt'); assert.ok(r.problems.some((p) => p.area === 'legal' && /Einspruchsfrist/.test(p.title) && p.severity === 'critical'));
+    assert.equal(r.problems[0].severity, 'critical'); // kritische zuerst
+    // Rechte: nur Probleme aus Bereichen mit Zugriff
+    await setPerms(['vehicles.view']); r = await mod.call('GET', '/api/problems'); assert.ok(r.problems.filter((p) => p.area === 'vehicles').length >= 2); await scoped();
+    await setPerms(['market.view']); r = await mod.call('GET', '/api/problems'); assert.ok(r.problems.some((p) => p.id === `deal:${deal}`)); await scoped();
+    await setPerms(['legal.cases.view']); assert.equal((await mod.call('GET', '/api/problems')).problems.some((p) => p.area === 'legal'), false); // vertrauliche Akte ohne Zugriff: nichts
+    await admin.call('PATCH', `/api/legal/cases/${lc}`, { confidential: false }); assert.ok((await mod.call('GET', '/api/problems')).problems.some((p) => p.area === 'legal'));
+    await setPerms(['warehouse.view']); assert.ok((await mod.call('GET', '/api/problems')).problems.some((p) => p.id === `wh:${wh}:rent`));
+    // Behoben → verschwindet
+    assert.equal((await mod.call('POST', `/api/warehouses/${wh}/rent/paid`, {})).status, 403); await setPerms([]);
+    assert.equal((await admin.call('POST', `/api/warehouses/${wh}/rent/paid`, {})).status, 200); assert.equal((await admin.call('POST', `/api/warehouses/${wh}/rent/paid`, {})).status, 409);
+    await admin.call('PATCH', `/api/vehicles/${veh}`, { condition: 'ready', inspectionDue: '2099-01-01' }); dbRun("UPDATE market_deals SET turn = 'partner' WHERE id = ?", deal); await admin.call('DELETE', `/api/legal/cases/${lc}`);
+    r = await admin.call('GET', '/api/problems'); for (const id of [`vehicle:${veh}:cond`, `vehicle:${veh}:insp`, `deal:${deal}`, `wh:${wh}:rent`]) assert.equal(r.problems.some((p) => p.id === id), false, id + ' bleibt');
+    assert.equal(r.problems.some((p) => p.area === 'legal'), false);
+    ok('Problemleiste: Quellen, nur mit Zugriff, vertrauliche Akten, verschwindet bei Behebung, Partner nie'); }
+
   // ══ Legal ══
   { assert.equal((await mod.call('GET', '/api/legal')).status, 403); assert.equal((await new Client().call('GET', '/api/legal')).status, 401); assert.equal((await tp.call('GET', '/api/legal')).status, 401);
     await setPerms(['legal.view']); r = await mod.call('GET', '/api/legal'); assert.equal(r.status, 200); assert.equal(r.canManage, false);

@@ -74,7 +74,7 @@ function dto(w, level, user, { detail = false } = {}) {
   };
   if (detail && level === 'manage') {
     const rec = parseRecipients(w.rent_recipients);
-    out.rent = { enabled: !!w.rent_enabled, cents: w.rent_cents, weekday: w.rent_weekday, hour: w.rent_hour, roleIds: rec.roles, userIds: rec.users, lastNotified: w.rent_last_date };
+    out.rent = { enabled: !!w.rent_enabled, cents: w.rent_cents, weekday: w.rent_weekday, hour: w.rent_hour, roleIds: rec.roles, userIds: rec.users, lastNotified: w.rent_last_date, dueDate: w.rent_due_date, paidDate: w.rent_paid_date, unpaid: !!w.rent_due_date && (!w.rent_paid_date || w.rent_paid_date < w.rent_due_date) };
     out.access = all('SELECT a.role_id, a.level, r.name role_name, r.color role_color FROM warehouse_access a JOIN roles r ON r.id = a.role_id WHERE a.warehouse_id = ? ORDER BY r.name', w.id)
       .map((a) => ({ roleId: a.role_id, roleName: a.role_name, color: a.role_color, level: a.level }));
   }
@@ -127,7 +127,7 @@ export function runRentReminders(at = new Date()) {
   let sent = 0;
   for (const w of all('SELECT * FROM warehouses WHERE is_active = 1 AND rent_enabled = 1')) {
     if (w.rent_last_date === today || at.getDay() !== w.rent_weekday || at.getHours() < w.rent_hour) continue;
-    run('UPDATE warehouses SET rent_last_date = ? WHERE id = ?', today, w.id);
+    run('UPDATE warehouses SET rent_last_date = ?, rent_due_date = ? WHERE id = ?', today, today, w.id);
     const cur = getConfig('market.currency') ?? '$', amount = w.rent_cents > 0 ? ` Fällig: ${(w.rent_cents / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur}.` : '';
     sent += notify(rentRecipients(w), { key: `warehouse:${w.id}:rent:${today}`, title: `${w.warehouse_number} · Lagerkosten fällig`, body: `${w.name}: Die wöchentlichen Lagerkosten sind zu bezahlen.${amount}`, target: { app: 'warehouse' } });
   }
@@ -305,6 +305,16 @@ export default {
       const w = get(`${SQL} WHERE w.id = ?`, id);
       audit(ctx, { action: 'warehouse.updated', module: 'warehouse', targetType: 'warehouse', targetId: id, targetLabel: `${w.warehouse_number} · ${w.name}`, before: { name: cur.name, capacity: cur.capacity, restricted: cur.restricted }, after: { name: w.name, capacity: w.capacity, restricted: w.restricted } });
       return { warehouse: dto(w, 'manage', ctx.user, { detail: true }) };
+    });
+
+    // Lagerkosten als bezahlt bestätigen (nimmt das Problem aus der Problemleiste)
+    r.post('/api/warehouses/:id/rent/paid', { perm: 'warehouse.manage' }, (ctx) => {
+      const id = Number(ctx.params.id), w = get('SELECT * FROM warehouses WHERE id = ?', id);
+      if (!w) throw notFound('Lager nicht gefunden.');
+      if (!w.rent_due_date || (w.rent_paid_date && w.rent_paid_date >= w.rent_due_date)) throw conflict('Es sind keine Lagerkosten offen.');
+      run('UPDATE warehouses SET rent_paid_date = ?, updated_at = ? WHERE id = ?', localDay(new Date()), now(), id);
+      audit(ctx, { action: 'warehouse.rent_paid', module: 'warehouse', targetType: 'warehouse', targetId: id, targetLabel: `${w.warehouse_number} · ${w.name}`, after: { dueDate: w.rent_due_date } });
+      return { ok: true };
     });
 
     r.delete('/api/warehouses/:id', { perm: 'warehouse.manage' }, (ctx) => {
