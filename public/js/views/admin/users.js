@@ -8,6 +8,7 @@ import { api } from '../../api.js';
 import { can, state } from '../../state.js';
 import { prepareAvatar } from '../account.js';
 import { phoneInput, readFile, filePicker } from './partners.js';
+import { extraFilesBox, extraFilesPicker } from './extra-files.js';
 
 /** Dokumente der Personalakte: Schlüssel, Beschriftung, Pflicht (Pflicht gilt nur für Lieferanten – bei Mitgliedern sind alle freiwillig) */
 const PERS_DOCS = [['id', 'Ausweis'], ['license', 'Führerschein'], ['weapon', 'Waffenschein'], ['clearance', 'Führungszeugnis (optional)']];
@@ -145,6 +146,7 @@ export default async function render(container, ctx) {
     const noInput = state.user.isSuperadmin ? input({ value: user?.memberNumber ?? '', maxLength: 20, placeholder: user ? 'Personalnummer' : 'leer = automatisch die nächste Nummer', autocomplete: 'off' }) : null;
     if (noInput) noInput.addEventListener('input', () => { noInput.value = noInput.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''); });
     const personNew = !user && can('users.personnel_edit') ? personFields() : null;
+    const extras = personNew ? extraFilesPicker() : null;
     const docPickers = personNew ? Object.fromEntries(PERS_DOCS.map(([k, label]) => [k, filePicker(`${label.replace(' (optional)', '')} hochladen`)])) : null;
     const general = h('div', null, err,
       user && h('div', { class: 'member-card' }, userAvatar(user, 'lg'),
@@ -165,7 +167,7 @@ export default async function render(container, ctx) {
       supSel && field('Vorgesetzter', supSel, { help: 'Direkter Vorgesetzter dieses Mitglieds.' }),
       !user && field('Passwort', pw),
       !user && h('div', null, h('div', { class: 'sep' }), h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Persönliche Angaben (Personalakte)'),
-        personNew ? [personNew.el, PERS_DOCS.map(([k, label]) => field(label, docPickers[k].el))]
+        personNew ? [personNew.el, PERS_DOCS.map(([k, label]) => field(label, docPickers[k].el)), extras.el]
           : note('Vorname, Nachname, Straße, Postal Code, Telefonnummer, UMail, Kontonummer und die Dokumente (Ausweis, Führerschein, Waffenschein, Führungszeugnis) kannst du nur erfassen, wenn dir das Recht „users.personnel_edit“ zugewiesen ist (Rollen & Rechte → Rolle bearbeiten, oder beim Benutzer unter „Direkte Rechte“).', 'alert')),
       !user && h('div', { class: 'help' }, 'Der Benutzer wird sofort aktiv geschaltet und erhält automatisch die nächste Mitgliedsnummer.'),
       user && h('dl', { class: 'details-dl' },
@@ -211,7 +213,8 @@ export default async function render(container, ctx) {
       drawDocs(d.personnel.docs);
       mount(personnelBody, note('Die Personalakte sehen nur das Mitglied selbst und Berechtigte (users.personnel_view). Die Angaben erscheinen nirgends sonst im System.', 'shield'), h('div', { style: { height: '12px' } }), pf.el,
         canEdit && h('div', { style: { margin: '8px 0 14px' } }, button('Angaben speichern', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => { try { await api.put(`/api/users/${user.id}/personnel`, pf.values()); toast('Personalakte gespeichert.'); } catch (ex) { toast(ex.message, 'err'); } }) })),
-        h('div', { class: 'sep' }), h('div', { class: 'label', style: { marginBottom: '8px' } }, 'Dokumente'), docsEl);
+        h('div', { class: 'sep' }), h('div', { class: 'label', style: { marginBottom: '8px' } }, 'Dokumente'), docsEl,
+        h('div', { style: { height: '14px' } }), extraFilesBox({ type: 'user', id: user.id }));
     }
 
     async function save() {
@@ -224,6 +227,8 @@ export default async function render(container, ctx) {
               const v = personNew.values();
               if (Object.values(v).some(Boolean)) await api.put(`/api/users/${made.id}/personnel`, v);
               for (const [k] of PERS_DOCS) { const f = docPickers[k].file(); if (f) await api.post(`/api/users/${made.id}/docs/${k}`, { data: await readFile(f) }); }
+              const failed = extras.count() ? await extras.upload('user', made.id) : [];
+              if (failed.length) throw new Error(`Diese Dateien konnten nicht gespeichert werden: ${failed.join(', ')}`);
             } catch (ex) { toast(`Benutzer angelegt – die Personalakte konnte nicht vollständig gespeichert werden: ${ex.message}`, 'warn'); load(); m.close(); return; }
           }
         } else {

@@ -1016,7 +1016,9 @@ try {
   // Externe Zugänge: Lieferant (viele Daten + Dokumente) oder Ankäufer (Name, Ansprechpartner, Tel optional)
   const IMG = 'data:image/png;base64,' + PNGAV;
   const sup = { type: 'supplier', firstName: 'Max', lastName: 'Muster', street: 'Test Drive 5', postalCode: '1234', phone: '5551234567', umail: 'Max.Muster@umail.com', accountNumber: 'ls28180705', apps: ['market'] };
-  r = await admin.call('POST', '/api/partners', sup); assert.equal(r.status, 400); assert.match(r.error, /Ausweis/); assert.match(r.error, /Führerschein/); assert.match(r.error, /Waffenschein/); assert.doesNotMatch(r.error, /Führungszeugnis/);
+  r = await admin.call('POST', '/api/partners', { ...sup, umail: 'ohne.doku@umail.com', accountNumber: 'LS11112222' }); assert.equal(r.status, 201); assert.deepEqual(r.partner.docs, { id: false, license: false, weapon: false, clearance: false }); // Dokumente sind optional
+  await admin.call('DELETE', `/api/partners/${r.partner.id}`);
+  r = await admin.call('POST', '/api/partners', { ...sup, firstName: '' }); assert.equal(r.status, 400); assert.match(r.error, /Vorname/); // Stammdaten bleiben Pflicht
   const docs3 = { idDoc: IMG, licenseDoc: IMG, weaponDoc: IMG };
   r = await admin.call('POST', '/api/partners', { ...sup, ...docs3, umail: 'x y' }); assert.equal(r.status, 400); assert.match(r.error, /UMail/);
   r = await admin.call('POST', '/api/partners', { ...sup, ...docs3, phone: '123' }); assert.equal(r.status, 400); assert.match(r.error, /Telefon/);
@@ -1026,6 +1028,22 @@ try {
   const supP = r.partner; assert.equal(supP.type, 'supplier'); assert.equal(supP.typeLabel, 'Lieferant'); assert.equal(supP.umail, 'max.muster@umail.com'); assert.equal(supP.phone, '(555) 123-4567'); assert.equal(supP.accountNumber, 'LS28180705'); assert.deepEqual(supP.docs, { id: true, license: true, weapon: true, clearance: true }); assert.equal(supP.name, 'Max Muster');
   for (const k of ['id', 'license', 'weapon', 'clearance']) { const dr = await fetch(`${base}/api/partners/${supP.id}/docs/${k}`, { headers: { cookie: admin.cookie } }); assert.equal(dr.status, 200); assert.equal(dr.headers.get('content-type'), 'image/png'); }
   assert.equal((await fetch(`${base}/api/partners/${supP.id}/docs/id`, { headers: { cookie: mod.cookie } })).status, 403);
+  { // Weitere Dateien mit Name und Beschreibung
+    r = await admin.call('POST', `/api/extra-files/partner/${supP.id}`, { name: 'Vollmacht', description: 'Unterschrieben am Hafen', data: IMG }); assert.equal(r.status, 201); const xf = r.file.id; assert.equal(r.file.name, 'Vollmacht'); assert.equal(r.file.description, 'Unterschrieben am Hafen'); assert.equal(r.file.ext, 'png');
+    assert.equal((await admin.call('POST', `/api/extra-files/partner/${supP.id}`, { name: 'x', data: IMG })).status, 400); // Name zu kurz
+    assert.equal((await admin.call('POST', `/api/extra-files/partner/${supP.id}`, { name: 'Böse', data: 'data:text/html;base64,' + Buffer.from('<b>x</b>').toString('base64') })).status, 400); // nur PDF/Bild
+    assert.equal((await admin.call('POST', '/api/extra-files/foo/1', { name: 'Böse', data: IMG })).status, 404);
+    assert.equal((await admin.call('GET', `/api/extra-files/partner/${supP.id}`)).files.length, 1);
+    const dl = await fetch(`${base}/api/extra-file/${xf}`, { headers: { cookie: admin.cookie } }); assert.equal(dl.status, 200); assert.equal(dl.headers.get('content-type'), 'image/png');
+    assert.equal((await fetch(`${base}/api/extra-file/${xf}`, { headers: { cookie: mod.cookie } })).status, 403); assert.equal((await mod.call('GET', `/api/extra-files/partner/${supP.id}`)).status, 403); assert.equal((await mod.call('POST', `/api/extra-files/partner/${supP.id}`, { name: 'Hack', data: IMG })).status, 403);
+    assert.equal((await new Client().call('GET', `/api/extra-files/partner/${supP.id}`)).status, 401);
+    r = await admin.call('PATCH', `/api/extra-file/${xf}`, { name: 'Vollmacht neu', description: '' }); assert.equal(r.file.name, 'Vollmacht neu'); assert.equal(r.file.description, '');
+    const uid = (await admin.call('GET', '/api/auth/me')).user.id;
+    r = await admin.call('POST', `/api/extra-files/user/${uid}`, { name: 'Lebenslauf', data: IMG }); assert.equal(r.status, 201); const uf = r.file.id;
+    assert.equal((await mod.call('GET', `/api/extra-files/user/${uid}`)).status, 403); // fremde Personalakte
+    assert.equal((await admin.call('DELETE', `/api/extra-file/${uf}`)).status, 200); assert.equal((await admin.call('DELETE', `/api/extra-file/${xf}`)).status, 200); assert.equal((await admin.call('GET', `/api/extra-file/${xf}`)).status, 404);
+    ok('Weitere Dateien: Name/Beschreibung, nur PDF/Bild, Rechte, ändern, löschen; Lieferanten-Dokumente optional'); }
+
   r = await admin.call('POST', '/api/partners', { type: 'buyer', name: 'Ankauf AG', apps: ['market'] }); assert.equal(r.status, 400); assert.match(r.error, /Ansprechpartner/);
   r = await admin.call('POST', '/api/partners', { type: 'buyer', name: 'Ankauf AG', contactName: 'Frau Muster', phone: '5559876543', apps: ['market'] }); assert.equal(r.status, 201); assert.equal(r.partner.type, 'buyer'); assert.equal(r.partner.typeLabel, 'Ankäufer'); assert.equal(r.partner.contactName, 'Frau Muster'); assert.equal(r.partner.phone, '(555) 987-6543'); const custP = r.partner.id; // Tel ist optional
   r = await admin.call('POST', '/api/partners', { type: 'buyer', name: 'Ohne Tel', contactName: 'Herr X', apps: ['market'] }); assert.equal(r.status, 201); assert.equal(r.partner.phone, '');

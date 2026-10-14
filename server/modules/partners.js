@@ -70,7 +70,7 @@ function requireComplete(merged, has, strictBuyer = true) {
   const miss = [];
   if (merged.partner_type === 'supplier') {
     for (const [col, label] of [['first_name', 'Vorname'], ['last_name', 'Nachname'], ['street', 'Straße'], ['postal_code', 'Postal Code'], ['phone', 'Telefonnummer'], ['umail_local', 'UMail'], ['account_number', 'Kontonummer']]) if (!merged[col]) miss.push(label);
-    for (const [k, label] of [['id', 'Ausweis'], ['license', 'Führerschein'], ['weapon', 'Waffenschein']]) if (!has[k]) miss.push(`${label} (Upload)`); // Führungszeugnis ist optional
+    void has; // Dokumente (Ausweis, Führerschein, Waffenschein, Führungszeugnis) sind optional: nicht jeder Lieferant kann sie vorlegen
     if (miss.length) throw bad(`Bei Lieferanten sind folgende Angaben Pflicht: ${miss.join(', ')}.`);
   } else if (strictBuyer && !merged.contact_name) throw bad('Bei Ankäufern ist der Ansprechpartner Pflicht (zusätzlich zum Namen bzw. der Bezeichnung).');
 }

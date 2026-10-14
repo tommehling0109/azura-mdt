@@ -2,6 +2,7 @@ import { h, mount, fmtDateTime, timeAgo } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import { button, busy, card, field, input, select, checkbox, formError, openModal, confirmDialog, toast, skeletons, empty, note, badge, avatar } from '../../ui/kit.js';
 import { api } from '../../api.js';
+import { extraFilesBox, extraFilesPicker } from './extra-files.js';
 import { can, state } from '../../state.js';
 
 const fullLink = (path) => { const h = state.config['coop.host']; return `${h ? `https://${h}` : location.origin}${path}`; }; // Links für Externe laufen über deren eigene Subdomain
@@ -42,7 +43,7 @@ export function filePicker(label, existing) {
 }
 const TYPE_OPTIONS = [{ value: '', label: '— bitte wählen —' }, { value: 'supplier', label: 'Lieferant (liefert uns Ware)' }, { value: 'buyer', label: 'Ankäufer (kauft von uns)' }];
 /** Dokumente eines Lieferanten: Schlüssel, Beschriftung, Pflicht */
-export const SUPPLIER_DOCS = [['id', 'Ausweis', true], ['license', 'Führerschein', true], ['weapon', 'Waffenschein', true], ['clearance', 'Führungszeugnis', false]];
+export const SUPPLIER_DOCS = [['id', 'Ausweis', false], ['license', 'Führerschein', false], ['weapon', 'Waffenschein', false], ['clearance', 'Führungszeugnis', false]];
 
 /**
  * Stammdaten eines externen Zugangs. Zuerst wird die Art gewählt:
@@ -66,13 +67,13 @@ function profileForm(p, { docs, hint = '' }) {
   const draw = () => {
     if (type.value === 'supplier') {
       mount(rows,
-        h('div', { class: 'help', style: { margin: '0 0 12px' } }, 'Lieferant: Alle mit * markierten Angaben und Dokumente sind Pflicht.'),
+        h('div', { class: 'help', style: { margin: '0 0 12px' } }, 'Lieferant: Alle mit * markierten Angaben sind Pflicht. Dokumente sind optional – was nicht vorliegt, kannst du später nachreichen.'),
         h('div', { class: 'form-row' }, field('Vorname *', first), field('Nachname *', last)),
         h('div', { class: 'form-row' }, field('Street / Straße *', street), field('Postal Code *', postal)),
         h('div', { class: 'form-row' }, field('Telefonnummer *', phone), field('Kontonummer *', account)),
         field('UMail *', h('div', { class: 'input-group' }, umail, h('span', { class: 'addon' }, '@umail.com')), { help: 'RP-interne Mail – die Endung ist fest.' }),
         !docs && hint && note(hint, 'alert'),
-        docs && h('div', null, SUPPLIER_DOCS.map(([k, label, must]) => field(must ? `${label} *` : `${label} (optional)`, pickers[k].el, k === 'id' ? { help: 'PDF, PNG, JPG oder WebP, max. 5 MB.' } : {}))));
+        docs && h('div', null, SUPPLIER_DOCS.map(([k, label, must]) => field(must ? `${label} *` : `${label} (optional)`, pickers[k].el, k === 'id' ? { help: 'Optional. PDF, PNG, JPG oder WebP, max. 5 MB.' } : {}))));
     } else if (type.value === 'buyer') {
       mount(rows,
         h('div', { class: 'help', style: { margin: '0 0 12px' } }, 'Ankäufer: Name oder Bezeichnung und Ansprechpartner sind Pflicht, die Telefonnummer ist optional.'),
@@ -135,12 +136,13 @@ export default async function render(container, ctx) {
   function create() {
     const err = h('div');
     const noteEl = input({ maxLength: 300, placeholder: 'Interne Notiz (optional)' });
-    const prof = profileForm(null, { docs: canDocs, hint: 'Ausweis, Führerschein, Waffenschein und Führungszeugnis kannst du nur hochladen, wenn dir das Recht „partners.documents“ zugewiesen ist. Ohne dieses Recht lässt sich kein Lieferant anlegen (die Dokumente sind Pflicht).' });
+    const prof = profileForm(null, { docs: canDocs, hint: 'Ausweis, Führerschein, Waffenschein und Führungszeugnis kannst du nur hochladen, wenn dir das Recht „partners.documents“ zugewiesen ist. Alle Dokumente sind optional und lassen sich auch später nachreichen.' });
     const code = input({ maxLength: 12, placeholder: 'leer lassen = zufälliger 6-stelliger Code', autocomplete: 'off' });
+    const extras = canDocs ? extraFilesPicker() : null;
     const boxes = appBoxes(data.apps.map((a) => a.id), false);
     const m = openModal({
       title: 'Externen Zugang erstellen', wide: true,
-      body: h('div', null, err, prof.el, field('Notiz', noteEl), field('Code', code, { help: 'Optional eigener Code aus 6–12 Buchstaben/Ziffern.' }),
+      body: h('div', null, err, prof.el, extras && h('div', { style: { margin: '12px 0' } }, extras.el), field('Notiz', noteEl), field('Code', code, { help: 'Optional eigener Code aus 6–12 Buchstaben/Ziffern.' }),
         h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Freigeschaltete Apps'), boxes.map(([, c]) => c)),
       footer: [button('Abbrechen', { onClick: () => m.close() }), button('Erstellen', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
         err.replaceChildren();
@@ -148,6 +150,8 @@ export default async function render(container, ctx) {
           if (!prof.hasType()) throw new Error('Bitte wähle, ob der Zugang ein Lieferant oder ein Ankäufer ist.');
           const files = await prof.files();
           const res = await api.post('/api/partners', { ...prof.values(), ...files, note: noteEl.value, code: code.value.trim() || undefined, apps: boxes.filter(([, c]) => c.input.checked).map(([a]) => a.id) });
+          const failed = extras?.count() ? await extras.upload('partner', res.partner.id) : [];
+          if (failed.length) toast(`Zugang erstellt – diese Dateien konnten nicht gespeichert werden: ${failed.join(', ')}`, 'warn');
           m.close(); await load(); showCredentials(res.partner, res.code, 'Zugang erstellt');
         } catch (ex) { err.replaceChildren(formError(ex.message)); }
       }) })],
@@ -156,7 +160,8 @@ export default async function render(container, ctx) {
 
   /** Dokumente (Ausweis, Führerschein, Waffenschein, Führungszeugnis): ansehen und ersetzen (nur mit „partners.documents“) */
   function docBox(p) {
-    if (!canDocs || p.type !== 'supplier') return null;
+    if (!canDocs) return null;
+    if (p.type !== 'supplier') return h('div', { style: { margin: '12px 0' } }, extraFilesBox({ type: 'partner', id: p.id }));
     const one = (kind, label, has) => {
       const f = h('input', { type: 'file', accept: 'application/pdf,image/png,image/jpeg,image/webp', hidden: true });
       f.addEventListener('change', async () => {
@@ -166,7 +171,7 @@ export default async function render(container, ctx) {
       return h('div', { class: 'row', style: { alignItems: 'center', marginBottom: '6px' } }, h('b', { style: { minWidth: '130px' } }, label), has ? badge('liegt vor', 'b-ok', false) : badge('fehlt', 'b-mute', false),
         has && h('a', { class: 'btn btn-sm', href: `/api/partners/${p.id}/docs/${kind}`, target: '_blank', rel: 'noopener' }, icon('search'), 'Ansehen'), canManage && f, canManage && button(has ? 'Ersetzen' : 'Hochladen', { size: 'sm', icon: 'download', onClick: () => f.click() }));
     };
-    return h('div', { style: { margin: '12px 0' } }, h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Dokumente'), SUPPLIER_DOCS.map(([k, label]) => one(k, label, p.docs[k])));
+    return h('div', { style: { margin: '12px 0' } }, h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Dokumente'), SUPPLIER_DOCS.map(([k, label]) => one(k, label, p.docs[k])), h('div', { style: { height: '10px' } }), extraFilesBox({ type: 'partner', id: p.id }));
   }
 
   /** Löschen: ohne Daten sofort; mit Geschäften/Krediten erst Hinweis, dann (mit „partners.delete“) samt aller Daten. */

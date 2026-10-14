@@ -37,7 +37,13 @@ export function purgeCompany(id) {
   run('DELETE FROM tab_companies WHERE id = ?', id);
 }
 /** Dateien eines Mitglieds (Profilbild, Personalakte-Dokumente) entfernen. */
+/** Weitere Dateien eines Mitglieds oder externen Zugangs (Datensätze und Dateien). */
+export function purgeExtraFiles(type, id) {
+  for (const f of all('SELECT id, ext FROM extra_files WHERE owner_type = ? AND owner_id = ?', type, id)) rm(data('extra-files', `${f.id}.${f.ext}`));
+  run('DELETE FROM extra_files WHERE owner_type = ? AND owner_id = ?', type, id);
+}
 export function purgeUserFiles(id) {
+  purgeExtraFiles('user', id);
   for (const e of ['png', 'jpg', 'webp']) rm(data('avatars', `${id}.${e}`));
   for (const k of ['id', 'license', 'weapon', 'clearance']) for (const e of ['pdf', 'png', 'jpg', 'webp']) rm(data('user-docs', `${id}-${k}.${e}`));
 }
@@ -47,5 +53,6 @@ export function purgePartner(id) {
   run('DELETE FROM finance_ledger WHERE partner_id = ?', id);
   run("DELETE FROM notifications WHERE recipient_type = 'partner' AND recipient_id = ?", id);
   for (const k of ['id', 'license', 'weapon', 'clearance']) for (const e of ['pdf', 'png', 'jpg', 'webp']) rm(data('partner-docs', `${id}-${k}.${e}`));
+  purgeExtraFiles('partner', id);
   run('DELETE FROM partners WHERE id = ?', id); // Zugangs-Sitzungen, Chats und Lesemarken folgen per Cascade
 }

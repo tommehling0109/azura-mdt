@@ -800,4 +800,19 @@ export const SCHEMA_MIGRATIONS = [
   ALTER TABLE warehouses ADD COLUMN rent_recipients TEXT NOT NULL DEFAULT '{"roles":[],"users":[]}';
   ALTER TABLE warehouses ADD COLUMN rent_last_date TEXT;
   `,
+  // 24: Weitere Dateien (eigene Dokumente mit Name und Beschreibung) zu Mitgliedern und externen Zugaengen
+  `
+  CREATE TABLE extra_files (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_type  TEXT NOT NULL CHECK (owner_type IN ('user','partner')),
+    owner_id    INTEGER NOT NULL,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    ext         TEXT NOT NULL,
+    size        INTEGER NOT NULL DEFAULT 0,
+    uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at  TEXT NOT NULL
+  );
+  CREATE INDEX idx_extra_files_owner ON extra_files(owner_type, owner_id);
+  `,
 ];
