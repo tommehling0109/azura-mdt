@@ -9,6 +9,7 @@ import { toast } from './ui/kit.js';
 import { h } from './ui/dom.js';
 import { syncVersion, watchVersion, resetLocal, hardRefresh } from './version.js';
 import { startNeutral } from './neutral.js';
+import { initHalloween } from './halloween.js';
 
 // Externer Zugang: /p/<link-token> – eigene Anmeldung per Code, nur freigeschaltete Apps
 const partnerToken = (() => { const m = location.pathname.match(/^\/p\/([^/]+)\/?$/); return m ? decodeURIComponent(m[1]) : null; })();
@@ -128,5 +129,6 @@ onUnauthenticated((code) => {
 if (location.pathname === '/reset') resetLocal(); // Notausgang: lokale Daten dieser App löschen und abmelden
 else (companyToken ? startCompany : partnerToken ? startPartner : start)();
 
+initHalloween(); // Halloween-Dekoration (wenn vom Superadmin eingeschaltet)
 // Konfigurationsänderungen (z. B. Akzentfarbe) sofort sichtbar machen
 window.addEventListener('mdt:config', (e) => previewConfig(e.detail));

@@ -323,3 +323,43 @@ html.neutral { --logo-url: none; }
 .board:not(.changelog) { max-height: max(220px, calc(100% - var(--dock-h) - 270px)); }
 
 .panel-btn[hidden] { display: none; }
+
+/* ── Gruß unten links ── */
+.desk-greet { position: absolute; z-index: 1; left: 22px; bottom: 14px; pointer-events: none; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.85); overflow: hidden; }
+.desk-greet[hidden] { display: none; }
+.dg-hello { font-size: 15px; font-weight: 700; letter-spacing: 0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dg-line { margin-top: 2px; font-size: 12.5px; color: rgba(255, 255, 255, 0.78); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dg-dim { color: rgba(255, 255, 255, 0.55); font-size: 12px; }
+
+/* ── Halloween-Design (Konfiguration → Darstellung, nur Superadmin) ── */
+:root.halloween { --bg-0: #0b0610; --bg-1: #120a19; --bg-2: #1a1023; --bg-3: #25172f; --bg-4: #34213f; --line: rgba(255, 170, 90, 0.10); --line-strong: rgba(255, 170, 90, 0.22);
+  --wp-a: #150a22; --wp-b: #2b1242; --wp-c: #0a0510; --wp-glow: rgba(255, 122, 24, 0.30); --text-2: #cbbfd6; --text-3: #8f80a0; }
+.hw-deco { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.hw-fog { position: absolute; left: -20%; width: 140%; border-radius: 50%; filter: blur(46px); opacity: 0.5; }
+.hw-fog-a { bottom: -14%; height: 38%; background: radial-gradient(closest-side, rgba(155, 77, 255, 0.5), transparent); animation: hw-drift 28s ease-in-out infinite alternate; }
+.hw-fog-b { bottom: -22%; height: 34%; background: radial-gradient(closest-side, rgba(255, 122, 24, 0.34), transparent); animation: hw-drift 36s ease-in-out infinite alternate-reverse; }
+.hw-moon { position: absolute; top: 9%; right: 8%; width: clamp(80px, 9vw, 140px); aspect-ratio: 1; border-radius: 50%; opacity: 0.88;
+  background: radial-gradient(circle at 36% 34%, #fff7e0, #f6cf92 56%, #c08540); box-shadow: 0 0 60px 18px rgba(255, 190, 100, 0.28), 0 0 160px 60px rgba(255, 122, 24, 0.14); }
+.hw-web { position: absolute; top: var(--panel-h, 32px); width: clamp(90px, 11vw, 170px); }
+.hw-web-l { left: 0; } .hw-web-r { right: 0; transform: scaleX(-1); }
+.hw-lights { position: absolute; left: 0; right: 0; top: var(--panel-h, 32px); height: 46px; }
+.hw-wire { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.hw-bulb { position: absolute; width: 9px; height: 13px; margin-left: -4px; border-radius: 50% 50% 45% 45%; background: var(--c); box-shadow: 0 0 10px 3px var(--c); animation: hw-twinkle 2.6s ease-in-out infinite; }
+.hw-title { position: absolute; left: 6%; top: 23%; font: 400 clamp(44px, 7.2vw, 112px) / 1 Chiller, Creepster, Jokerman, 'Ravie', Papyrus, 'Segoe Script', fantasy; letter-spacing: 0.05em; white-space: nowrap; transform: rotate(-4deg); transform-origin: left center;
+  background: linear-gradient(180deg, #ffd27a, #ff8a1f 55%, #c4400a); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 4px 0 #3b1200) drop-shadow(0 0 22px rgba(255, 120, 20, 0.55)); opacity: 0.93; animation: hw-flicker 5s steps(1) infinite; }
+.hw-pumpkin { position: absolute; width: calc(120px * var(--s, 1)); filter: drop-shadow(0 0 22px rgba(255, 140, 30, 0.5)); }
+.hw-face { animation: hw-glow 3.2s ease-in-out infinite; }
+.hw-p1 { left: 1.5%; bottom: calc(var(--dock-h) + 92px); } .hw-p2 { left: 9.5%; bottom: calc(var(--dock-h) + 84px); } .hw-p3 { right: 2%; bottom: 4px; } .hw-p4 { right: 10%; bottom: 2px; }
+.hw-ghost { position: absolute; right: 30%; top: 27%; width: 64px; opacity: 0.55; animation: hw-float 6s ease-in-out infinite; filter: drop-shadow(0 0 18px rgba(200, 160, 255, 0.5)); }
+.hw-bat { position: absolute; left: 0; width: 46px; opacity: 0.9; animation: hw-fly 24s linear infinite, hw-flap 0.4s ease-in-out infinite alternate; }
+.hw-bat1 { top: 14%; } .hw-bat2 { top: 36%; width: 34px; animation-duration: 31s, 0.35s; animation-delay: -9s, 0s; } .hw-bat3 { top: 58%; width: 40px; animation-duration: 38s, 0.45s; animation-delay: -20s, 0s; } .hw-bat4 { top: 22%; width: 28px; animation-duration: 27s, 0.3s; animation-delay: -4s, 0s; }
+@keyframes hw-drift { from { transform: translateX(-6%); } to { transform: translateX(6%); } }
+@keyframes hw-twinkle { 0%, 100% { opacity: 1; } 45% { opacity: 0.35; } 70% { opacity: 0.85; } }
+@keyframes hw-glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } 62% { opacity: 1; } }
+@keyframes hw-flicker { 0%, 100% { opacity: 0.93; } 92% { opacity: 0.93; } 93% { opacity: 0.6; } 95% { opacity: 0.93; } 96% { opacity: 0.7; } }
+@keyframes hw-float { 0%, 100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-16px) rotate(3deg); } }
+@keyframes hw-fly { from { translate: -12vw 0; } 25% { translate: 22vw -40px; } 50% { translate: 52vw 24px; } 75% { translate: 78vw -30px; } to { translate: 112vw 6px; } }
+@keyframes hw-flap { from { transform: scaleY(1); } to { transform: scaleY(0.55); } }
+html.no-anim .hw-deco *, html.no-anim .hw-deco { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .hw-deco * { animation: none !important; } }
+@media (max-width: 760px) { .hw-pumpkin, .hw-ghost, .hw-moon { display: none; } .hw-title { top: 16%; } }

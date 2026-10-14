@@ -16,8 +16,13 @@ const DENSITIES = ['compact', 'normal', 'comfortable'];
 export function applyVars(cfg) {
   const root = document.documentElement;
   const one = (list, cur, prefix, def) => list.forEach((k) => root.classList.toggle(`${prefix}-${k}`, (cur || def) === k));
-  if (cfg['ui.accent']) root.style.setProperty('--accent', cfg['ui.accent']);
-  if (cfg['ui.accent2']) root.style.setProperty('--accent2', cfg['ui.accent2']);
+  const hw = cfg['ui.halloween'] === true; // Halloween-Design: Orange/Violett statt der gewählten Akzentfarben
+  root.classList.toggle('halloween', hw);
+  if (hw) { root.style.setProperty('--accent', '#ff7a18'); root.style.setProperty('--accent2', '#9b4dff'); }
+  else {
+    if (cfg['ui.accent']) root.style.setProperty('--accent', cfg['ui.accent']);
+    if (cfg['ui.accent2']) root.style.setProperty('--accent2', cfg['ui.accent2']);
+  }
   one(THEMES, cfg['ui.theme'], 'theme', 'anthracite');
   one(WALLPAPERS, cfg['ui.wallpaper_style'], 'wp', 'lines');
   one(RADII, cfg['ui.radius'], 'radius', 'normal');

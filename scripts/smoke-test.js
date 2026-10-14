@@ -1557,6 +1557,14 @@ try {
     for (const id of ids) await mod.call('DELETE', `/api/board/${id}`); await setPerms([]);
     ok('Schwarzes Brett: neue/geänderte Aushänge müssen je Person bestätigt werden, Audit-Log und Verlauf im Profil'); }
 
+  // ══ Halloween-Design ══
+  { assert.equal((await new Client().call('GET', '/api/bootstrap')).config['ui.halloween'], false); // öffentlich, Standard aus
+    await setPerms(['config.edit']); assert.equal((await mod.call('PUT', '/api/config', { values: { 'ui.halloween': true } })).status, 403); await setPerms([]); // nur Superadmin (system.apps)
+    assert.equal((await admin.call('PUT', '/api/config', { values: { 'ui.halloween': 'ja' } })).status, 400);
+    assert.equal((await admin.call('PUT', '/api/config', { values: { 'ui.halloween': true } })).status, 200); assert.equal((await new Client().call('GET', '/api/bootstrap')).config['ui.halloween'], true);
+    assert.equal((await admin.call('PUT', '/api/config', { values: { 'ui.halloween': false } })).status, 200); assert.equal((await new Client().call('GET', '/api/bootstrap')).config['ui.halloween'], false);
+    ok('Halloween-Design: öffentlich lesbar, nur mit Recht system.apps (Superadmin) schaltbar'); }
+
   // ══ Legal ══
   { assert.equal((await mod.call('GET', '/api/legal')).status, 403); assert.equal((await new Client().call('GET', '/api/legal')).status, 401); assert.equal((await tp.call('GET', '/api/legal')).status, 401);
     await setPerms(['legal.view']); r = await mod.call('GET', '/api/legal'); assert.equal(r.status, 200); assert.equal(r.canManage, false);

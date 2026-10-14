@@ -137,10 +137,24 @@ export function showApp(onLogout, opts = {}) {
   const startBtn = h('button', { class: 'panel-btn start-btn', type: 'button', title: 'Menü', 'aria-label': 'App-Menü', 'aria-haspopup': 'true' }, h('div', { class: 'logo-phoenix' }));
   let panelAvatar = null, levelSlot = null;
   // Partner: eigenes Level in der Kopfleiste aktuell halten (XP-Vergabe, Aktivierung, Anpassung durch das Team)
-  const refreshLevel = async () => { if (!levelSlot) return; try { const me = await api.get('/api/p/me'); state.user.level = me.partner.level ?? null; mount(levelSlot, levelBadge(state.user.level)); } catch { /* egal */ } };
+  const refreshLevel = async () => { if (!levelSlot) return; try { const me = await api.get('/api/p/me'); state.user.level = me.partner.level ?? null; mount(levelSlot, levelBadge(state.user.level)); drawGreet(); } catch { /* egal */ } };
   const clock = h('span', { class: 'panel-clock' });
   everySecond(clock, () => { const t = timeParts(); clock.textContent = `${t.hm}:${t.s}`; });
 
+  // Gruß unten links: „Hallo, Name“ mit Rang, Abteilung und Rollen (Partner: Hallo + Level)
+  const greet = h('div', { class: 'desk-greet', 'aria-hidden': 'true' });
+  const drawGreet = () => {
+    const u = state.user ?? {};
+    if (opts.partner) mount(greet, h('div', { class: 'dg-hello' }, 'Hallo'), u.level ? h('div', { class: 'dg-line' }, levelBadge(u.level), ` ${u.level.name}`) : h('div', { class: 'dg-line dg-dim' }, u.displayName ?? ''));
+    else {
+      const ro = (u.roles ?? []).map((r) => r.name);
+      mount(greet, h('div', { class: 'dg-hello' }, `Hallo, ${u.displayName ?? ''}`),
+        (u.rank || u.department) && h('div', { class: 'dg-line' }, [u.rank && h('span', { style: { color: u.rank.color ?? 'inherit', fontWeight: 600 } }, u.rank.name), u.rank && u.department && ' · ', u.department && h('span', null, u.department.name)]),
+        ro.length > 0 && h('div', { class: 'dg-line dg-dim' }, `${ro.length === 1 ? 'Rolle' : 'Rollen'}: ${ro.slice(0, 3).join(', ')}${ro.length > 3 ? ` +${ro.length - 3}` : ''}`));
+    }
+    fitGreet();
+  };
+  const fitGreet = () => { const room = Math.floor((window.innerWidth - (document.querySelector('.dock')?.offsetWidth ?? 0)) / 2) - 36; greet.style.maxWidth = `${Math.min(320, Math.max(0, room))}px`; greet.hidden = room < 130 || !greet.childNodes.length; };
   const widget = h('div', { class: 'desk-widget', 'aria-hidden': 'true' });
   const dwHm = h('span', null), dwS = h('span', { class: 'dw-sec' }), dwDate = h('div', { class: 'dw-date' }), dwName = h('div', { class: 'dw-name' });
   mount(widget, h('div', { class: 'dw-time' }, dwHm, dwS), dwDate, dwName, h('div', { class: 'dw-note' }, 'Fiktives System – nur für den Unity Life Roleplay Server'));
@@ -192,7 +206,8 @@ export function showApp(onLogout, opts = {}) {
   const ticker = createTicker({ partner: !!opts.partner }); // Laufband zwischen Kopfleiste und Desktop
   const desktop = h('div', { class: 'desktop' }, panel, ticker.el, area, h('div', { class: 'dock-row' }, dock));
   const board = !opts.partner && can('board.view') ? createBoard() : null; // Schwarzes Brett: nur für Mitarbeiter
-  mount(screen(), h('div', { class: 'wallpaper' }), widget, desktop, startMenu, npanel);
+  mount(screen(), h('div', { class: 'wallpaper' }), widget, greet, desktop, startMenu, npanel);
+  drawGreet(); window.addEventListener('resize', fitGreet); if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fitGreet).observe(dock);
   const changelog = !opts.partner && can('changelog.view') ? createChangelog() : null; // Changelog links, nur für Mitarbeiter
   if (changelog) area.append(changelog.el);
   if (board) area.append(board.el); // im Desktop-Bereich: Fenster liegen darüber, die Fensterleisten bleiben bedienbar
@@ -504,6 +519,7 @@ export function showApp(onLogout, opts = {}) {
   });
   subscribe(opts.partner ? ['market', 'chat', 'credit'] : ['users', 'market', 'chat', 'credit'], async () => { await refreshCounters(); renderIcons(); if (opts.partner) refreshLevel(); }); // Zähler/Abzeichen live
   if (opts.partner) subscribe(['notification', 'partners'], refreshLevel);
+  if (!opts.partner) subscribe(['users', 'roles', 'org'], async () => { try { const { user } = await api.get('/api/auth/me'); Object.assign(state.user, { displayName: user.displayName, rank: user.rank, department: user.department, roles: user.roles }); drawGreet(); } catch { /* egal */ } }, { wait: 300 }); // Rang/Abteilung/Rollen im Gruß aktuell halten
   subscribe(['system', 'dashboard'], async () => { applyConfig((await api.get('/api/bootstrap')).config); }); // Farben/Logo/Namen live für alle
   if (opts.partner) subscribe(['partners'], () => api.get('/api/p/me')); // Zugang geändert/deaktiviert → sofort abgemeldet (401-Handler)
   // Sperrbildschirm (Timeout kommt aus der Konfiguration; Entsperren per Passwort bzw. Code)
