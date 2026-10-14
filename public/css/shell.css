@@ -244,7 +244,7 @@
 .lock-clock .lc-time, .ls-time, .panel-clock { font-variant-numeric: tabular-nums; }
 
 /* Durchgehende Linie über die ganze Breite; die Button-Leiste (Dock) liegt darüber und verdeckt sie nur dort, wo sie selbst ist */
-.desktop-area::after { content: ''; position: absolute; left: 0; right: 0; bottom: calc(6px + 9px + var(--dock-size) / 2); height: 1px; background: rgba(255, 255, 255, 0.16); z-index: 0; pointer-events: none; }
+/* (die dünne Linie hinter dem Dock ist entfernt – sie lief links und rechts neben dem Dock durch den Gruß) */
 /* Fenster dürfen links und rechts neben der Leiste bis an den unteren Rand – nur die Navigationsleiste (Dock) liegt im Vordergrund */
 .desktop > * { grid-column: 1; }
 .desktop > .panel { grid-row: 1; }
@@ -325,7 +325,7 @@ html.neutral { --logo-url: none; }
 .panel-btn[hidden] { display: none; }
 
 /* ── Gruß unten links ── */
-.desk-greet { position: absolute; z-index: 1; left: 22px; bottom: 14px; pointer-events: none; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.85); overflow: hidden; }
+.desk-greet { position: absolute; z-index: 1; left: 22px; bottom: 14px; pointer-events: none; overflow: hidden; }
 .desk-greet[hidden] { display: none; }
 .dg-hello { font-size: 15px; font-weight: 700; letter-spacing: 0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dg-line { margin-top: 2px; font-size: 12.5px; color: rgba(255, 255, 255, 0.78); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

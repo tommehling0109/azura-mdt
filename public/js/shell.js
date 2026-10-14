@@ -149,7 +149,7 @@ export function showApp(onLogout, opts = {}) {
     else {
       const ro = (u.roles ?? []).map((r) => r.name);
       mount(greet, h('div', { class: 'dg-hello' }, `Hallo, ${u.displayName ?? ''}`),
-        (u.rank || u.department) && h('div', { class: 'dg-line' }, [u.rank && h('span', { style: { color: u.rank.color ?? 'inherit', fontWeight: 600 } }, u.rank.name), u.rank && u.department && ' · ', u.department && h('span', null, u.department.name)]),
+        (u.rank || u.department) && h('div', { class: 'dg-line' }, [u.rank && h('span', { style: { color: u.rank.color ?? 'inherit', fontWeight: 600 } }, u.rank.name), u.rank && u.department && h('span', { style: { opacity: 0.6 } }, ' · '), u.department && h('span', { style: { color: u.department.color ?? 'inherit', fontWeight: 600 } }, u.department.name)]),
         ro.length > 0 && h('div', { class: 'dg-line dg-dim' }, `${ro.length === 1 ? 'Rolle' : 'Rollen'}: ${ro.slice(0, 3).join(', ')}${ro.length > 3 ? ` +${ro.length - 3}` : ''}`));
     }
     fitGreet();
