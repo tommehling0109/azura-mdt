@@ -995,4 +995,26 @@ export const SCHEMA_MIGRATIONS = [
   );
   CREATE INDEX idx_cl_ack_log_user ON changelog_ack_log(user_id, id);
   `,
+  // 31: Schwarzes Brett – Pflicht-Bestaetigung neuer/geaenderter Eintraege (wie beim Changelog) mit Verlauf
+  `
+  ALTER TABLE board_posts ADD COLUMN content_at TEXT;
+  CREATE TABLE board_ack (
+    user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    post_id          INTEGER NOT NULL REFERENCES board_posts(id) ON DELETE CASCADE,
+    acked_updated_at TEXT NOT NULL,
+    acked_at         TEXT NOT NULL,
+    PRIMARY KEY (user_id, post_id)
+  );
+  CREATE TABLE board_ack_log (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    post_id      INTEGER,
+    post_title   TEXT NOT NULL,
+    post_level   TEXT NOT NULL DEFAULT 'info',
+    post_updated_at TEXT NOT NULL,
+    first_ack    INTEGER NOT NULL DEFAULT 1,
+    acked_at     TEXT NOT NULL
+  );
+  CREATE INDEX idx_board_ack_log_user ON board_ack_log(user_id, id);
+  `,
 ];

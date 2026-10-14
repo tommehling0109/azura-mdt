@@ -1537,6 +1537,26 @@ try {
     for (const id of ids) await admin.call('DELETE', `/api/changelog/${id}`); await setPerms([]);
     ok('Changelog: neue/geänderte Einträge müssen je Person bestätigt werden (erstmalig nur die neuesten, Bestätigung bis zum gezeigten Stand)'); }
 
+  // ══ Schwarzes Brett: Pflicht-Bestätigung ══
+  { assert.equal((await new Client().call('GET', '/api/board/unread')).status, 401); assert.equal((await mod.call('GET', '/api/board/unread')).status, 403);
+    const modId = (await mod.call('GET', '/api/auth/me')).user.id; await setPerms(['board.view', 'board.manage']);
+    for (const p of (await mod.call('GET', '/api/board')).posts) await mod.call('DELETE', `/api/board/${p.id}`);
+    const ids = []; for (const [t, lv] of [['Wartung heute Nacht', 'important'], ['Neue Dienstzeiten', 'info'], ['Notfallnummer geändert', 'urgent']]) { r = await mod.call('POST', '/api/board', { title: t, body: 'Details zu ' + t, level: lv }); assert.equal(r.status, 201); ids.push(r.post.id); await sleep(5); }
+    r = await mod.call('GET', '/api/board/unread'); assert.equal(r.posts.length, 3); assert.equal(r.posts[0].changed, false); const upTo = r.posts.reduce((a, p) => (p.updatedAt > a ? p.updatedAt : a), '');
+    assert.equal((await mod.call('POST', '/api/board/ack', {})).status, 400);
+    r = await mod.call('POST', '/api/board/ack', { upTo }); assert.equal(r.status, 200); assert.equal(r.acknowledged, 3); assert.equal((await mod.call('GET', '/api/board/unread')).posts.length, 0);
+    r = await admin.call('GET', '/api/audit?action=board.acknowledged'); assert.ok(r.total >= 1);
+    // Anpinnen ist keine Inhaltsänderung, Text/Überschrift/Hervorhebung schon
+    await sleep(5); assert.equal((await mod.call('PATCH', `/api/board/${ids[1]}`, { pinned: true })).status, 200); assert.equal((await mod.call('GET', '/api/board/unread')).posts.length, 0);
+    await sleep(5); assert.equal((await mod.call('PATCH', `/api/board/${ids[1]}`, { body: 'Neuer Text' })).status, 200);
+    r = await mod.call('GET', '/api/board/unread'); assert.equal(r.posts.length, 1); assert.equal(r.posts[0].changed, true); assert.equal(r.posts[0].body, 'Neuer Text');
+    await mod.call('POST', '/api/board/ack', { upTo: r.posts[0].updatedAt }); assert.equal((await mod.call('GET', '/api/board/unread')).posts.length, 0);
+    await sleep(5); r = await mod.call('POST', '/api/board', { title: 'Noch ein Aushang', body: '', level: 'success' }); ids.push(r.post.id); assert.equal((await mod.call('GET', '/api/board/unread')).posts.length, 1);
+    assert.equal((await admin.call('GET', '/api/board/unread')).total, 4); // andere Personen unabhängig
+    const hist = await admin.call('GET', `/api/users/${modId}/board`); assert.equal(hist.history.length, 4); assert.equal(hist.history[0].changed, true); assert.equal(hist.open.length, 1); assert.ok(hist.lastAckAt); assert.equal((await admin.call('GET', '/api/users/99999/board')).status, 404);
+    for (const id of ids) await mod.call('DELETE', `/api/board/${id}`); await setPerms([]);
+    ok('Schwarzes Brett: neue/geänderte Aushänge müssen je Person bestätigt werden, Audit-Log und Verlauf im Profil'); }
+
   // ══ Legal ══
   { assert.equal((await mod.call('GET', '/api/legal')).status, 403); assert.equal((await new Client().call('GET', '/api/legal')).status, 401); assert.equal((await tp.call('GET', '/api/legal')).status, 401);
     await setPerms(['legal.view']); r = await mod.call('GET', '/api/legal'); assert.equal(r.status, 200); assert.equal(r.canManage, false);

@@ -64,28 +64,11 @@ async function openAll(canManage, onChange) {
  * Pflicht-Hinweis: Neue oder geänderte Changelog-Einträge werden jedem Mitglied beim Anmelden, Neuladen und bei neuen Einträgen angezeigt
  * und müssen einmal bestätigt werden (je Eintrag und Änderungsstand). Das Fenster lässt sich nicht ohne Bestätigung schließen.
  */
-let ackOpen = false;
-export async function checkChangelogAck() {
-  if (ackOpen) return;
-  let d;
-  try { d = await api.get('/api/changelog/unread'); } catch { return; }
-  if (!d.entries.length) return;
-  ackOpen = true;
-  const upTo = d.entries.reduce((a, e) => (e.updatedAt > a ? e.updatedAt : a), '');
-  const m = openModal({
-    title: d.entries.length === 1 ? 'Neues Update' : 'Neue Updates', wide: true, locked: true,
-    body: h('div', { class: 'cl-all' },
-      h('p', { class: 'muted', style: { margin: '0 0 10px' } }, 'Bitte lies die folgenden Änderungen und bestätige sie. Neue und geänderte Einträge werden dir so lange angezeigt, bis du bestätigt hast.'),
-      d.entries.map((e) => h('article', { class: 'cl-full' },
-        h('div', { class: 'cl-full-top' }, e.version && h('span', { class: 'cl-ver' }, e.version), h('b', null, e.title), e.changed && h('span', { class: 'cl-kind', style: { '--c': '#f59e0b' } }, 'Geändert'), h('span', { class: 'cl-date' }, fmtDate(e.releasedAt))),
-        h('ul', { class: 'cl-list' }, e.items.map((i) => h('li', null, kindChip(i.kind), h('span', null, i.text)))))),
-      d.more > 0 && h('div', { class: 'muted', style: { textAlign: 'center', marginTop: '8px' } }, `Dazu ${d.more} ältere Update${d.more === 1 ? '' : 's'} (nach der Bestätigung im Changelog nachzulesen).`)),
-    footer: [h('span', { class: 'grow' }), button('Gelesen und verstanden', { variant: 'primary', icon: 'check', onClick: (ev) => busy(ev.currentTarget, async () => {
-      try { await api.post('/api/changelog/ack', { upTo }); m.close(); ackOpen = false; checkChangelogAck(); } catch (ex) { toast(ex.message, 'err'); }
-    }) })],
-  });
-}
-
+/** Darstellung eines Changelog-Eintrags im Pflicht-Fenster (auch vom gemeinsamen Fenster mit dem Schwarzen Brett genutzt). */
+export const ackEntryEl = (e) => h('article', { class: 'cl-full' },
+  h('div', { class: 'cl-full-top' }, e.version && h('span', { class: 'cl-ver' }, e.version), h('b', null, e.title), e.changed && h('span', { class: 'cl-kind', style: { '--c': '#f59e0b' } }, 'Geändert'), h('span', { class: 'cl-date' }, fmtDate(e.releasedAt))),
+  h('ul', { class: 'cl-list' }, e.items.map((i) => h('li', null, kindChip(i.kind), h('span', null, i.text)))));
+// (Das eigentliche Pflicht-Fenster liegt jetzt in updates-ack.js und zeigt Changelog und Schwarzes Brett gemeinsam.)
 export function createChangelog() {
   let entries = [], total = 0, canManage = false, collapsed = read();
   const el = h('aside', { class: 'board changelog', 'aria-label': 'Changelog' });

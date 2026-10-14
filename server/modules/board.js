@@ -54,13 +54,45 @@ export default {
       canManage: ctx.user.perms.has('board.manage'),
     }));
 
+    // Ungelesen = neu oder im Inhalt (Überschrift, Text, Hervorhebung) seit der letzten Bestätigung geändert. Erstmalig: nur die neuesten fünf.
+    const stamp = 'COALESCE(p.content_at, p.updated_at)';
+    r.get('/api/board/unread', { perm: 'board.view' }, (ctx) => {
+      const rows = all(`SELECT p.*, ${stamp} stamp, a.user_id seen FROM board_posts p LEFT JOIN board_ack a ON a.post_id = p.id AND a.user_id = ? WHERE a.user_id IS NULL OR a.acked_updated_at < ${stamp} ORDER BY p.pinned DESC, p.id DESC`, ctx.user.id);
+      const first = !get('SELECT 1 x FROM board_ack WHERE user_id = ?', ctx.user.id), cap = first ? 5 : 10;
+      return { posts: rows.slice(0, cap).map((p) => ({ ...dto(p, ctx.user.id), changed: !!p.seen, updatedAt: p.stamp })), more: Math.max(0, rows.length - cap), total: rows.length };
+    });
+    r.post('/api/board/ack', { perm: 'board.view' }, (ctx) => {
+      const upTo = ctx.body.upTo ? new Date(ctx.body.upTo) : null;
+      if (!upTo || Number.isNaN(upTo.getTime())) throw bad('Stand der angezeigten Einträge fehlt.');
+      const t = now(), titles = [];
+      let n = 0;
+      for (const p of all(`SELECT p.id, p.title, p.level, ${stamp} stamp, a.user_id seen FROM board_posts p LEFT JOIN board_ack a ON a.post_id = p.id AND a.user_id = ? WHERE (a.user_id IS NULL OR a.acked_updated_at < ${stamp}) AND ${stamp} <= ?`, ctx.user.id, upTo.toISOString())) {
+        run('INSERT INTO board_ack (user_id,post_id,acked_updated_at,acked_at) VALUES (?,?,?,?) ON CONFLICT(user_id,post_id) DO UPDATE SET acked_updated_at = excluded.acked_updated_at, acked_at = excluded.acked_at', ctx.user.id, p.id, p.stamp, t);
+        run('INSERT INTO board_ack_log (user_id,post_id,post_title,post_level,post_updated_at,first_ack,acked_at) VALUES (?,?,?,?,?,?,?)', ctx.user.id, p.id, p.title, p.level, p.stamp, p.seen ? 0 : 1, t);
+        titles.push(`${p.title}${p.seen ? ' (geändert)' : ''}`); n++;
+      }
+      if (n) audit(ctx, { action: 'board.acknowledged', module: 'board', targetType: 'board_post', targetLabel: `${n} Aushang${n === 1 ? '' : 'e'} bestätigt`, after: { posts: titles } });
+      return { acknowledged: n };
+    });
+    // Verwaltung: Bestätigungen eines Mitglieds
+    r.get('/api/users/:id/board', { perm: 'users.view' }, (ctx) => {
+      const id = Number(ctx.params.id);
+      if (!get('SELECT 1 x FROM users WHERE id = ?', id)) throw notFound('Benutzer nicht gefunden.');
+      const open = all(`SELECT p.id, p.title, p.level, a.user_id seen FROM board_posts p LEFT JOIN board_ack a ON a.post_id = p.id AND a.user_id = ? WHERE a.user_id IS NULL OR a.acked_updated_at < ${stamp} ORDER BY p.id DESC`, id);
+      return {
+        lastAckAt: get('SELECT MAX(acked_at) t FROM board_ack_log WHERE user_id = ?', id)?.t ?? null,
+        open: open.map((p) => ({ id: p.id, title: p.title, level: p.level, changed: !!p.seen })),
+        history: all('SELECT * FROM board_ack_log WHERE user_id = ? ORDER BY id DESC LIMIT 200', id).map((h) => ({ id: h.id, title: h.post_title, level: h.post_level, changed: !h.first_ack, ackedAt: h.acked_at })),
+      };
+    });
+
     // Laufband: für Mitglieder (jeder aktive Benutzer) und Externe getrennt – jeweils nur die für sie bestimmten Meldungen
     r.get('/api/ticker', () => ({ items: activeTickers('internal') }));
     r.get('/api/p/ticker', { auth: 'partner' }, () => ({ items: activeTickers('external') }));
 
     r.post('/api/board', { perm: 'board.manage' }, (ctx) => {
       const v = input(ctx.body), t = now();
-      const cols = { ...v, author_id: ctx.user.id, created_at: t, updated_at: t }, keys = Object.keys(cols);
+      const cols = { ...v, author_id: ctx.user.id, created_at: t, updated_at: t, content_at: t }, keys = Object.keys(cols);
       const id = Number(run(`INSERT INTO board_posts (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`, ...Object.values(cols)).lastInsertRowid);
       if (v.ticker) tickerChanged('created');
       if (v.level === 'important' || v.level === 'urgent') notify(staffWith('board.view', ctx.user.id), { key: `board:${id}:new`, title: v.level === 'urgent' ? 'Dringende Ankündigung' : 'Neue Ankündigung', body: v.title });
@@ -72,6 +104,7 @@ export default {
     r.patch('/api/board/:id', { perm: 'board.manage' }, (ctx) => {
       const p = load(ctx.params.id), v = input(ctx.body, true), cols = Object.keys(v);
       if (cols.length) run(`UPDATE board_posts SET ${cols.map((c) => `${c} = ?`).join(', ')}, updated_at = ? WHERE id = ?`, ...cols.map((c) => v[c]), now(), p.id);
+      if (cols.some((c) => ['title', 'body', 'level'].includes(c))) run('UPDATE board_posts SET content_at = ? WHERE id = ?', now(), p.id); // nur Änderungen am Inhalt müssen erneut bestätigt werden (nicht Anpinnen o. Ä.)
       if (p.ticker || v.ticker || cols.some((c) => c.startsWith('ticker') || ['title', 'body', 'level'].includes(c))) tickerChanged('updated');
       audit(ctx, { action: 'board.updated', module: 'board', targetType: 'board_post', targetId: p.id, targetLabel: v.title ?? p.title, before: { level: p.level, pinned: !!p.pinned }, after: { level: v.level ?? p.level, pinned: v.pinned !== undefined ? !!v.pinned : !!p.pinned } });
       return { post: dto(get('SELECT * FROM board_posts WHERE id = ?', p.id), ctx.user.id) };
