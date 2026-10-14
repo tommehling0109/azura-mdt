@@ -25,6 +25,7 @@ const dto = (p, { withLink }) => ({
   lastLoginAt: p.last_login_at, createdAt: p.created_at,
   type: typeOf(p), typeLabel: TYPES[typeOf(p)], contactName: p.contact_name, firstName: p.first_name, lastName: p.last_name, birthDate: p.birth_date, postalCode: p.postal_code, street: p.street,
   umail: p.umail_local ? `${p.umail_local}@umail.com` : '', umailLocal: p.umail_local, phone: p.phone, accountNumber: p.account_number, 
+  itemsMode: p.items_mode, allowOther: !!p.allow_other, itemIds: p.items_mode === 'selected' ? all('SELECT item_id FROM partner_items WHERE partner_id = ?', p.id).map((x) => x.item_id) : [],
   docs: { id: !!p.id_doc_ext, license: !!p.license_doc_ext, weapon: !!p.weapon_doc_ext, clearance: !!p.clearance_doc_ext },
   locked: !!(p.locked_until && p.locked_until > now()), lockedUntil: p.locked_until && p.locked_until > now() ? p.locked_until : null,
   dealCount: p.deal_count ?? 0,
@@ -74,6 +75,18 @@ function requireComplete(merged, has, strictBuyer = true) {
     if (miss.length) throw bad(`Bei Lieferanten sind folgende Angaben Pflicht: ${miss.join(', ')}.`);
   } else if (strictBuyer && !merged.contact_name) throw bad('Bei Ankäufern ist der Ansprechpartner Pflicht (zusätzlich zum Namen bzw. der Bezeichnung).');
 }
+/** Börsen-Freigabe eines Zugangs: Artikel-Modus (alle freigegebenen / nur ausgewählte), Auswahl und „Sonstiges“ (Freitext-Artikel). */
+function marketAccessFrom(b) {
+  if (b.itemsMode === undefined && b.itemIds === undefined && b.allowOther === undefined) return null;
+  if (b.itemsMode !== undefined && !['all', 'selected'].includes(b.itemsMode)) throw bad('Artikel-Freigabe: alle oder ausgewählte.');
+  if (b.itemIds !== undefined && (!Array.isArray(b.itemIds) || !b.itemIds.every((i) => Number.isInteger(i) && get('SELECT 1 x FROM market_items WHERE id = ? AND is_other = 0', i)))) throw bad('Unbekannter Artikel in der Auswahl.');
+  return { mode: b.itemsMode, ids: b.itemIds === undefined ? undefined : [...new Set(b.itemIds)], other: b.allowOther === undefined ? undefined : !!b.allowOther };
+}
+function applyMarketAccess(id, a) {
+  if (a.mode !== undefined) run('UPDATE partners SET items_mode = ? WHERE id = ?', a.mode, id);
+  if (a.other !== undefined) run('UPDATE partners SET allow_other = ? WHERE id = ?', a.other ? 1 : 0, id);
+  if (a.ids !== undefined) { run('DELETE FROM partner_items WHERE partner_id = ?', id); for (const i of a.ids) run('INSERT INTO partner_items (partner_id,item_id) VALUES (?,?)', id, i); }
+}
 function saveDoc(id, kind, data) {
   const { buf, ext } = decodeDocument(data, 6 * 1024 * 1024, bad);
   mkdirSync(docDir(), { recursive: true });
@@ -118,7 +131,7 @@ export default {
     // ── Verwaltung (Mitarbeiter) ──
     r.get('/api/partners', { perm: 'partners.view' }, (ctx) => {
       const canLink = ctx.user.perms.has('partners.manage');
-      return { partners: all(`${LIST_SQL} ORDER BY p.created_at DESC`).map((p) => dto(p, { withLink: canLink })), apps: partnerApps() };
+      return { partners: all(`${LIST_SQL} ORDER BY p.created_at DESC`).map((p) => dto(p, { withLink: canLink })), apps: partnerApps(), items: all('SELECT id, name, unit FROM market_items WHERE is_other = 0 AND is_active = 1 ORDER BY name').map((i) => ({ id: i.id, name: i.name, unit: i.unit })) };
     });
 
     r.post('/api/partners', { perm: 'partners.manage', bodyLimit: 14 * 1024 * 1024 }, (ctx) => {
@@ -132,6 +145,7 @@ export default {
       requireComplete(merged, Object.fromEntries(Object.entries(docBodies).map(([k, v]) => [k, !!v])), prof.partner_type !== undefined); // ohne ausdrückliche Art gilt „Ankäufer“ (Altbestand/API)
       const note = str(b.note, 'Notiz', { max: 300, required: false });
       const apps = cleanApps(b.apps);
+      const marketAccess = marketAccessFrom(b);
       let code = randomCode();
       if (b.code) {
         if (typeof b.code !== 'string' || !CODE_RE.test(b.code)) throw bad('Der Code muss aus 6–12 Buchstaben oder Ziffern bestehen.');
@@ -146,6 +160,7 @@ export default {
         const cols = Object.keys(prof);
         if (cols.length) run(`UPDATE partners SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`, ...cols.map((c) => prof[c]), pid);
         for (const [k, v] of Object.entries(docBodies)) if (v) run(`UPDATE partners SET ${DOC_KINDS[k]} = ? WHERE id = ?`, saveDoc(pid, k, v), pid);
+        if (marketAccess) applyMarketAccess(pid, marketAccess);
         return pid;
       });
       audit(ctx, { action: 'partner.created', module: 'partners', targetType: 'partner', targetId: id, targetLabel: name, after: { name, apps } });
@@ -168,6 +183,7 @@ export default {
         if (b.name !== undefined) run('UPDATE partners SET name = ? WHERE id = ?', str(b.name, 'Name', { min: 2, max: 60 }), id);
         if (b.note !== undefined) run('UPDATE partners SET note = ? WHERE id = ?', str(b.note, 'Notiz', { max: 300, required: false }), id);
         if (b.apps !== undefined) run('UPDATE partners SET apps = ? WHERE id = ?', JSON.stringify(cleanApps(b.apps)), id);
+        const ma = marketAccessFrom(b); if (ma) applyMarketAccess(id, ma);
         if (b.status !== undefined) {
           if (!['active', 'disabled'].includes(b.status)) throw bad('Ungültiger Status.');
           run('UPDATE partners SET status = ? WHERE id = ?', b.status, id);

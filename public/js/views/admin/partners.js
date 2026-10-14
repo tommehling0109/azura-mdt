@@ -43,6 +43,24 @@ export function filePicker(label, existing) {
 }
 const TYPE_OPTIONS = [{ value: '', label: '— bitte wählen —' }, { value: 'supplier', label: 'Lieferant (liefert uns Ware)' }, { value: 'buyer', label: 'Ankäufer (kauft von uns)' }];
 /** Dokumente eines Lieferanten: Schlüssel, Beschriftung, Pflicht */
+/** Börse-Freigabe eines Zugangs: alle freigegebenen Artikel oder nur ausgewählte, plus „Sonstiges“ (Freitext-Artikel, die noch nicht angelegt sind). */
+export function marketAccessForm(p, items) {
+  const mode = select([{ value: 'all', label: 'Alle für Partner freigegebenen Artikel' }, { value: 'selected', label: 'Nur ausgewählte Artikel' }], p?.itemsMode ?? 'all');
+  const chosen = new Set(p?.itemIds ?? []);
+  const other = h('input', { type: 'checkbox', checked: !!p?.allowOther });
+  const box = h('div', { class: 'ct-roles' });
+  const draw = () => {
+    box.hidden = mode.value !== 'selected';
+    mount(box, items.length ? items.map((i) => { const c = h('input', { type: 'checkbox', checked: chosen.has(i.id) }); c.addEventListener('change', () => (c.checked ? chosen.add(i.id) : chosen.delete(i.id))); return h('label', { class: 'check', style: { padding: '2px 0' } }, c, h('span', { class: 'check-text' }, `${i.name} (${i.unit})`)); }) : h('div', { class: 'muted' }, 'Es gibt noch keine Artikel im Katalog.'));
+  };
+  mode.addEventListener('change', draw); draw();
+  return {
+    el: h('div', null, h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Börse: Artikel dieses Zugangs'),
+      field('Welche Artikel darf der Zugang sehen und anbieten?', mode, { help: 'Zusätzlich muss der Artikel selbst für Partner freigegeben sein (Börse → Katalog → Sichtbar für externe Partner).' }), box,
+      h('label', { class: 'check', style: { padding: '6px 0 0' } }, other, h('span', { class: 'check-text' }, 'Sonstiges erlauben – der Zugang darf auch Artikel anbieten, die noch nicht angelegt sind (Freitext)'))),
+    values: () => ({ itemsMode: mode.value, itemIds: mode.value === 'selected' ? [...chosen] : [], allowOther: other.checked }),
+  };
+}
 export const SUPPLIER_DOCS = [['id', 'Ausweis', false], ['license', 'Führerschein', false], ['weapon', 'Waffenschein', false], ['clearance', 'Führungszeugnis', false]];
 
 /**
@@ -139,17 +157,18 @@ export default async function render(container, ctx) {
     const prof = profileForm(null, { docs: canDocs, hint: 'Ausweis, Führerschein, Waffenschein und Führungszeugnis kannst du nur hochladen, wenn dir das Recht „partners.documents“ zugewiesen ist. Alle Dokumente sind optional und lassen sich auch später nachreichen.' });
     const code = input({ maxLength: 12, placeholder: 'leer lassen = zufälliger 6-stelliger Code', autocomplete: 'off' });
     const extras = canDocs ? extraFilesPicker() : null;
+    const mkt = marketAccessForm(null, data.items ?? []);
     const boxes = appBoxes(data.apps.map((a) => a.id), false);
     const m = openModal({
       title: 'Externen Zugang erstellen', wide: true,
       body: h('div', null, err, prof.el, extras && h('div', { style: { margin: '12px 0' } }, extras.el), field('Notiz', noteEl), field('Code', code, { help: 'Optional eigener Code aus 6–12 Buchstaben/Ziffern.' }),
-        h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Freigeschaltete Apps'), boxes.map(([, c]) => c)),
+        h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Freigeschaltete Apps'), boxes.map(([, c]) => c), h('div', { class: 'sep' }), mkt.el),
       footer: [button('Abbrechen', { onClick: () => m.close() }), button('Erstellen', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
         err.replaceChildren();
         try {
           if (!prof.hasType()) throw new Error('Bitte wähle, ob der Zugang ein Lieferant oder ein Ankäufer ist.');
           const files = await prof.files();
-          const res = await api.post('/api/partners', { ...prof.values(), ...files, note: noteEl.value, code: code.value.trim() || undefined, apps: boxes.filter(([, c]) => c.input.checked).map(([a]) => a.id) });
+          const res = await api.post('/api/partners', { ...prof.values(), ...files, ...mkt.values(), note: noteEl.value, code: code.value.trim() || undefined, apps: boxes.filter(([, c]) => c.input.checked).map(([a]) => a.id) });
           const failed = extras?.count() ? await extras.upload('partner', res.partner.id) : [];
           if (failed.length) toast(`Zugang erstellt – diese Dateien konnten nicht gespeichert werden: ${failed.join(', ')}`, 'warn');
           m.close(); await load(); showCredentials(res.partner, res.code, 'Zugang erstellt');
@@ -192,6 +211,7 @@ export default async function render(container, ctx) {
     const err = h('div');
     const noteEl = input({ value: p.note, maxLength: 300, disabled: !canManage });
     const prof = profileForm(p, { docs: false });
+    const mkt = marketAccessForm(p, data.items ?? []);
     const boxes = appBoxes(p.apps, !canManage);
     const link = p.linkPath ? fullLink(p.linkPath) : null;
     const act = (fn) => async (e) => busy(e.currentTarget, async () => { try { await fn(); } catch (ex) { toast(ex.message, 'err'); } });
@@ -206,7 +226,7 @@ export default async function render(container, ctx) {
     footer.push(h('span', { class: 'grow' }), button('Schließen', { onClick: () => m.close() }));
     if (canManage) footer.push(button('Speichern', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
       err.replaceChildren();
-      try { await api.patch(`/api/partners/${p.id}`, { ...prof.values(), note: noteEl.value, apps: boxes.filter(([, c]) => c.input.checked).map(([a]) => a.id) }); m.close(); toast('Gespeichert.'); load(); }
+      try { await api.patch(`/api/partners/${p.id}`, { ...prof.values(), ...(boxes.some(([a, c]) => a.id === 'market' && c.input.checked) ? mkt.values() : {}), note: noteEl.value, apps: boxes.filter(([, c]) => c.input.checked).map(([a]) => a.id) }); m.close(); toast('Gespeichert.'); load(); }
       catch (ex) { err.replaceChildren(formError(ex.message)); }
     }) }));
     const m = openModal({
@@ -226,6 +246,7 @@ export default async function render(container, ctx) {
             }) }))),
         field('Notiz', noteEl), canManage && prof.el, docBox(p),
         h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Freigeschaltete Apps'), boxes.map(([, c]) => c),
+        canManage && h('div', { style: { margin: '14px 0' } }, h('div', { class: 'sep' }), mkt.el),
         h('dl', { class: 'details-dl', style: { marginTop: '14px' } }, h('dt', null, 'Erstellt'), h('dd', null, fmtDateTime(p.createdAt)),
           h('dt', null, 'Letzte Anmeldung'), h('dd', null, p.lastLoginAt ? fmtDateTime(p.lastLoginAt) : 'noch nie'))),
       footer,

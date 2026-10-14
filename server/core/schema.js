@@ -815,4 +815,24 @@ export const SCHEMA_MIGRATIONS = [
   );
   CREATE INDEX idx_extra_files_owner ON extra_files(owner_type, owner_id);
   `,
+  // 25: Boerse – Sichtbarkeit der Artikel fuer externe Partner (je Artikel und je Partner) und „Sonstiges“
+  `
+  ALTER TABLE market_items ADD COLUMN partner_access TEXT NOT NULL DEFAULT 'all';
+  ALTER TABLE market_items ADD COLUMN is_other INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE market_item_partners (
+    item_id    INTEGER NOT NULL REFERENCES market_items(id) ON DELETE CASCADE,
+    partner_id INTEGER NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
+    PRIMARY KEY (item_id, partner_id)
+  );
+  ALTER TABLE partners ADD COLUMN items_mode TEXT NOT NULL DEFAULT 'all';
+  ALTER TABLE partners ADD COLUMN allow_other INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE partner_items (
+    partner_id INTEGER NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
+    item_id    INTEGER NOT NULL REFERENCES market_items(id) ON DELETE CASCADE,
+    PRIMARY KEY (partner_id, item_id)
+  );
+  ALTER TABLE market_deals ADD COLUMN other_name TEXT;
+  INSERT INTO market_items (name, description, unit, is_active, is_other, partner_access, created_at, updated_at)
+    VALUES ('Sonstiges', 'Platzhalter fuer Artikel, die noch nicht angelegt sind (Freitext des Partners)', 'Stück', 1, 1, 'none', datetime('now'), datetime('now'));
+  `,
 ];

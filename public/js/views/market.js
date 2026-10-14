@@ -186,7 +186,7 @@ export default async function render(container, ctx) {
 
   // ── Katalog ──
   async function catalog() {
-    const [{ items }, lk] = await Promise.all([api.get('/api/market/items'), api.get('/api/lookups')]);
+    const [{ items, partners, itemDefault }, lk] = await Promise.all([api.get('/api/market/items'), api.get('/api/lookups')]);
     if (!ctx.isCurrent()) return;
     const cats = lk.lists.find((l) => l.key === 'market.item_category')?.entries.filter((e) => e.isActive) ?? [];
     mount(host, h('div', { class: 'toolbar' }, h('span', { class: 'muted' }, `${items.length} Items im Katalog – Partner wählen daraus aus.`), h('div', { class: 'grow' }),
@@ -197,12 +197,15 @@ export default async function render(container, ctx) {
       { label: 'Einheit', render: (i) => i.unit },
       { label: 'Richtpreis', render: (i) => (i.referencePrice != null ? money(i.referencePrice) : h('span', { class: 'muted' }, '–')) },
       { label: 'Status', render: (i) => (i.isActive ? badge('Aktiv', 'b-ok') : badge('Inaktiv', 'b-mute')) },
-      canCatalog && { label: '', style: { width: '1%' }, render: (i) => button('Bearbeiten', { size: 'sm', icon: 'edit', onClick: () => itemEditor(i, cats) }) },
-    ].filter(Boolean), items, { onRowClick: canCatalog ? (i) => itemEditor(i, cats) : undefined, empty: empty('Der Katalog ist leer', canCatalog ? 'Lege Items an (z. B. Eisen, Waffen, Gold), die Partner anbieten oder die wir suchen.' : null, 'tag') }));
+      { label: 'Partner', render: (i) => (i.partnerAccess === 'none' ? badge('Keine', 'b-mute') : i.partnerAccess === 'selected' ? badge(`${i.partnerIds.length} ausgewählt`, 'b-info') : badge('Alle', 'b-ok')) },
+      canCatalog && { label: '', style: { width: '1%' }, render: (i) => button('Bearbeiten', { size: 'sm', icon: 'edit', onClick: () => itemEditor(i, cats, partners, itemDefault) }) },
+    ].filter(Boolean), items, { onRowClick: canCatalog ? (i) => itemEditor(i, cats, partners, itemDefault) : undefined, empty: empty('Der Katalog ist leer', canCatalog ? 'Lege Items an (z. B. Eisen, Waffen, Gold), die Partner anbieten oder die wir suchen.' : null, 'tag') }));
   }
 
-  async function itemEditor(item, catsIn) {
+  async function itemEditor(item, catsIn, partnersIn, defIn) {
     const cats = catsIn ?? (await api.get('/api/lookups')).lists.find((l) => l.key === 'market.item_category')?.entries.filter((e) => e.isActive) ?? [];
+    const meta = partnersIn ? null : await api.get('/api/market/items');
+    const partnerList = partnersIn ?? meta.partners ?? [], accessDefault = defIn ?? meta?.itemDefault ?? 'all';
     const err = h('div');
     const name = input({ value: item?.name ?? '', maxLength: 80 });
     const desc = input({ value: item?.description ?? '', maxLength: 300 });
@@ -210,6 +213,15 @@ export default async function render(container, ctx) {
     const unit = input({ value: item?.unit ?? 'Stück', maxLength: 20 });
     const ref = input({ type: 'number', min: 0, value: item?.referencePrice ?? '', placeholder: 'optional, nur intern' });
     const active = toggle('Im Katalog aktiv (für Partner auswählbar)', item ? item.isActive : true);
+    // Sichtbarkeit für externe Partner (damit sie nicht sehen, was wir im Lager haben)
+    const access = select([{ value: 'all', label: 'Alle Partner' }, { value: 'selected', label: 'Nur ausgewählte Partner' }, { value: 'none', label: 'Keine Partner (nur intern)' }], item?.partnerAccess ?? accessDefault);
+    const chosen = new Set(item?.partnerIds ?? []);
+    const pBox = h('div', { class: 'ct-roles' });
+    const drawP = () => {
+      pBox.hidden = access.value !== 'selected';
+      mount(pBox, partnerList.length ? partnerList.map((p) => { const c = h('input', { type: 'checkbox', checked: chosen.has(p.id) }); c.addEventListener('change', () => (c.checked ? chosen.add(p.id) : chosen.delete(p.id))); return h('label', { class: 'check', style: { padding: '2px 0' } }, c, h('span', { class: 'check-text' }, `${p.number ?? ''} · ${p.name}`)); }) : h('div', { class: 'muted' }, 'Es gibt noch keine aktiven externen Zugänge.'));
+    };
+    access.addEventListener('change', drawP); drawP();
     const footer = [];
     if (item) footer.push(button('Löschen', { variant: 'danger', icon: 'trash', onClick: async () => {
       const r = await confirmDialog({ title: 'Item löschen?', message: `„${item.name}“ wird aus dem Katalog entfernt. Items mit Geschäften können nur deaktiviert werden.`, confirmLabel: 'Löschen' });
@@ -222,12 +234,13 @@ export default async function render(container, ctx) {
     } }));
     footer.push(h('span', { class: 'grow' }), button('Abbrechen', { onClick: () => m.close() }), button(item ? 'Speichern' : 'Anlegen', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
       err.replaceChildren();
-      const payload = { name: name.value, description: desc.value, categoryId: cat.value ? Number(cat.value) : null, unit: unit.value, referencePrice: ref.value === '' ? null : Number(ref.value), isActive: active.input.checked };
+      const payload = { name: name.value, description: desc.value, categoryId: cat.value ? Number(cat.value) : null, unit: unit.value, referencePrice: ref.value === '' ? null : Number(ref.value), isActive: active.input.checked, partnerAccess: access.value, partnerIds: access.value === 'selected' ? [...chosen] : [] };
       try { if (item) await api.patch(`/api/market/items/${item.id}`, payload); else await api.post('/api/market/items', payload); m.close(); toast('Gespeichert.'); showTab('catalog'); }
       catch (ex) { err.replaceChildren(formError(ex.message)); }
     }) }));
     const m = openModal({ title: item ? `Item: ${item.name}` : 'Neues Item', body: h('div', null, err, h('div', { class: 'form-row' }, field('Name', name), field('Kategorie', cat)), field('Beschreibung', desc),
-      h('div', { class: 'form-row' }, field('Einheit', unit, { help: 'z. B. Stück, kg, Packung' }), field('Richtpreis', ref, { help: 'Interne Orientierung – Partner sehen ihn nicht.' })), active), footer });
+      h('div', { class: 'form-row' }, field('Einheit', unit, { help: 'z. B. Stück, kg, Packung' }), field('Richtpreis', ref, { help: 'Interne Orientierung – Partner sehen ihn nicht.' })), active,
+      h('div', { class: 'sep' }), field('Sichtbar für externe Partner', access, { help: 'Wer diesen Artikel in der externen Börse sieht und anbieten kann. Zusätzlich kann jeder Zugang auf bestimmte Artikel beschränkt sein (Externe Zugänge → Börse-Artikel).' }), pBox), footer });
   }
 
   ctx.live(['market', 'lookups', 'partners'], () => showTab(tab, true)); // jede Änderung aktualisiert Listen, Zähler und Badges

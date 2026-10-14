@@ -73,18 +73,22 @@ export default async function render(container, ctx) {
   }
 
   function offerDialog() {
-    if (!catalog.items.length) return toast('Aktuell können keine Items angeboten werden.', 'warn');
+    if (!catalog.items.length && !catalog.allowOther) return toast('Aktuell können keine Items angeboten werden.', 'warn');
     const err = h('div');
     const catSel = select([{ value: '', label: 'Alle Kategorien' }, ...catalog.categories.map((c) => ({ value: c.id, label: c.label }))], '');
     const itemSel = h('select', { class: 'select' });
-    const fill = () => mount(itemSel, catalog.items.filter((i) => !catSel.value || String(i.category?.id) === catSel.value).map((i) => h('option', { value: i.id }, `${i.name} (${i.unit})`)));
+    const fill = () => mount(itemSel, [...catalog.items.filter((i) => !catSel.value || String(i.category?.id) === catSel.value).map((i) => h('option', { value: i.id }, `${i.name} (${i.unit})`)), catalog.allowOther && h('option', { value: 'other' }, 'Sonstiges (Artikel, der nicht in der Liste steht)')]);
+    const otherName = input({ maxLength: 80, placeholder: 'Bezeichnung des Artikels' });
+    const otherField = field('Was bietest du an? *', otherName, { help: 'Freitext – wir prüfen, ob wir den Artikel annehmen.' });
+    const isOther = () => itemSel.value === 'other';
+    const syncOther = () => { otherField.style.display = isOther() ? '' : 'none'; };
     catSel.addEventListener('change', () => { fill(); refresh(); }); fill();
     const qty = input({ type: 'number', min: 1, inputmode: 'numeric', placeholder: 'Stückzahl' });
     const price = input({ type: 'number', min: 1, inputmode: 'numeric', placeholder: 'Dein Preis pro Einheit' });
     const text = h('textarea', { class: 'textarea', maxLength: 500, placeholder: 'Beschreibung (Zustand, Besonderheiten …)' });
     const quoteBox = h('div', { class: 'quote-box' });
     let quote = null, custom = false, seq = 0;
-    const unit = () => catalog.items.find((i) => String(i.id) === itemSel.value)?.unit ?? '';
+    const unit = () => catalog.items.find((i) => String(i.id) === itemSel.value)?.unit ?? 'Stück';
     const draw = () => {
       const q = Number(qty.value) > 0;
       const own = custom || !quote;
@@ -105,8 +109,8 @@ export default async function render(container, ctx) {
     const refresh = async () => {
       const my = ++seq;
       const item = catalog.items.find((i) => String(i.id) === itemSel.value);
-      quote = null;
-      if (item?.suggestedPrice != null) {
+      quote = null; syncOther();
+      if (!isOther() && item?.suggestedPrice != null) {
         try { const r = await api.get(`/api/p/market/quote?itemId=${item.id}&quantity=${Math.max(1, Number(qty.value) || 1)}`); if (my === seq) quote = r.quote; } catch { /* kein Vorschlag */ }
       }
       if (my === seq) draw();
@@ -117,12 +121,12 @@ export default async function render(container, ctx) {
     const m = openModal({
       title: 'Angebot einstellen',
       body: h('div', null, err, h('div', { class: 'form-row' }, field('Kategorie', catSel), field('Artikel', itemSel)),
-        field('Stückzahl', qty), quoteBox, field('Dein Preis pro Einheit', price), h('div', { style: { height: '12px' } }), field('Hinweis', text)),
+        otherField, field('Stückzahl', qty), quoteBox, field('Dein Preis pro Einheit', price), h('div', { style: { height: '12px' } }), field('Hinweis', text)),
       footer: [button('Abbrechen', { onClick: () => m.close() }), button('Angebot senden', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
         err.replaceChildren();
         if (!itemSel.value) return err.replaceChildren(formError('Bitte wähle einen Artikel aus.'));
-        const body = { itemId: Number(itemSel.value), quantity: Number(qty.value), note: text.value.trim() };
-        if (custom || !quote) body.unitPrice = Number(price.value);
+        const body = isOther() ? { other: true, otherName: otherName.value.trim(), quantity: Number(qty.value), note: text.value.trim(), unitPrice: Number(price.value) } : { itemId: Number(itemSel.value), quantity: Number(qty.value), note: text.value.trim() };
+        if (!isOther() && (custom || !quote)) body.unitPrice = Number(price.value);
         try { await api.post('/api/p/market/offers', body); m.close(); toast('Angebot gesendet – wir prüfen es und melden uns.'); show('deals'); }
         catch (ex) { err.replaceChildren(formError(ex.message)); }
       }) })],

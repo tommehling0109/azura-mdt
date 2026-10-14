@@ -1319,6 +1319,42 @@ try {
     await admin.call('DELETE', `/api/warehouses/${rw}`);
     ok('Lagerkosten-Erinnerung: Wochentag/Uhrzeit, Empfänger, einmal pro Woche, Prüfungen'); }
 
+  // ══ Börse: Sichtbarkeit für externe Partner & „Sonstiges“ ══
+  { const { clearAttempts } = await import('../server/core/auth.js'); for (const ip of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) clearAttempts(`pl|${ip}`); // Anmeldebremse für Testläufe zurücksetzen
+  const mk = async (name) => { const rr = await admin.call('POST', '/api/partners', { type: 'buyer', name, contactName: 'Ansprech', apps: ['market'] }); assert.equal(rr.status, 201); const c = new Client(); assert.equal((await c.call('POST', `/api/p/${rr.partner.linkPath.split('/').pop()}/login`, { code: rr.code })).status, 200); return { id: rr.partner.id, c }; };
+    const A = await mk('Sicht Partner A'), B = await mk('Sicht Partner B');
+    assert.ok(!(await admin.call('GET', '/api/market/items')).items.some((i) => i.name === 'Sonstiges')); // Platzhalter nie im Staff-Katalog
+    assert.ok((await admin.call('GET', '/api/market/items')).partners.length >= 2);
+    const mkI = async (name, extra) => { const rr = await admin.call('POST', '/api/market/items', { name, unit: 'Stück', referencePrice: 100, ...extra }); assert.equal(rr.status, 201); return rr.item; };
+    const iAll = await mkI('Sicht-Alle'), iSel = await mkI('Sicht-Ausgewählt', { partnerAccess: 'selected', partnerIds: [A.id] }), iNone = await mkI('Sicht-Keine', { partnerAccess: 'none' });
+    assert.equal(iAll.partnerAccess, 'all'); assert.deepEqual(iSel.partnerIds, [A.id]);
+    assert.equal((await admin.call('POST', '/api/market/items', { name: 'Sicht-Falsch', partnerAccess: 'x' })).status, 400); assert.equal((await admin.call('POST', '/api/market/items', { name: 'Sicht-Falsch2', partnerAccess: 'selected', partnerIds: [99999] })).status, 400);
+    const names = async (p) => (await p.c.call('GET', '/api/p/market/catalog')).items.map((i) => i.name);
+    let na = await names(A), nb = await names(B);
+    assert.ok(na.includes('Sicht-Alle') && na.includes('Sicht-Ausgewählt') && !na.includes('Sicht-Keine') && !na.includes('Sonstiges'));
+    assert.ok(nb.includes('Sicht-Alle') && !nb.includes('Sicht-Ausgewählt') && !nb.includes('Sicht-Keine'));
+    assert.equal((await B.c.call('GET', `/api/p/market/quote?itemId=${iSel.id}&quantity=1`)).status, 404); // verdeckte Artikel auch nicht über die Preisabfrage
+    assert.equal((await B.c.call('POST', '/api/p/market/offers', { itemId: iSel.id, quantity: 1, unitPrice: 5 })).status, 400);
+    // Partner-Seite: nur ausgewählte Artikel
+    r = await admin.call('PATCH', `/api/partners/${A.id}`, { itemsMode: 'selected', itemIds: [iAll.id] }); assert.equal(r.status, 200); assert.equal(r.partner.itemsMode, 'selected'); assert.deepEqual(r.partner.itemIds, [iAll.id]);
+    na = await names(A); assert.ok(na.includes('Sicht-Alle') && !na.includes('Sicht-Ausgewählt'));
+    assert.equal((await admin.call('PATCH', `/api/partners/${A.id}`, { itemsMode: 'x' })).status, 400); assert.equal((await admin.call('PATCH', `/api/partners/${A.id}`, { itemIds: [99999] })).status, 400);
+    assert.equal((await admin.call('PATCH', `/api/partners/${A.id}`, { itemsMode: 'all' })).partner.itemsMode, 'all');
+    // Sonstiges
+    assert.equal((await A.c.call('GET', '/api/p/market/catalog')).allowOther, false);
+    assert.equal((await A.c.call('POST', '/api/p/market/offers', { other: true, otherName: 'Rostiger Anker', quantity: 2, unitPrice: 50 })).status, 403);
+    assert.equal((await admin.call('PATCH', `/api/partners/${A.id}`, { allowOther: true })).partner.allowOther, true);
+    assert.equal((await A.c.call('POST', '/api/p/market/offers', { other: true, otherName: 'Rostiger Anker', quantity: 2 })).status, 400); // Preis nötig
+    assert.equal((await A.c.call('POST', '/api/p/market/offers', { other: true, otherName: 'x', quantity: 2, unitPrice: 50 })).status, 400);
+    r = await A.c.call('POST', '/api/p/market/offers', { other: true, otherName: 'Rostiger Anker', quantity: 2, unitPrice: 50, note: 'Fund vom Hafen' }); assert.equal(r.status, 201); assert.equal(r.deal.item.name, 'Sonstiges: Rostiger Anker'); assert.equal(r.deal.item.isOther, true);
+    const sd = (await admin.call('GET', '/api/market/deals')).deals.find((d) => d.id === r.deal.id); assert.equal(sd.item.name, 'Sonstiges: Rostiger Anker');
+    assert.equal((await B.c.call('POST', '/api/p/market/offers', { other: true, otherName: 'Anderes', quantity: 1, unitPrice: 5 })).status, 403);
+    // Gesuche richten sich nach der Sichtbarkeit
+    r = await admin.call('POST', '/api/market/wanted', { itemId: iNone.id, quantity: 5, unitPrice: 10 }); assert.equal(r.status, 201); const wNone = r.wanted.id;
+    assert.ok(!(await A.c.call('GET', '/api/p/market/wanted')).wanted.some((w) => w.id === wNone)); assert.equal((await A.c.call('POST', `/api/p/market/wanted/${wNone}/respond`, { quantity: 1 })).status, 404);
+    await admin.call('DELETE', `/api/market/wanted/${wNone}`);
+    ok('Börse: Artikel-Sichtbarkeit je Artikel und je Partner, „Sonstiges“ als Freitext, Gesuche gefiltert'); }
+
   // ══ Legal ══
   { assert.equal((await mod.call('GET', '/api/legal')).status, 403); assert.equal((await new Client().call('GET', '/api/legal')).status, 401); assert.equal((await tp.call('GET', '/api/legal')).status, 401);
     await setPerms(['legal.view']); r = await mod.call('GET', '/api/legal'); assert.equal(r.status, 200); assert.equal(r.canManage, false);

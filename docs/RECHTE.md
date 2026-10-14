@@ -273,6 +273,11 @@
 | GET | `/api/dashboard/layout` | `config.view` |
 | PUT | `/api/dashboard/layout` | `config.edit` |
 | GET | `/api/dashboard` | *angemeldet (eigene Daten)* |
+| GET | `/api/extra-files/:type/:id` | *angemeldet (eigene Daten)* |
+| POST | `/api/extra-files/:type/:id` | *angemeldet (eigene Daten)* |
+| GET | `/api/extra-file/:fid` | *angemeldet (eigene Daten)* |
+| PATCH | `/api/extra-file/:fid` | *angemeldet (eigene Daten)* |
+| DELETE | `/api/extra-file/:fid` | *angemeldet (eigene Daten)* |
 | GET | `/api/finance/options` | `finance.view` |
 | GET | `/api/finance/summary` | `finance.view` |
 | GET | `/api/finance/report` | `finance.view` |

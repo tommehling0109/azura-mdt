@@ -1,3 +1,4 @@
+import { partnerItemWhere, partnerSeesItem, otherItem } from '../core/visibility.js';
 import { all, get, run, tx, now } from '../core/db.js';
 import { bad, conflict, forbidden, notFound, str } from '../core/http.js';
 import { audit } from '../core/audit.js';
@@ -61,12 +62,13 @@ const optPrice = (v, name) => (v == null || v === '' ? null : posInt(v, name, { 
 const ITEM_SQL = 'SELECT i.*, l.label cat_label, l.color cat_color FROM market_items i LEFT JOIN lookups l ON l.id = i.category_id';
 const itemDto = (i) => ({
   id: i.id, name: i.name, description: i.description, unit: i.unit, referencePrice: i.reference_price, isActive: !!i.is_active,
+  partnerAccess: i.partner_access, partnerIds: i.partner_access === 'selected' ? all('SELECT partner_id FROM market_item_partners WHERE item_id = ?', i.id).map((x) => x.partner_id) : [],
   category: i.category_id ? { id: i.category_id, label: i.cat_label, color: i.cat_color } : null,
 });
 const loadItem = (id) => { const i = get(`${ITEM_SQL} WHERE i.id = ?`, id); return i ? itemDto(i) : null; };
 
 // ── Geschäfte ──
-const DEAL_SQL = `SELECT d.*, p.name partner_name, p.partner_number partner_number, i.name item_name, i.unit item_unit, ic.id cat_id, ic.label cat_label, ic.color cat_color,
+const DEAL_SQL = `SELECT d.*, p.name partner_name, p.partner_number partner_number, i.name item_name, i.unit item_unit, i.is_other item_is_other, ic.id cat_id, ic.label cat_label, ic.color cat_color,
   sl.label status_label, sl.color status_color, u.member_number assignee_number, hp.label place_label, hp.description place_desc, wh.name warehouse_name
   FROM market_deals d LEFT JOIN warehouses wh ON wh.id = d.warehouse_id JOIN partners p ON p.id = d.partner_id JOIN market_items i ON i.id = d.item_id
   LEFT JOIN lookups ic ON ic.id = i.category_id
@@ -79,7 +81,7 @@ const dealDto = (d, partnerView, viewerId = null) => {
     id: d.id, number: d.deal_number, origin: d.origin, direction: d.direction, warehouse: partnerView || !d.warehouse_id ? undefined : { id: d.warehouse_id, name: d.warehouse_name }, stockBooked: partnerView ? undefined : !!d.stock_booked,
     wantedId: d.wanted_id, status: d.status, statusLabel: (d.direction === 'sell' && SELL_LABELS[d.status]) || d.status_label || d.status, statusColor: d.status_color ?? '#94a3b8',
     turn: d.turn, quantity: d.quantity, unitPrice: d.unit_price, suggestedPrice: d.suggested_price ?? null, total: d.quantity * d.unit_price, proposedBy: d.proposed_by, note: d.note,
-    item: { id: d.item_id, name: d.item_name, unit: d.item_unit, category: d.cat_id ? { id: d.cat_id, label: d.cat_label, color: d.cat_color } : null },
+    item: { id: d.item_id, name: d.item_is_other && d.other_name ? `Sonstiges: ${d.other_name}` : d.item_name, isOther: !!d.item_is_other, unit: d.item_unit, category: d.cat_id ? { id: d.cat_id, label: d.cat_label, color: d.cat_color } : null },
     // Partner sehen weder den Namen der Gegenseite noch interne Zuständigkeiten – nur die AZ-Nummer des Geschäfts
     partner: partnerView ? undefined : { id: d.partner_id, name: d.partner_name, number: d.partner_number },
     // Staff: Zuständiger (Personalnummer, man selbst „Du“). Partner: Ansprechpartner nur als Personalnummer – ohne Zuweisung bleibt es „Team“
@@ -197,7 +199,7 @@ function applyAction(dealId, actor, action, b) {
         if (b.to !== undefined && b.to !== to) throw bad('Ungültiger Zielzustand.');
         touch(dealId, { status: to, ...(to === 'completed' ? { closed_at: now() } : {}) });
         let stored = '';
-        if (to === 'delivered' && d.direction === 'buy' && b.warehouseId != null && b.warehouseId !== '') {
+        if (to === 'delivered' && d.direction === 'buy' && b.warehouseId != null && b.warehouseId !== '' && !get('SELECT is_other FROM market_items WHERE id = ?', d.item_id)?.is_other) {
           const wh = get('SELECT id, name FROM warehouses WHERE id = ?', b.warehouseId);
           if (!wh) throw bad('Unbekanntes Lager.');
           bookStock({ warehouseId: wh.id, itemId: d.item_id, delta: d.quantity, kind: 'deal', userId: actor.id, note: `Geschäft ${d.deal_number}`, dealId });
@@ -274,15 +276,15 @@ function fanout(dealId, actor, action, evId, b) {
 
 const PARTNER_ACTIONS = ['accept', 'counter', 'reject', 'withdraw', 'message'];
 
-function createDeal({ origin, partnerId, itemId, wantedId, quantity, unitPrice, suggestedPrice = null, note, actor }) {
+function createDeal({ origin, partnerId, itemId, wantedId, quantity, unitPrice, suggestedPrice = null, note, actor, otherName = null }) {
   return tx(() => {
     const t = now();
     const number = allocateNumber('deal_number', 'market.deal_prefix', 'market.deal_start');
-    const res = run(`INSERT INTO market_deals (deal_number,origin,partner_id,item_id,wanted_id,quantity,unit_price,suggested_price,proposed_by,turn,status,note,created_at,updated_at)
-                     VALUES (?,?,?,?,?,?,?,?,'partner','staff','submitted',?,?,?)`, number, origin, partnerId, itemId, wantedId ?? null, quantity, unitPrice, suggestedPrice, note, t, t);
+    const res = run(`INSERT INTO market_deals (deal_number,origin,partner_id,item_id,wanted_id,quantity,unit_price,suggested_price,proposed_by,turn,status,note,other_name,created_at,updated_at)
+                     VALUES (?,?,?,?,?,?,?,?,'partner','staff','submitted',?,?,?,?)`, number, origin, partnerId, itemId, wantedId ?? null, quantity, unitPrice, suggestedPrice, note, otherName, t, t);
     const id = Number(res.lastInsertRowid);
     const evId = addEvent(id, actor, origin === 'wanted' ? 'response' : 'offer', { quantity, unitPrice, text: note });
-    const info = get('SELECT p.name pname, i.name iname FROM market_deals d JOIN partners p ON p.id = d.partner_id JOIN market_items i ON i.id = d.item_id WHERE d.id = ?', id);
+    const info = get("SELECT p.name pname, CASE WHEN i.is_other = 1 AND d.other_name IS NOT NULL THEN 'Sonstiges: ' || d.other_name ELSE i.name END iname FROM market_deals d JOIN partners p ON p.id = d.partner_id JOIN market_items i ON i.id = d.item_id WHERE d.id = ?", id);
     notify(staffWith('market.view'), { key: `deal:${id}:ev:${evId}`, title: `${number} · ${info.iname}`,
       body: `${info.pname}: ${origin === 'wanted' ? 'Antwort auf Gesuch' : 'Neues Angebot'} · ${quantity.toLocaleString('de-DE')} × ${unitPrice.toLocaleString('de-DE')}`, target: { app: 'market', dealId: id } });
     return id;
@@ -359,6 +361,7 @@ export default {
   config: [
     { key: 'market.currency', group: 'Börse', label: 'Währungssymbol', help: 'Wird hinter Preisen angezeigt (z. B. $).', type: 'string', default: '$', max: 6, public: true },
     { key: 'market.deal_prefix', group: 'Börse', label: 'Präfix der Geschäftsnummer', help: 'Partner sehen Geschäfte nur unter dieser Nummer (z. B. AZ-G-100001).', type: 'string', default: 'AZ-G-', max: 12 },
+    { key: 'market.partner_item_default', group: 'Börse', label: 'Neue Artikel: Sichtbarkeit für externe Partner', help: 'Voreinstellung beim Anlegen eines Artikels. Je Artikel lässt sich das ändern (alle Partner, nur ausgewählte oder keine). So sehen Partner nur, was sie sehen sollen – nicht, was bei uns im Lager liegt.', type: 'select', default: 'all', options: [{ value: 'all', label: 'Alle Partner' }, { value: 'selected', label: 'Nur ausgewählte Partner' }, { value: 'none', label: 'Keine Partner' }] },
     { key: 'market.deal_start', group: 'Börse', label: 'Startnummer der Geschäfte', type: 'number', default: 100001, min: 1, max: 99999999 },
   ],
   init() {
@@ -442,7 +445,11 @@ export default {
     });
 
     // Katalog
-    r.get('/api/market/items', { perm: 'market.view' }, () => ({ items: all(`${ITEM_SQL} ORDER BY i.is_active DESC, i.name`).map(itemDto) }));
+    r.get('/api/market/items', { perm: 'market.view' }, (ctx) => ({
+      itemDefault: getConfig('market.partner_item_default') || 'all',
+      items: all(`${ITEM_SQL} WHERE i.is_other = 0 ORDER BY i.is_active DESC, i.name`).map(itemDto),
+      partners: ctx.user.perms.has('market.catalog.manage') ? all("SELECT id, partner_number, name FROM partners WHERE status = 'active' ORDER BY partner_number").map((p) => ({ id: p.id, number: p.partner_number, name: p.name })) : [],
+    }));
 
     const itemFields = (b, partial = false) => {
       const out = {};
@@ -456,14 +463,21 @@ export default {
         out.category_id = c;
       }
       if (b.isActive !== undefined) out.is_active = b.isActive ? 1 : 0;
+      if (b.partnerAccess !== undefined) { if (!['all', 'selected', 'none'].includes(b.partnerAccess)) throw bad('Sichtbarkeit für Partner: alle, ausgewählte oder keine.'); out.partner_access = b.partnerAccess; }
       return out;
+    };
+    const setItemPartners = (itemId, ids) => {
+      if (!Array.isArray(ids)) throw bad('Ungültige Partnerliste.');
+      run('DELETE FROM market_item_partners WHERE item_id = ?', itemId);
+      for (const pid of new Set(ids)) { if (!Number.isInteger(pid) || !get('SELECT 1 x FROM partners WHERE id = ?', pid)) throw bad('Unbekannter Partner in der Sichtbarkeitsliste.'); run('INSERT INTO market_item_partners (item_id,partner_id) VALUES (?,?)', itemId, pid); }
     };
     r.post('/api/market/items', { perm: 'market.catalog.manage' }, (ctx) => {
       const f = itemFields(ctx.body);
       if (get('SELECT 1 x FROM market_items WHERE name = ? COLLATE NOCASE', f.name)) throw conflict('Ein Item mit diesem Namen existiert bereits.');
       const t = now();
-      const res = run('INSERT INTO market_items (name,description,category_id,unit,reference_price,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)',
-        f.name, f.description, f.category_id, f.unit, f.reference_price, f.is_active ?? 1, t, t);
+      const res = run('INSERT INTO market_items (name,description,category_id,unit,reference_price,is_active,partner_access,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)',
+        f.name, f.description, f.category_id, f.unit, f.reference_price, f.is_active ?? 1, f.partner_access ?? (getConfig('market.partner_item_default') || 'all'), t, t);
+      if (ctx.body.partnerIds !== undefined) setItemPartners(Number(res.lastInsertRowid), ctx.body.partnerIds);
       const item = loadItem(Number(res.lastInsertRowid));
       audit(ctx, { action: 'market.item_created', module: 'market', targetType: 'item', targetId: item.id, targetLabel: item.name, after: item });
       ctx.status = 201;
@@ -477,6 +491,7 @@ export default {
       if (f.name && get('SELECT 1 x FROM market_items WHERE name = ? COLLATE NOCASE AND id != ?', f.name, id)) throw conflict('Ein Item mit diesem Namen existiert bereits.');
       const cols = Object.keys(f);
       if (cols.length) run(`UPDATE market_items SET ${cols.map((c) => `${c} = ?`).join(', ')}, updated_at = ? WHERE id = ?`, ...cols.map((c) => f[c]), now(), id);
+      if (ctx.body.partnerIds !== undefined) setItemPartners(id, ctx.body.partnerIds);
       const item = loadItem(id);
       audit(ctx, { action: 'market.item_updated', module: 'market', targetType: 'item', targetId: id, targetLabel: item.name, before: cur, after: item });
       return { item };
@@ -558,30 +573,42 @@ export default {
     };
     const pActor = (ctx) => ({ type: 'partner', id: ctx.partner.id, name: ctx.partner.name });
 
-    r.get('/api/p/market/catalog', P, () => ({
+    r.get('/api/p/market/catalog', P, (ctx) => { const w = partnerItemWhere(ctx.partner.id); return {
       currency: getConfig('market.currency'),
       categories: lookupEntries('market.item_category', { onlyActive: true }),
-      items: all(`${ITEM_SQL} WHERE i.is_active = 1 ORDER BY i.name`).map((i) => ({ ...itemDto(i), referencePrice: undefined, suggestedPrice: quote(i.id, 1)?.unitPrice ?? null })), // Richtpreis/Spanne sind intern, nur der Vorschlag ist sichtbar
-    }));
+      allowOther: !!get('SELECT allow_other FROM partners WHERE id = ?', ctx.partner.id)?.allow_other,
+      items: all(`${ITEM_SQL} WHERE ${w.sql} ORDER BY i.name`, ...w.params).map((i) => ({ ...itemDto(i), referencePrice: undefined, suggestedPrice: quote(i.id, 1)?.unitPrice ?? null })), // Richtpreis/Spanne sind intern, nur der Vorschlag ist sichtbar
+    }; });
 
     /** Automatischer Preisvorschlag für Item + Menge (aus Preisspanne und Lagerbestand). */
     r.get('/api/p/market/quote', P, (ctx) => {
       const itemId = Number(ctx.query.itemId);
       const quantity = Math.min(Math.max(parseInt(ctx.query.quantity) || 1, 1), INT_MAX);
-      const item = get('SELECT id FROM market_items WHERE id = ? AND is_active = 1', itemId);
-      if (!item) throw notFound('Item nicht gefunden.');
+      if (!partnerSeesItem(ctx.partner.id, itemId)) throw notFound('Item nicht gefunden.');
       return { quote: quote(itemId, quantity) };
     });
 
     r.get('/api/p/market/wanted', P, (ctx) => {
-      const rows = all(`${WANTED_SQL} WHERE w.status = 'open' AND (w.expires_at IS NULL OR w.expires_at > ?) ORDER BY w.created_at DESC`, now());
+      const vis = partnerItemWhere(ctx.partner.id, { activeOnly: false });
+      const rows = all(`${WANTED_SQL} WHERE w.status = 'open' AND (w.expires_at IS NULL OR w.expires_at > ?) AND ${vis.sql} ORDER BY w.created_at DESC`, now(), ...vis.params);
       return { wanted: rows.map((w) => ({ ...wantedDto(w), responseCount: undefined })) };
     });
 
     r.post('/api/p/market/offers', P, (ctx) => {
       const b = ctx.body;
+      if (b.other) { // „Sonstiges“: Artikel, der noch nicht angelegt ist (Freitext)
+        if (!get('SELECT allow_other FROM partners WHERE id = ?', ctx.partner.id)?.allow_other) throw forbidden('Für deinen Zugang sind „Sonstige“ Artikel nicht freigeschaltet.');
+        const other = otherItem(); if (!other) throw bad('„Sonstiges“ ist nicht verfügbar.');
+        const otherName = str(b.otherName, 'Bezeichnung des Artikels', { min: 2, max: 80 });
+        const qty = posInt(b.quantity, 'Menge');
+        if (b.unitPrice == null) throw bad('Bitte nenne deinen Preis pro Einheit.');
+        const oid = createDeal({ origin: 'offer', partnerId: ctx.partner.id, itemId: other.id, quantity: qty, suggestedPrice: null, unitPrice: posInt(b.unitPrice, 'Preis pro Einheit'), note: str(b.note, 'Hinweis', { max: 500, required: false }), actor: pActor(ctx), otherName });
+        audit(ctx, { action: 'market.deal_created', module: 'market', targetType: 'deal', targetId: oid, targetLabel: `Sonstiges: ${otherName}` });
+        ctx.status = 201;
+        return { deal: loadDeal(oid, true) };
+      }
       const item = get('SELECT id, is_active FROM market_items WHERE id = ?', b.itemId);
-      if (!item || !item.is_active) throw bad('Dieses Item kann nicht angeboten werden.');
+      if (!item || !item.is_active || !partnerSeesItem(ctx.partner.id, item.id)) throw bad('Dieses Item kann nicht angeboten werden.');
       const quantity = posInt(b.quantity, 'Menge');
       const q = quote(item.id, quantity);
       if (b.unitPrice == null && !q) throw bad('Für dieses Item gibt es keinen automatischen Preisvorschlag – bitte nenne deinen Preis.');
@@ -596,7 +623,7 @@ export default {
 
     r.post('/api/p/market/wanted/:id/respond', P, (ctx) => {
       const w = get('SELECT * FROM market_wanted WHERE id = ?', Number(ctx.params.id));
-      if (!w || !isLive(w)) throw notFound('Dieses Gesuch ist nicht mehr offen.');
+      if (!w || !isLive(w) || !partnerSeesItem(ctx.partner.id, w.item_id, { activeOnly: false })) throw notFound('Dieses Gesuch ist nicht mehr offen.');
       const quantity = posInt(ctx.body.quantity, 'Menge', { max: w.quantity });
       const unitPrice = ctx.body.unitPrice == null ? w.unit_price : posInt(ctx.body.unitPrice, 'Preis pro Einheit');
       const id = createDeal({
