@@ -36,7 +36,11 @@ const NOTES = {
   pop: [[640, 0, 0.12, 'sine'], [420, 0.05, 0.14, 'sine']],
   ding: [[784, 0, 0.22, 'sine'], [988, 0.12, 0.22, 'sine'], [1318.5, 0.24, 0.34, 'sine']],
   soft: [[523.25, 0, 0.7, 'sine'], [659.25, 0.1, 0.7, 'sine']],
+  // Neuigkeiten (Changelog / Schwarzes Brett): aufsteigende Fanfare, bewusst anders als alle Nachrichtentöne
+  announce: [[659.25, 0, 0.2, 'triangle'], [783.99, 0.17, 0.2, 'triangle'], [1046.5, 0.34, 0.3, 'triangle'], [1318.5, 0.56, 0.7, 'sine']],
 };
+/** Ton für das Pflicht-Fenster mit Neuigkeiten (folgt „Ton bei neuer Benachrichtigung“ und der Lautstärke, nutzt aber einen eigenen Klang). */
+export const playAnnounce = (force = false) => playSound(force, { tone: 'announce' });
 /** force: auch bei ausgeschaltetem Ton (Vorhören). Optional eigene Töne/Lautstärke zum Vorhören. */
 export function playSound(force = false, { tone, volume } = {}) {
   if (!force && !getSetting('sound')) return;

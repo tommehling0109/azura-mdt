@@ -2,6 +2,7 @@ import { h } from './ui/dom.js';
 import { button, busy, openModal, toast } from './ui/kit.js';
 import { api } from './api.js';
 import { can } from './state.js';
+import { playAnnounce } from './notifier.js';
 import { ackEntryEl } from './changelog.js';
 
 /**
@@ -24,6 +25,7 @@ export async function checkUpdatesAck() {
   const entries = cl?.entries ?? [], posts = bd?.posts ?? [];
   if (!entries.length && !posts.length) return;
   ackOpen = true;
+  playAnnounce(); // eigener Klang, damit man Neuigkeiten von Nachrichten unterscheiden kann
   const max = (list) => list.reduce((a, e) => (e.updatedAt > a ? e.updatedAt : a), '');
   const title = posts.length && entries.length ? 'Neuigkeiten' : posts.length ? (posts.length === 1 ? 'Neuer Aushang' : 'Neue Aushänge') : (entries.length === 1 ? 'Neues Update' : 'Neue Updates');
   const more = (n, what) => n > 0 && h('div', { class: 'muted', style: { textAlign: 'center', margin: '6px 0' } }, `Dazu ${n} ältere${n === 1 ? 's' : ''} ${what} (nach der Bestätigung nachzulesen).`);

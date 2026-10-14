@@ -1,6 +1,6 @@
 import { h } from '../ui/dom.js';
 import { button, field, select, toggle, openModal } from '../ui/kit.js';
-import { TONES, getSetting, setSetting, playSound } from '../notifier.js';
+import { TONES, getSetting, setSetting, playSound, playAnnounce } from '../notifier.js';
 
 /** Persönliche Einstellungen dieses Geräts (Ton, Lautstärke, Hinweise) – für Mitarbeiter und externe Zugänge gleich. Gespeichert im Browser. */
 export function openSettingsDialog() {
@@ -23,7 +23,8 @@ export function openSettingsDialog() {
       h('div', { style: { height: '10px' } }),
       field('Lautstärke', h('div', { class: 'row', style: { flexWrap: 'nowrap', alignItems: 'center' } }, vol, volLabel), { help: '0 % = stumm. Beim Loslassen hörst du eine Vorschau.' }),
       field('Benachrichtigungston', tone, { help: 'Beim Auswählen wird der Ton vorgespielt.' }),
-      button('Ton testen', { icon: 'bell', onClick: preview }),
+      h('div', { class: 'row' }, button('Ton testen', { icon: 'bell', onClick: preview }), button('Neuigkeiten-Ton testen', { icon: 'flag', onClick: () => playAnnounce(true) })),
+      h('div', { class: 'help', style: { margin: '6px 0 0' } }, 'Neuigkeiten (Changelog, Schwarzes Brett) haben einen eigenen, festen Ton, damit du sie von Nachrichten unterscheiden kannst.'),
       h('div', { class: 'sep' }), h('h4', null, 'Desktop'),
       field('Symbole auf dem Desktop', icons, { help: 'Zeigt die Apps zusätzlich zum Dock als Symbole auf dem Desktop. „Wie voreingestellt“ folgt der Einstellung des Administrators. Symbole lassen sich frei verschieben und weichen dem Schwarzen Brett und dem Changelog aus.' })),
     footer: [button('Fertig', { variant: 'primary', onClick: () => m.close() })],
