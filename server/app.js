@@ -43,11 +43,12 @@ import legalModule from './modules/legal.js';
 import extrafilesModule from './modules/extrafiles.js';
 import levelsModule from './modules/levels.js';
 import problemsModule from './modules/problems.js';
+import presenceModule from './modules/presence.js';
 import legalcasesModule from './modules/legalcases.js';
 import contactsModule from './modules/contacts.js';
 
 /** Modulliste – spätere Phasen hängen hier weitere Module an (vehicles, storage, purchasing, chat, …). */
-const MODULES = [systemModule, authModule, usersModule, rolesModule, orgModule, auditModule, dashboardModule, lookupsModule, partnersModule, marketModule, chatModule, vehiclesModule, mapModule, warehouseModule, financeModule, tabModule, creditModule, profileModule, statsModule, personnelModule, ticketsModule, hackModule, boardModule, changelogModule, legalModule, legalcasesModule, extrafilesModule, levelsModule, problemsModule, contactsModule, realtimeModule];
+const MODULES = [systemModule, authModule, usersModule, rolesModule, orgModule, auditModule, dashboardModule, lookupsModule, partnersModule, marketModule, chatModule, vehiclesModule, mapModule, warehouseModule, financeModule, tabModule, creditModule, profileModule, statsModule, personnelModule, ticketsModule, hackModule, boardModule, changelogModule, legalModule, legalcasesModule, extrafilesModule, levelsModule, problemsModule, presenceModule, contactsModule, realtimeModule];
 
 /** Hinter nginx o. ä.: TRUST_PROXY=1 ⇒ Client-IP und Protokoll aus X-Forwarded-* übernehmen (sonst ignorieren – nicht fälschbar). */
 const TRUST_PROXY = process.env.TRUST_PROXY === '1';

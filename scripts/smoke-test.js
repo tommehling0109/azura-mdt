@@ -1600,6 +1600,25 @@ try {
     assert.equal(r.problems.some((p) => p.area === 'legal'), false);
     ok('Problemleiste: Quellen, nur mit Zugriff, vertrauliche Akten, verschwindet bei Behebung, Partner nie'); }
 
+  // ══ Online-Liste ══
+  { assert.equal((await new Client().call('GET', '/api/presence')).status, 401); assert.equal((await new Client().call('POST', '/api/presence', { tabId: 'abcdef123456', locked: false })).status, 401);
+    const meA = (await admin.call('GET', '/api/auth/me')).user, meM = (await mod.call('GET', '/api/auth/me')).user;
+    assert.equal((await admin.call('GET', '/api/presence')).members.some((x) => x.id === meM.id), false); // ohne Herzschlag: nicht online
+    assert.equal((await admin.call('POST', '/api/presence', { tabId: 'x' })).ok, false); // ungültige Seiten-ID
+    assert.equal((await admin.call('POST', '/api/presence', { tabId: 'tab-admin-1', locked: false })).ok, true); assert.equal((await mod.call('POST', '/api/presence', { tabId: 'tab-mod-1', locked: false })).ok, true);
+    r = await admin.call('GET', '/api/presence'); assert.equal(r.enabled, true); const ma = r.members.find((x) => x.id === meA.id), mm = r.members.find((x) => x.id === meM.id);
+    assert.ok(ma && mm); assert.equal(ma.state, 'active'); assert.equal(ma.isMe, true); assert.equal(mm.isMe, false); assert.equal(mm.label, meM.memberNumber); assert.equal(JSON.stringify(r).includes(meM.displayName ?? '§§'), false); // nur Personalnummer, nie Namen
+    // Sperrbildschirm: nur gesperrt, wenn ALLE Seiten gesperrt sind; zuerst die aktiven
+    await mod.call('POST', '/api/presence', { tabId: 'tab-mod-1', locked: true }); assert.equal((await admin.call('GET', '/api/presence')).members.find((x) => x.id === meM.id).state, 'locked');
+    await mod.call('POST', '/api/presence', { tabId: 'tab-mod-2', locked: false }); assert.equal((await admin.call('GET', '/api/presence')).members.find((x) => x.id === meM.id).state, 'active');
+    await mod.call('POST', '/api/presence', { tabId: 'tab-mod-2', locked: true }); r = await admin.call('GET', '/api/presence'); assert.equal(r.members.find((x) => x.id === meM.id).state, 'locked'); assert.ok(r.members.findIndex((x) => x.state === 'active') < r.members.findIndex((x) => x.state === 'locked'));
+    // Seite geschlossen
+    await mod.call('POST', '/api/presence/leave', { tabId: 'tab-mod-1' }); assert.equal((await admin.call('GET', '/api/presence')).members.some((x) => x.id === meM.id), true); await mod.call('POST', '/api/presence/leave', { tabId: 'tab-mod-2' }); assert.equal((await admin.call('GET', '/api/presence')).members.some((x) => x.id === meM.id), false);
+    // Abschalten
+    assert.equal((await admin.call('PUT', '/api/config', { values: { 'presence.enabled': false } })).status, 200); r = await admin.call('GET', '/api/presence'); assert.equal(r.enabled, false); assert.equal(r.members.length, 0); await admin.call('PUT', '/api/config', { values: { 'presence.enabled': true } });
+    await admin.call('POST', '/api/presence/leave', { tabId: 'tab-admin-1' });
+    ok('Online-Liste: nur Mitglieder, Personalnummer + Rang, gesperrt/aktiv, Herzschlag/Abmelden, abschaltbar'); }
+
   // ══ Legal ══
   { assert.equal((await mod.call('GET', '/api/legal')).status, 403); assert.equal((await new Client().call('GET', '/api/legal')).status, 401); assert.equal((await tp.call('GET', '/api/legal')).status, 401);
     await setPerms(['legal.view']); r = await mod.call('GET', '/api/legal'); assert.equal(r.status, 200); assert.equal(r.canManage, false);
