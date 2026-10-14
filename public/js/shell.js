@@ -535,6 +535,6 @@ export function showApp(onLogout, opts = {}) {
     verify: (secret) => (opts.partner ? api.post('/api/p/unlock', { code: secret }) : api.post('/api/auth/unlock', { password: secret })),
     onLogout: () => { clearLockState(); lockCtl?.destroy(); onLogout(); },
   });
-  if (!opts.partner) startPresence(() => lockCtl?.isLocked()); // Online-Liste: diese Seite als online (aktiv/gesperrt) melden
+  if (!opts.partner) startPresence(() => lockCtl?.isLocked(), () => online?.refresh()); // Online-Liste: diese Seite als online (aktiv/gesperrt) melden
   if (opts.start) open(opts.start); // nichts öffnet sich von allein – der Benutzer startet seine Apps selbst
 }
