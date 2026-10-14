@@ -945,4 +945,25 @@ export const SCHEMA_MIGRATIONS = [
     PRIMARY KEY (case_id, related_id)
   );
   `,
+  // 27: Level-System fuer externe Partner (XP, Verlauf) und manuelle XP je Artikel
+  `
+  ALTER TABLE partners ADD COLUMN level_enabled INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE partners ADD COLUMN level_xp INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE partners ADD COLUMN level_since TEXT;
+  ALTER TABLE market_items ADD COLUMN xp INTEGER;
+  CREATE TABLE partner_xp_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    partner_id INTEGER NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
+    delta      INTEGER NOT NULL,
+    xp_after   INTEGER NOT NULL,
+    reason     TEXT NOT NULL,
+    ref_type   TEXT,
+    ref_id     INTEGER,
+    note       TEXT NOT NULL DEFAULT '',
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_xp_partner ON partner_xp_log(partner_id, id);
+  CREATE UNIQUE INDEX idx_xp_ref ON partner_xp_log(partner_id, ref_type, ref_id) WHERE ref_type IS NOT NULL;
+  `,
 ];

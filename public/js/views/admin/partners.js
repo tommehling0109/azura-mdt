@@ -1,6 +1,6 @@
 import { h, mount, fmtDateTime, timeAgo } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
-import { button, busy, card, field, input, select, checkbox, formError, openModal, confirmDialog, toast, skeletons, empty, note, badge, avatar } from '../../ui/kit.js';
+import { button, busy, card, field, input, select, checkbox, formError, openModal, confirmDialog, toast, skeletons, empty, note, badge, avatar, levelBadge } from '../../ui/kit.js';
 import { api } from '../../api.js';
 import { extraFilesBox, extraFilesPicker } from './extra-files.js';
 import { can, state } from '../../state.js';
@@ -123,7 +123,7 @@ export default async function render(container, ctx) {
       h('div', { style: { height: '14px' } }),
       h('div', { class: 'role-grid' }, data.partners.map((p) => {
         const c = h('article', { class: 'card role-card hoverable', style: { '--rc': p.status === 'active' ? 'var(--ok)' : 'var(--mute)', cursor: 'pointer' }, tabindex: 0 },
-          h('h3', null, p.name, ' ', p.status === 'active' ? badge('Aktiv', 'b-ok') : badge('Deaktiviert', 'b-mute'), p.locked && badge('Gesperrt', 'b-err')),
+          h('h3', null, p.name, ' ', p.status === 'active' ? badge('Aktiv', 'b-ok') : badge('Deaktiviert', 'b-mute'), p.locked && badge('Gesperrt', 'b-err'), ' ', levelBadge(p.level)),
           h('div', { class: 'desc' }, badge(p.typeLabel ?? '', p.type === 'supplier' ? 'b-warn' : 'b-info', false), ' ', p.note || h('span', { class: 'muted' }, 'Keine Notiz')),
           h('div', { class: 'chips' }, p.apps.length ? p.apps.map((a) => badge((data.apps.find((x) => x.id === a)?.label ?? a), 'b-info', false)) : h('span', { class: 'muted' }, 'Keine Apps freigeschaltet')),
           h('div', { class: 'meta' }, h('span', null, p.lastLoginAt ? `Zuletzt: ${timeAgo(p.lastLoginAt)}` : 'Noch nie angemeldet'), h('span', null, `${p.dealCount} Geschäft${p.dealCount === 1 ? '' : 'e'}`)));
@@ -158,17 +158,18 @@ export default async function render(container, ctx) {
     const code = input({ maxLength: 12, placeholder: 'leer lassen = zufälliger 6-stelliger Code', autocomplete: 'off' });
     const extras = canDocs ? extraFilesPicker() : null;
     const mkt = marketAccessForm(null, data.items ?? []);
+    const lvOn = h('input', { type: 'checkbox' });
     const boxes = appBoxes(data.apps.map((a) => a.id), false);
     const m = openModal({
       title: 'Externen Zugang erstellen', wide: true,
       body: h('div', null, err, prof.el, extras && h('div', { style: { margin: '12px 0' } }, extras.el), field('Notiz', noteEl), field('Code', code, { help: 'Optional eigener Code aus 6–12 Buchstaben/Ziffern.' }),
-        h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Freigeschaltete Apps'), boxes.map(([, c]) => c), h('div', { class: 'sep' }), mkt.el),
+        h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Freigeschaltete Apps'), boxes.map(([, c]) => c), h('div', { class: 'sep' }), mkt.el, h('div', { class: 'sep' }), h('label', { class: 'check', style: { padding: 0 } }, lvOn, h('span', { class: 'check-text' }, 'Level-System aktivieren (Erfahrungspunkte durch abgeschlossene Geschäfte)'))),
       footer: [button('Abbrechen', { onClick: () => m.close() }), button('Erstellen', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
         err.replaceChildren();
         try {
           if (!prof.hasType()) throw new Error('Bitte wähle, ob der Zugang ein Lieferant oder ein Ankäufer ist.');
           const files = await prof.files();
-          const res = await api.post('/api/partners', { ...prof.values(), ...files, ...mkt.values(), note: noteEl.value, code: code.value.trim() || undefined, apps: boxes.filter(([, c]) => c.input.checked).map(([a]) => a.id) });
+          const res = await api.post('/api/partners', { ...prof.values(), ...files, ...mkt.values(), levelEnabled: lvOn.checked, note: noteEl.value, code: code.value.trim() || undefined, apps: boxes.filter(([, c]) => c.input.checked).map(([a]) => a.id) });
           const failed = extras?.count() ? await extras.upload('partner', res.partner.id) : [];
           if (failed.length) toast(`Zugang erstellt – diese Dateien konnten nicht gespeichert werden: ${failed.join(', ')}`, 'warn');
           m.close(); await load(); showCredentials(res.partner, res.code, 'Zugang erstellt');
@@ -193,6 +194,40 @@ export default async function render(container, ctx) {
     return h('div', { style: { margin: '12px 0' } }, h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Dokumente'), SUPPLIER_DOCS.map(([k, label]) => one(k, label, p.docs[k])), h('div', { style: { height: '10px' } }), extraFilesBox({ type: 'partner', id: p.id }));
   }
 
+  /** Level-System eines Zugangs: aktivieren (partners.manage), Stand/Verlauf ansehen, XP und Level ändern (nur mit partners.levels). */
+  function levelSection(p) {
+    const on = h('input', { type: 'checkbox', checked: !!p.levelEnabled, disabled: !canManage });
+    const info = h('div');
+    const canAdjust = can('partners.levels');
+    const draw = async () => {
+      if (!p.levelEnabled) return mount(info, h('div', { class: 'muted', style: { fontSize: '13px' } }, 'Ausgeschaltet: Der Zugang sammelt keine Erfahrungspunkte und zeigt kein Level. Beim Einschalten zählen nur Geschäfte, die danach abgeschlossen werden.'));
+      mount(info, h('div', { class: 'muted' }, 'Lade …'));
+      try {
+        const { level: d } = await api.get(`/api/partners/${p.id}/level`);
+        if (!d.enabled) return mount(info, h('div', { class: 'muted' }, 'Wird mit „Speichern“ aktiviert.'));
+        const reload = () => { p.levelEnabled = true; draw(); load(); };
+        mount(info, h('div', { class: 'row', style: { alignItems: 'center', gap: '10px', marginBottom: '6px' } }, levelBadge({ n: d.n, name: d.name, icon: d.icon }), h('b', null, d.name), h('span', { class: 'muted' }, `${d.xp.toLocaleString('de-DE')} XP${d.next ? ` · noch ${d.next.remaining.toLocaleString('de-DE')} bis Level ${d.next.n}` : ' · höchste Stufe'}`)),
+          h('div', { class: 'lvl-bar' }, h('div', { class: 'lvl-bar-fill', style: { width: `${Math.round(d.progress * 100)}%` } })),
+          canAdjust && h('div', { class: 'row', style: { margin: '10px 0' } }, button('XP ändern', { size: 'sm', icon: 'plus', onClick: () => adjust('add') }), button('Level setzen', { size: 'sm', icon: 'edit', onClick: () => adjust('set_level', d.n) }), button('Zurücksetzen', { size: 'sm', variant: 'danger', icon: 'refresh', onClick: () => adjust('reset') })),
+          d.history.length ? h('div', { style: { maxHeight: '170px', overflowY: 'auto', marginTop: '6px' } }, d.history.map((x) => h('div', { class: 'list-row', style: { padding: '6px 0' } }, h('div', { class: 'grow' }, h('div', { class: 't', style: { whiteSpace: 'normal' } }, x.note || x.kind), h('div', { class: 's' }, fmtDateTime(x.createdAt))), h('b', { style: { color: x.delta > 0 ? 'var(--ok)' : 'var(--err)' } }, `${x.delta > 0 ? '+' : ''}${x.delta}`)))) : h('div', { class: 'muted', style: { fontSize: '13px' } }, 'Noch kein Verlauf.'));
+        function adjust(action, cur) {
+          const err = h('div'), amount = input({ type: 'number', step: '1', placeholder: 'z. B. 100 oder -50' }), lv = select(Array.from({ length: 10 }, (_, i) => ({ value: i + 1, label: `Level ${i + 1}` })), cur ?? 1), reason = input({ maxLength: 200, placeholder: 'Begründung (Pflicht, im Audit-Log)' });
+          const m = openModal({ title: action === 'add' ? 'XP vergeben oder abziehen' : action === 'set_level' ? 'Level setzen' : 'Level zurücksetzen', body: h('div', null, err,
+            action === 'add' && field('XP (negativ zum Abziehen)', amount), action === 'set_level' && field('Neues Level', lv, { help: 'Die XP werden auf den Beginn dieses Levels gesetzt.' }), action === 'reset' && note('Die XP werden auf 0 gesetzt (Level 1).', 'alert'), field('Begründung *', reason)),
+            footer: [h('span', { class: 'grow' }), button('Abbrechen', { onClick: () => m.close() }), button('Anwenden', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
+              try { await api.post(`/api/partners/${p.id}/level/adjust`, { action, amount: action === 'add' ? Number(amount.value) : undefined, level: action === 'set_level' ? Number(lv.value) : undefined, reason: reason.value }); m.close(); toast('Level angepasst.'); reload(); } catch (ex) { err.replaceChildren(formError(ex.message)); }
+            }) })] });
+        }
+      } catch (e) { mount(info, h('div', { class: 'muted' }, e.message)); }
+    };
+    draw();
+    return {
+      el: h('div', null, h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Level-System'),
+        h('label', { class: 'check', style: { padding: 0 } }, on, h('span', { class: 'check-text' }, 'Level-System für diesen Zugang aktivieren (Erfahrungspunkte durch abgeschlossene Geschäfte)')), h('div', { style: { height: '8px' } }), info),
+      values: () => ({ levelEnabled: on.checked }),
+    };
+  }
+
   /** Löschen: ohne Daten sofort; mit Geschäften/Krediten erst Hinweis, dann (mit „partners.delete“) samt aller Daten. */
   async function deletePartner(p, m) {
     if (!await confirmDialog({ title: 'Zugang löschen?', message: `${p.name} wird endgültig gelöscht.`, confirmLabel: 'Löschen' })) return;
@@ -212,6 +247,7 @@ export default async function render(container, ctx) {
     const noteEl = input({ value: p.note, maxLength: 300, disabled: !canManage });
     const prof = profileForm(p, { docs: false });
     const mkt = marketAccessForm(p, data.items ?? []);
+    const lvl = levelSection(p);
     const boxes = appBoxes(p.apps, !canManage);
     const link = p.linkPath ? fullLink(p.linkPath) : null;
     const act = (fn) => async (e) => busy(e.currentTarget, async () => { try { await fn(); } catch (ex) { toast(ex.message, 'err'); } });
@@ -226,7 +262,7 @@ export default async function render(container, ctx) {
     footer.push(h('span', { class: 'grow' }), button('Schließen', { onClick: () => m.close() }));
     if (canManage) footer.push(button('Speichern', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
       err.replaceChildren();
-      try { await api.patch(`/api/partners/${p.id}`, { ...prof.values(), ...(boxes.some(([a, c]) => a.id === 'market' && c.input.checked) ? mkt.values() : {}), note: noteEl.value, apps: boxes.filter(([, c]) => c.input.checked).map(([a]) => a.id) }); m.close(); toast('Gespeichert.'); load(); }
+      try { await api.patch(`/api/partners/${p.id}`, { ...prof.values(), ...(boxes.some(([a, c]) => a.id === 'market' && c.input.checked) ? mkt.values() : {}), ...(canManage ? lvl.values() : {}), note: noteEl.value, apps: boxes.filter(([, c]) => c.input.checked).map(([a]) => a.id) }); m.close(); toast('Gespeichert.'); load(); }
       catch (ex) { err.replaceChildren(formError(ex.message)); }
     }) }));
     const m = openModal({
@@ -247,6 +283,7 @@ export default async function render(container, ctx) {
         field('Notiz', noteEl), canManage && prof.el, docBox(p),
         h('div', { class: 'label', style: { marginBottom: '6px' } }, 'Freigeschaltete Apps'), boxes.map(([, c]) => c),
         canManage && h('div', { style: { margin: '14px 0' } }, h('div', { class: 'sep' }), mkt.el),
+        h('div', { style: { margin: '14px 0' } }, h('div', { class: 'sep' }), lvl.el),
         h('dl', { class: 'details-dl', style: { marginTop: '14px' } }, h('dt', null, 'Erstellt'), h('dd', null, fmtDateTime(p.createdAt)),
           h('dt', null, 'Letzte Anmeldung'), h('dd', null, p.lastLoginAt ? fmtDateTime(p.lastLoginAt) : 'noch nie'))),
       footer,

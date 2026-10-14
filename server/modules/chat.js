@@ -1,4 +1,5 @@
 import { all, get, run, tx, now } from '../core/db.js';
+import { levelBrief } from '../core/levels.js';
 import { bad, conflict, forbidden, notFound, str, intList } from '../core/http.js';
 import { audit } from '../core/audit.js';
 import { publish } from '../core/realtime.js';
@@ -67,7 +68,7 @@ function msgDto(m, v) {
   const mine = isMine(m, v);
   const kind = get('SELECT kind FROM chat_channels WHERE id = ?', m.channel_id)?.kind;
   return {
-    id: m.id, channelId: m.channel_id, sender: senderLabel(m), senderAvatar: m.sender_avatar_ext ? `/api/avatars/${m.user_id}?v=${m.sender_avatar_v}` : null, isMine: mine, body: deleted ? '' : m.body, deleted,
+    id: m.id, channelId: m.channel_id, sender: senderLabel(m), senderLevel: m.partner_id != null && !v.isPartner ? levelBrief(m.partner_id) : null, senderAvatar: m.sender_avatar_ext ? `/api/avatars/${m.user_id}?v=${m.sender_avatar_v}` : null, isMine: mine, body: deleted ? '' : m.body, deleted,
     createdAt: m.created_at, editedAt: m.edited_at, pinned: !!m.pinned_at && !deleted, pinnedAt: m.pinned_at, replyTo: reply,
     canEdit: mine && !deleted, canDelete: !deleted && (mine || (!v.isPartner && v.perms.has('chat.moderate') && kind !== 'dm')),
   };
@@ -78,7 +79,7 @@ function peerOf(c, v) {
   if (v.isPartner) return { label: labelForUser(c.dm_a, null) };
   if (c.dm_partner) {
     const p = get('SELECT partner_number, name FROM partners WHERE id = ?', c.dm_partner);
-    return { id: c.dm_partner, partner: true, label: p?.partner_number ?? 'Partner', subtitle: p?.name ?? '' };
+    return { id: c.dm_partner, partner: true, label: p?.partner_number ?? 'Partner', subtitle: p?.name ?? '', level: levelBrief(c.dm_partner) };
   }
   const id = c.dm_a === v.id ? c.dm_b : c.dm_a;
   const a = get('SELECT avatar_ext, avatar_version FROM users WHERE id = ?', id);
@@ -227,7 +228,7 @@ export default {
       const ids = visibleChannelIds(ctx.user);
       const rows = all("SELECT * FROM chat_channels WHERE kind = 'channel' ORDER BY sort_order, name").filter((c) => ids.includes(c.id));
       const out = { channels: rows.map((c) => channelDto(c, ctx.user)) };
-      if (ctx.user.perms.has('chat.manage')) out.partners = all("SELECT id, partner_number, name, status, apps FROM partners ORDER BY partner_number").filter((p) => { try { return JSON.parse(p.apps).includes('chat'); } catch { return false; } }).map((p) => ({ id: p.id, label: p.partner_number, name: p.name, active: p.status === 'active' }));
+      if (ctx.user.perms.has('chat.manage')) out.partners = all("SELECT id, partner_number, name, status, apps FROM partners ORDER BY partner_number").filter((p) => { try { return JSON.parse(p.apps).includes('chat'); } catch { return false; } }).map((p) => ({ id: p.id, label: p.partner_number, name: p.name,  level: levelBrief(p.id), active: p.status === 'active' }));
       return out;
     });
     r.get('/api/chat/unread', { perm: 'chat.view' }, (ctx) => {
@@ -242,7 +243,7 @@ export default {
       people: all(`SELECT id FROM users WHERE status = 'active' AND id != ? ORDER BY member_number`, ctx.user.id)
         .filter((u) => loadAccess(u.id).perms.has('chat.view')).map((u) => ({ id: u.id, label: labelForUser(u.id, ctx.user.id) })),
       partners: ctx.user.perms.has('chat.partners')
-        ? all("SELECT id FROM partners WHERE status = 'active' ORDER BY partner_number").map((p) => partnerOk(p.id)).filter(Boolean).map((p) => ({ id: p.id, label: p.partner_number, subtitle: p.name, partner: true }))
+        ? all("SELECT id FROM partners WHERE status = 'active' ORDER BY partner_number").map((p) => partnerOk(p.id)).filter(Boolean).map((p) => ({ id: p.id, label: p.partner_number, subtitle: p.name, partner: true, level: levelBrief(p.id) }))
         : [],
     }));
     r.get('/api/chat/dms', { perm: 'chat.view' }, (ctx) => {

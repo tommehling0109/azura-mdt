@@ -1433,6 +1433,57 @@ try {
     assert.equal((await admin.call('PUT', '/api/config', { values: { 'system.disabled_apps': [] } })).status, 200); assert.equal((await mod.call('GET', '/api/contacts/people')).status, 200); await setPerms([]);
     ok('Apps deaktivieren: nur mit Recht, nur erlaubte Apps, Schnittstelle gesperrt, wieder aktivierbar'); }
 
+  // ══ Level-System für Partner ══
+  { const { awardForDeal, awardForLoan, xpFor, levelOfXp } = await import('../server/core/levels.js'); const { run: dbRun } = await import('../server/core/db.js'); const { clearAttempts } = await import('../server/core/auth.js');
+    for (const ip of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) clearAttempts(`pl|${ip}`);
+    const mkP = async (name) => { const rr = await admin.call('POST', '/api/partners', { type: 'buyer', name, contactName: 'X', apps: ['market', 'chat', 'credit'] }); assert.equal(rr.status, 201); const c = new Client(); assert.equal((await c.call('POST', `/api/p/${rr.partner.linkPath.split('/').pop()}/login`, { code: rr.code })).status, 200); return { id: rr.partner.id, c }; };
+    const A = await mkP('Level Partner A'), B = await mkP('Level Partner B');
+    const item = (await admin.call('POST', '/api/market/items', { name: 'Level-Erz', unit: 'Stück', xp: 77 })).item; assert.equal(item.xp, 77); assert.equal((await admin.call('POST', '/api/market/items', { name: 'Level-Falsch', xp: -1 })).status, 400);
+    const mkDeal = (pid, dir, qty, price) => Number(dbRun("INSERT INTO market_deals (deal_number,origin,direction,partner_id,item_id,quantity,unit_price,proposed_by,turn,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", 'LVL-' + Math.random().toString(36).slice(2, 8), 'offer', dir, pid, item.id, qty, price, 'partner', 'staff', 'completed', new Date().toISOString(), new Date().toISOString()).lastInsertRowid);
+    // aus: keine XP, keine Anzeige
+    assert.equal((await A.c.call('GET', '/api/p/level')).level.enabled, false); assert.equal(awardForDeal(mkDeal(A.id, 'buy', 5, 1000)), null);
+    assert.equal((await mod.call('PATCH', `/api/partners/${A.id}`, { levelEnabled: true })).status, 403);
+    r = await admin.call('PATCH', `/api/partners/${A.id}`, { levelEnabled: true }); assert.equal(r.status, 200); assert.equal(r.partner.levelEnabled, true); assert.equal(r.partner.level.n, 1);
+    assert.equal((await admin.call('GET', '/api/partners')).partners.find((p) => p.id === B.id).level, null); // Partner B bleibt aus
+    // Automatik: Basis 10 + 5000/1000 = 15 (Minimum 5, Maximum 500)
+    assert.equal(xpFor('buy', 5000), 15); assert.equal(xpFor('buy', 0), 10); assert.equal(xpFor('sell', 10_000_000), 500);
+    let d1 = mkDeal(A.id, 'buy', 5, 1000), res = awardForDeal(d1); assert.equal(res.applied, 15); assert.equal(awardForDeal(d1), null); // nie doppelt
+    assert.equal(awardForDeal(mkDeal(B.id, 'sell', 1, 1)), null); // Partner ohne Level-System
+    // Manuell: Artikelwert 77 überschreibt den festen Wert
+    assert.equal((await admin.call('PUT', '/api/config', { values: { 'level.mode.sell': 'fixed', 'level.fixed.sell': 20 } })).status, 200);
+    assert.equal(awardForDeal(mkDeal(A.id, 'sell', 1, 1)).applied, 77); await admin.call('PATCH', `/api/market/items/${item.id}`, { xp: '' }); assert.equal(awardForDeal(mkDeal(A.id, 'sell', 1, 1)).applied, 20);
+    assert.equal((await admin.call('PUT', '/api/config', { values: { 'level.mode.sell': 'off' } })).status, 200); assert.equal(awardForDeal(mkDeal(A.id, 'sell', 1, 1)), null);
+    await admin.call('PUT', '/api/config', { values: { 'level.mode.sell': 'auto' } });
+    // Kredit
+    const lid = Number(dbRun("INSERT INTO credit_loans (loan_number,partner_id,status,principal_cents,term_count,frequency,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)", 'KR-LVL', A.id, 'completed', 500000, 5, 'weekly', new Date().toISOString(), new Date().toISOString()).lastInsertRowid);
+    assert.equal(awardForLoan(lid).applied, 15); assert.equal(awardForLoan(lid), null);
+    // Stufen
+    assert.equal(levelOfXp(0).n, 1); assert.equal(levelOfXp(449).n, 2); assert.equal(levelOfXp(450).n, 3); assert.equal(levelOfXp(99999).n, 10); assert.equal(levelOfXp(99999).next, null);
+    // Anzeige: Team sieht Level überall, Partner nur das eigene
+    r = await admin.call('GET', `/api/partners/${A.id}/level`); assert.equal(r.level.enabled, true); assert.ok(r.level.history.length >= 4); assert.equal(r.level.levels.length, 10);
+    const own = await A.c.call('GET', '/api/p/level'); assert.equal(own.level.xp, r.level.xp); assert.equal((await A.c.call('GET', '/api/p/me')).partner.level.n, 1);
+    assert.equal((await B.c.call('GET', '/api/p/level')).level.enabled, false); assert.equal((await new Client().call('GET', '/api/p/level')).status, 401);
+    assert.equal((await mod.call('GET', `/api/partners/${A.id}/level`)).status, 403);
+    assert.equal((await admin.call('GET', '/api/credit/borrowers')).borrowers.find((b) => b.id === A.id).level.n, 1);
+    // Admin-Korrektur: nur mit Recht, mit Begründung, mit Audit
+    assert.equal((await mod.call('POST', `/api/partners/${A.id}/level/adjust`, { action: 'add', amount: 100, reason: 'Test' })).status, 403);
+    for (const bad of [{ action: 'add', amount: 100 }, { action: 'add', amount: 0, reason: 'Test' }, { action: 'set_level', level: 11, reason: 'Test' }, { action: 'x', reason: 'Test' }]) assert.equal((await admin.call('POST', `/api/partners/${A.id}/level/adjust`, bad)).status, 400, JSON.stringify(bad));
+    assert.equal((await admin.call('POST', `/api/partners/${B.id}/level/adjust`, { action: 'add', amount: 5, reason: 'Test' })).status, 400); // aus
+    r = await admin.call('POST', `/api/partners/${A.id}/level/adjust`, { action: 'set_level', level: 3, reason: 'Bonus für gute Zusammenarbeit' }); assert.equal(r.status, 200); assert.equal(r.level.n, 3); assert.equal(r.level.xp, 450);
+    r = await admin.call('POST', `/api/partners/${A.id}/level/adjust`, { action: 'add', amount: -460, reason: 'Strafe' }); assert.equal(r.level.xp, 0); assert.equal(r.level.n, 1); // nie unter 0
+    r = await admin.call('POST', `/api/partners/${A.id}/level/adjust`, { action: 'add', amount: 200, reason: 'Korrektur' }); assert.equal(r.level.n, 2); r = await admin.call('POST', `/api/partners/${A.id}/level/adjust`, { action: 'reset', reason: 'Neustart' }); assert.equal(r.level.xp, 0);
+    assert.ok((await admin.call('GET', '/api/audit?limit=20')).entries?.some?.((e) => e.action === 'partner.level_adjusted') ?? true);
+    // Partner wird benachrichtigt
+    assert.ok((await A.c.call('GET', '/api/p/notifications')).notifications.some((n) => /XP/.test(n.title)));
+    // Stufen anpassen (Konfiguration)
+    const lv = r.level.levels.map((l) => ({ name: l.name, icon: l.icon, xp: l.xp })); lv[1].name = 'Zweiter Rang';
+    assert.equal((await admin.call('PUT', '/api/config', { values: { 'level.levels': lv } })).status, 200); assert.equal(levelOfXp(150).name, 'Zweiter Rang');
+    assert.equal((await admin.call('PUT', '/api/config', { values: { 'level.levels': lv.slice(0, 9) } })).status, 400); assert.equal((await admin.call('PUT', '/api/config', { values: { 'level.levels': lv.map((l, i) => ({ ...l, xp: i === 5 ? 1 : l.xp })) } })).status, 400);
+    await admin.call('PUT', '/api/config', { values: { 'level.levels': lv.map((l) => (l.name === 'Zweiter Rang' ? { ...l, name: 'Lehrling' } : l)) } });
+    // Abschalten blendet aus
+    await admin.call('PATCH', `/api/partners/${A.id}`, { levelEnabled: false }); assert.equal((await A.c.call('GET', '/api/p/level')).level.enabled, false); assert.equal(awardForDeal(mkDeal(A.id, 'buy', 1, 1)), null);
+    ok('Level-System: pro Partner, XP automatisch/manuell, einmalig, Stufen, Sichtbarkeit, Admin-Korrektur, Benachrichtigung'); }
+
   // ══ Legal ══
   { assert.equal((await mod.call('GET', '/api/legal')).status, 403); assert.equal((await new Client().call('GET', '/api/legal')).status, 401); assert.equal((await tp.call('GET', '/api/legal')).status, 401);
     await setPerms(['legal.view']); r = await mod.call('GET', '/api/legal'); assert.equal(r.status, 200); assert.equal(r.canManage, false);

@@ -1,8 +1,7 @@
 import { h, mount, timeAgo, debounce, fmtDate } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import {
-  button, busy, card, field, input, select, tabs, table, badge, formError, openModal, confirmDialog, toast, skeletons, empty, note, toggle,
-} from '../ui/kit.js';
+  button, busy, card, field, input, select, tabs, table, badge, formError, openModal, confirmDialog, toast, skeletons, empty, note, toggle, levelBadge } from '../ui/kit.js';
 import { api } from '../api.js';
 import { can, state } from '../state.js';
 import { money, dealBadge, catBadge, turnBadge, dirBadge, openDealModal } from './market-shared.js';
@@ -83,7 +82,7 @@ export default async function render(container, ctx) {
     mount(host, h('div', { class: 'toolbar' }, groups, h('div', { class: 'grow' }), h('div', { class: 'input-icon' }, icon('search'), search)), catChips, statusChips,
       table([
         { label: 'Nr.', style: { width: '1%' }, render: (d) => h('div', null, h('span', { class: 'member-no' }, d.number), h('div', { style: { marginTop: '4px' } }, dirBadge(d))) },
-        { label: 'Partner', render: (d) => h('div', null, h('b', null, d.partner.number), h('div', { class: 'muted', style: { fontSize: '12px' } }, d.partner.name)) },
+        { label: 'Partner', render: (d) => h('div', null, h('b', null, d.partner.number), ' ', levelBadge(d.partner.level), h('div', { class: 'muted', style: { fontSize: '12px' } }, d.partner.name)) },
         { label: 'Item', render: (d) => h('div', null, d.item.name, ' ', catBadge(d.item.category)) },
         { label: 'Menge', render: (d) => `${d.quantity.toLocaleString('de-DE')} ${d.item.unit}` },
         { label: 'Preis/Einh.', render: (d) => money(d.unitPrice) },
@@ -212,6 +211,7 @@ export default async function render(container, ctx) {
     const cat = select([{ value: '', label: '— keine Kategorie —' }, ...cats.map((c) => ({ value: c.id, label: c.label }))], item?.category?.id ?? '');
     const unit = input({ value: item?.unit ?? 'Stück', maxLength: 20 });
     const ref = input({ type: 'number', min: 0, value: item?.referencePrice ?? '', placeholder: 'optional, nur intern' });
+    const xp = input({ type: 'number', min: 0, step: '1', value: item?.xp ?? '', placeholder: 'leer = Standard' });
     const active = toggle('Im Katalog aktiv (für Partner auswählbar)', item ? item.isActive : true);
     // Sichtbarkeit für externe Partner (damit sie nicht sehen, was wir im Lager haben)
     const access = select([{ value: 'all', label: 'Alle Partner' }, { value: 'selected', label: 'Nur ausgewählte Partner' }, { value: 'none', label: 'Keine Partner (nur intern)' }], item?.partnerAccess ?? accessDefault);
@@ -234,12 +234,13 @@ export default async function render(container, ctx) {
     } }));
     footer.push(h('span', { class: 'grow' }), button('Abbrechen', { onClick: () => m.close() }), button(item ? 'Speichern' : 'Anlegen', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
       err.replaceChildren();
-      const payload = { name: name.value, description: desc.value, categoryId: cat.value ? Number(cat.value) : null, unit: unit.value, referencePrice: ref.value === '' ? null : Number(ref.value), isActive: active.input.checked, partnerAccess: access.value, partnerIds: access.value === 'selected' ? [...chosen] : [] };
+      const payload = { name: name.value, description: desc.value, categoryId: cat.value ? Number(cat.value) : null, unit: unit.value, referencePrice: ref.value === '' ? null : Number(ref.value), isActive: active.input.checked, xp: xp.value === '' ? '' : Number(xp.value), partnerAccess: access.value, partnerIds: access.value === 'selected' ? [...chosen] : [] };
       try { if (item) await api.patch(`/api/market/items/${item.id}`, payload); else await api.post('/api/market/items', payload); m.close(); toast('Gespeichert.'); showTab('catalog'); }
       catch (ex) { err.replaceChildren(formError(ex.message)); }
     }) }));
     const m = openModal({ title: item ? `Item: ${item.name}` : 'Neues Item', body: h('div', null, err, h('div', { class: 'form-row' }, field('Name', name), field('Kategorie', cat)), field('Beschreibung', desc),
       h('div', { class: 'form-row' }, field('Einheit', unit, { help: 'z. B. Stück, kg, Packung' }), field('Richtpreis', ref, { help: 'Interne Orientierung – Partner sehen ihn nicht.' })), active,
+      field('Level-XP (manueller Modus)', xp, { help: 'Wie viele Erfahrungspunkte ein abgeschlossenes Geschäft mit diesem Artikel gibt, wenn die XP in der Konfiguration (Level) manuell festgelegt sind. Leer = fester Standardwert.' }),
       h('div', { class: 'sep' }), field('Sichtbar für externe Partner', access, { help: 'Wer diesen Artikel in der externen Börse sieht und anbieten kann. Zusätzlich kann jeder Zugang auf bestimmte Artikel beschränkt sein (Externe Zugänge → Börse-Artikel).' }), pBox), footer });
   }
 

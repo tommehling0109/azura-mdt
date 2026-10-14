@@ -1,4 +1,5 @@
 import { partnerItemWhere, partnerSeesItem, otherItem } from '../core/visibility.js';
+import { levelBrief, awardForDeal } from '../core/levels.js';
 import { all, get, run, tx, now } from '../core/db.js';
 import { bad, conflict, forbidden, notFound, str } from '../core/http.js';
 import { audit } from '../core/audit.js';
@@ -62,7 +63,7 @@ const optPrice = (v, name) => (v == null || v === '' ? null : posInt(v, name, { 
 const ITEM_SQL = 'SELECT i.*, l.label cat_label, l.color cat_color FROM market_items i LEFT JOIN lookups l ON l.id = i.category_id';
 const itemDto = (i) => ({
   id: i.id, name: i.name, description: i.description, unit: i.unit, referencePrice: i.reference_price, isActive: !!i.is_active,
-  partnerAccess: i.partner_access, partnerIds: i.partner_access === 'selected' ? all('SELECT partner_id FROM market_item_partners WHERE item_id = ?', i.id).map((x) => x.partner_id) : [],
+  xp: i.xp ?? null, partnerAccess: i.partner_access, partnerIds: i.partner_access === 'selected' ? all('SELECT partner_id FROM market_item_partners WHERE item_id = ?', i.id).map((x) => x.partner_id) : [],
   category: i.category_id ? { id: i.category_id, label: i.cat_label, color: i.cat_color } : null,
 });
 const loadItem = (id) => { const i = get(`${ITEM_SQL} WHERE i.id = ?`, id); return i ? itemDto(i) : null; };
@@ -83,7 +84,7 @@ const dealDto = (d, partnerView, viewerId = null) => {
     turn: d.turn, quantity: d.quantity, unitPrice: d.unit_price, suggestedPrice: d.suggested_price ?? null, total: d.quantity * d.unit_price, proposedBy: d.proposed_by, note: d.note,
     item: { id: d.item_id, name: d.item_is_other && d.other_name ? `Sonstiges: ${d.other_name}` : d.item_name, isOther: !!d.item_is_other, unit: d.item_unit, category: d.cat_id ? { id: d.cat_id, label: d.cat_label, color: d.cat_color } : null },
     // Partner sehen weder den Namen der Gegenseite noch interne Zuständigkeiten – nur die AZ-Nummer des Geschäfts
-    partner: partnerView ? undefined : { id: d.partner_id, name: d.partner_name, number: d.partner_number },
+    partner: partnerView ? undefined : { id: d.partner_id, name: d.partner_name, number: d.partner_number, level: levelBrief(d.partner_id) },
     // Staff: Zuständiger (Personalnummer, man selbst „Du“). Partner: Ansprechpartner nur als Personalnummer – ohne Zuweisung bleibt es „Team“
     assignee: d.assignee_id ? { id: partnerView ? undefined : d.assignee_id, displayName: !partnerView && d.assignee_id === viewerId ? 'Du' : (d.assignee_number || `Mitglied #${d.assignee_id}`), number: d.assignee_number ?? null } : null,
     handover: hasHandover && (!partnerView || HANDOVER_VISIBLE.includes(d.status))
@@ -205,7 +206,7 @@ function applyAction(dealId, actor, action, b) {
           bookStock({ warehouseId: wh.id, itemId: d.item_id, delta: d.quantity, kind: 'deal', userId: actor.id, note: `Geschäft ${d.deal_number}`, dealId });
           stored = ` – eingelagert in ${wh.name}`;
         }
-        if (to === 'completed') settleDeal(dealId);
+        if (to === 'completed') { settleDeal(dealId); awardForDeal(dealId); }
         ev(dealId, actor, 'status', { text: statusLabel(to, d.direction) + stored });
         break;
       }
@@ -463,6 +464,7 @@ export default {
         out.category_id = c;
       }
       if (b.isActive !== undefined) out.is_active = b.isActive ? 1 : 0;
+      if (b.xp !== undefined) { const x = b.xp === '' ? null : b.xp; if (x !== null && (!Number.isInteger(x) || x < 0 || x > 1_000_000)) throw bad('XP: ganze Zahl ab 0 (leer = Standard).'); out.xp = x; }
       if (b.partnerAccess !== undefined) { if (!['all', 'selected', 'none'].includes(b.partnerAccess)) throw bad('Sichtbarkeit für Partner: alle, ausgewählte oder keine.'); out.partner_access = b.partnerAccess; }
       return out;
     };
@@ -478,6 +480,7 @@ export default {
       const res = run('INSERT INTO market_items (name,description,category_id,unit,reference_price,is_active,partner_access,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)',
         f.name, f.description, f.category_id, f.unit, f.reference_price, f.is_active ?? 1, f.partner_access ?? (getConfig('market.partner_item_default') || 'all'), t, t);
       if (ctx.body.partnerIds !== undefined) setItemPartners(Number(res.lastInsertRowid), ctx.body.partnerIds);
+      if (f.xp !== undefined) run('UPDATE market_items SET xp = ? WHERE id = ?', f.xp, Number(res.lastInsertRowid));
       const item = loadItem(Number(res.lastInsertRowid));
       audit(ctx, { action: 'market.item_created', module: 'market', targetType: 'item', targetId: item.id, targetLabel: item.name, after: item });
       ctx.status = 201;

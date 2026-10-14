@@ -1,6 +1,6 @@
 import { h, mount, fmtDate, fmtDateTime, debounce, timeAgo } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
-import { button, busy, card, field, input, select, table, tabs, formError, openModal, confirmDialog, toast, skeletons, empty, note, badge } from '../ui/kit.js';
+import { button, busy, card, field, input, select, table, tabs, formError, openModal, confirmDialog, toast, skeletons, empty, note, badge, levelBadge } from '../ui/kit.js';
 import { api } from '../api.js';
 import { can } from '../state.js';
 import { parseMoney } from './tab.js';
@@ -61,7 +61,7 @@ export default async function render(container, ctx) {
     mount(host, h('div', { class: 'toolbar' }, groups, h('div', { class: 'grow' }), h('div', { class: 'input-icon' }, icon('search'), search)),
       table([
         { label: 'Nr.', style: { width: '1%' }, render: (l) => h('span', { class: 'member-no' }, l.number) },
-        { label: 'Kreditnehmer', render: (l) => h('div', null, h('b', null, l.partner.number), h('div', { class: 'muted', style: { fontSize: '12px' } }, l.partner.name)) },
+        { label: 'Kreditnehmer', render: (l) => h('div', null, h('b', null, l.partner.number), ' ', levelBadge(l.partner.level), h('div', { class: 'muted', style: { fontSize: '12px' } }, l.partner.name)) },
         { label: 'Summe', render: (l) => h('b', null, fmtC(l.principalCents)) }, { label: 'Raten', render: (l) => `${l.termCount} × ${FREQ[l.frequency]}` },
         { label: 'Zinsen', render: (l) => (l.interest.set ? `${l.interest.text} (${fmtC(l.interestCents)})` : h('span', { class: 'muted' }, 'offen')) },
         { label: 'Status', render: (l) => h('div', { class: 'chips' }, loanBadge(l), l.status === 'requested' || l.status === 'negotiating' ? h('span', { class: `badge no-dot ${l.turn === 'staff' ? 'b-warn' : 'b-mute'}` }, l.turn === 'staff' ? 'Wir sind am Zug' : 'Kreditnehmer am Zug') : null, l.overdueCount > 0 && h('span', { class: 'badge b-err' }, `${l.overdueCount} überfällig`)) },

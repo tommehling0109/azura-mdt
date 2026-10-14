@@ -27,6 +27,8 @@ export const STATUS = {
   rejected: { label: 'Abgelehnt', cls: 'b-mute' },
 };
 export const statusBadge = (s) => h('span', { class: `badge ${STATUS[s]?.cls ?? 'b-mute'}` }, STATUS[s]?.label ?? s);
+/** Level-Anzeige eines Partners: Symbol + „Lvl 3“ (level = { n, name, icon } oder null → nichts). */
+export const levelBadge = (level, { label = true } = {}) => (level ? h('span', { class: `lvl-badge lvl-${level.n}`, title: `Level ${level.n} · ${level.name}` }, icon(level.icon), label && `Lvl ${level.n}`) : null);
 export const badge = (text, cls = 'b-info', dot = true) => h('span', { class: `badge ${cls} ${dot ? '' : 'no-dot'}` }, text);
 export const rankBadge = (r) => (r ? h('span', { class: 'badge no-dot rank', style: { '--c': r.color } }, r.name) : null);
 export const deptBadge = (d) => (d ? h('span', { class: 'badge dept', style: { '--c': d.color } }, d.name) : null);

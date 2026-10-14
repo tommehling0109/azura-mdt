@@ -1,6 +1,6 @@
 import { h, mount, fmtDateTime } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
-import { button, busy, field, input, checkbox, toggle, formError, openModal, confirmDialog, toast, empty, skeletons } from '../ui/kit.js';
+import { button, busy, field, input, checkbox, toggle, formError, openModal, confirmDialog, toast, empty, skeletons, levelBadge } from '../ui/kit.js';
 import { api } from '../api.js';
 import { can, state } from '../state.js';
 
@@ -80,7 +80,7 @@ export async function chatApp(container, ctx, o = {}) {
       const rows = people.filter((p) => !f || `${p.label} ${p.subtitle ?? ''}`.toLowerCase().includes(f));
       let lastGroup = null;
       mount(list, rows.length ? rows.flatMap((p) => {
-        const b = h('button', { type: 'button', class: 'list-row people-row' }, h('div', { class: 'dot-icon' }, icon('users')), h('div', { class: 'grow' }, h('div', { class: 't' }, p.label), p.subtitle && h('div', { class: 's' }, p.subtitle)), icon('chevronR'));
+        const b = h('button', { type: 'button', class: 'list-row people-row' }, h('div', { class: 'dot-icon' }, icon('users')), h('div', { class: 'grow' }, h('div', { class: 't' }, p.label, ' ', levelBadge(p.level)), p.subtitle && h('div', { class: 's' }, p.subtitle)), icon('chevronR'));
         b.addEventListener('click', async () => { try { await openDm(p); m.close(); } catch (e) { toast(e.message, 'err'); } });
         const head = p.group !== lastGroup && (people.some((x) => x.group !== p.group)) ? h('div', { class: 'chat-side-title' }, p.group) : null;
         lastGroup = p.group;
@@ -94,7 +94,7 @@ export async function chatApp(container, ctx, o = {}) {
   function drawSide() {
     const row = (c, dm) => {
       const b = h('button', { class: `chat-chan ${c.id === current ? 'on' : ''}`, type: 'button', style: { '--c': c.color } },
-        dm ? (c.peer?.avatar ? h('img', { class: 'avatar xs', src: c.peer.avatar, alt: '' }) : icon('users')) : h('span', { class: 'dot' }), h('span', { class: 'cn' }, !dm && c.restricted && icon('lockClosed'), c.name), c.unread > 0 && h('span', { class: 'count hot' }, c.unread));
+        dm ? (c.peer?.avatar ? h('img', { class: 'avatar xs', src: c.peer.avatar, alt: '' }) : icon('users')) : h('span', { class: 'dot' }), h('span', { class: 'cn' }, !dm && c.restricted && icon('lockClosed'), c.name, dm && levelBadge(c.peer?.level, { label: false })), c.unread > 0 && h('span', { class: 'count hot' }, c.unread));
       b.addEventListener('click', () => { if (current !== c.id) { current = c.id; replyTo = editing = null; setBanner(); sessionStorage.setItem(CHANNEL_KEY, String(current)); drawSide(); loadMessages({ initial: true }); } });
       return b;
     };
@@ -161,7 +161,7 @@ export async function chatApp(container, ctx, o = {}) {
       m.canDelete && button('', { size: 'sm', variant: 'ghost', icon: 'trash', title: 'Löschen', onClick: () => del(m) }));
     return h('div', { class: `msg ${m.isMine ? 'mine' : ''} ${m.deleted ? 'gone' : ''}`, 'data-mid': m.id },
       h('div', { class: 'msg-bubble' },
-        h('div', { class: 'msg-meta' }, m.senderAvatar && h('img', { class: 'avatar xs', src: m.senderAvatar, alt: '', loading: 'lazy' }), h('span', { class: 'member-no' }, m.sender), m.isMine && h('span', { class: 'muted' }, 'Du'), m.pinned && h('span', { class: 'pinmark', title: 'Angepinnt' }, icon('pin')),
+        h('div', { class: 'msg-meta' }, m.senderAvatar && h('img', { class: 'avatar xs', src: m.senderAvatar, alt: '', loading: 'lazy' }), h('span', { class: 'member-no' }, m.sender), levelBadge(m.senderLevel), m.isMine && h('span', { class: 'muted' }, 'Du'), m.pinned && h('span', { class: 'pinmark', title: 'Angepinnt' }, icon('pin')),
           h('span', { class: 'msg-time', title: fmtDateTime(m.createdAt) }, hhmm(m.createdAt)), m.editedAt && !m.deleted && h('span', { class: 'muted', title: `Bearbeitet ${fmtDateTime(m.editedAt)}` }, '(bearbeitet)')),
         m.replyTo && h('div', { class: 'msg-quote', onclick: () => jumpTo(m.replyTo.id) }, h('b', null, m.replyTo.sender), ' ', m.replyTo.snippet),
         h('div', { class: 'msg-body' }, m.deleted ? h('i', null, 'Nachricht gelöscht') : renderBody(m.body))),

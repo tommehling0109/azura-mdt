@@ -1,4 +1,5 @@
 import { all, get, run, tx, now } from '../core/db.js';
+import { levelBrief, awardForLoan } from '../core/levels.js';
 import { bad, conflict, forbidden, notFound, str } from '../core/http.js';
 import { audit } from '../core/audit.js';
 import { getConfig } from '../core/config.js';
@@ -61,7 +62,7 @@ function loanDto(l, { partnerView = false, detail = false } = {}) {
     paidCents: rows.reduce((a, r) => a + r.paid_cents, 0), remainingCents: open.reduce((a, r) => a + (r.amount_cents - r.paid_cents), 0),
     nextDue: next ? { date: next.due_date, amountCents: next.amount_cents - next.paid_cents, overdue: next.due_date < today } : null,
     overdueCount: open.filter((r) => r.due_date < today).length, installmentsPaid: rows.filter((r) => r.status === 'paid').length,
-    partner: partnerView ? undefined : { id: l.partner_id, number: l.partner_number, name: l.partner_name },
+    partner: partnerView ? undefined : { id: l.partner_id, number: l.partner_number, name: l.partner_name, level: levelBrief(l.partner_id) },
   };
   if (detail) {
     out.installments = rows.map((r) => ({ id: r.id, seq: r.seq, dueDate: r.due_date, amountCents: r.amount_cents, principalCents: r.principal_cents, interestCents: r.interest_cents, paidCents: r.paid_cents, status: r.status, paidAt: r.paid_at, reportedAt: r.reported_at, overdue: r.status === 'open' && r.due_date < today, note: partnerView ? '' : r.note }));
@@ -197,7 +198,7 @@ function applyAction(loanId, actor, action, b) {
         run('UPDATE credit_installments SET paid_cents = ?, status = ?, paid_at = ?, note = ? WHERE id = ?', paid, full ? 'paid' : 'open', full ? new Date(`${date}T12:00:00`).toISOString() : inst.paid_at, str(b.note, 'Notiz', { max: 200, required: false }), inst.id);
         if (full) creditSettleInstallment(inst.id);
         const left = get("SELECT COUNT(*) c FROM credit_installments WHERE loan_id = ? AND status = 'open'", loanId).c;
-        if (!left) touch(loanId, { status: 'completed', closed_at: now() }); else touch(loanId);
+        if (!left) { touch(loanId, { status: 'completed', closed_at: now() }); awardForLoan(loanId); } else touch(loanId);
         ev('payment', `Zahlung über ${fmtC(amount)} zu Rate ${inst.seq} am ${date} erfasst${full ? ' – Rate bezahlt' : ` (noch offen: ${fmtC(inst.amount_cents - paid)})`}${!left ? '. Der Kredit ist vollständig abbezahlt.' : ''}`);
         evText = !left ? 'completed' : null;
         break;
@@ -362,7 +363,7 @@ export default {
     });
     r.get('/api/credit/borrowers', { perm: 'credit.view' }, () => ({
       borrowers: all("SELECT id, partner_number, name, status, apps, credit_limit_cents FROM partners ORDER BY partner_number").filter((p) => { try { return JSON.parse(p.apps).includes('credit'); } catch { return false; } }).map((p) => ({
-        id: p.id, number: p.partner_number, name: p.name, active: p.status === 'active', limitCents: p.credit_limit_cents, outstandingCents: outstandingPrincipal(p.id),
+        id: p.id, number: p.partner_number, name: p.name, level: levelBrief(p.id), active: p.status === 'active', limitCents: p.credit_limit_cents, outstandingCents: outstandingPrincipal(p.id),
         activeLoans: get("SELECT COUNT(*) c FROM credit_loans WHERE partner_id = ? AND status = 'active'", p.id).c, completedLoans: get("SELECT COUNT(*) c FROM credit_loans WHERE partner_id = ? AND status = 'completed'", p.id).c,
         defaulted: get("SELECT COUNT(*) c FROM credit_loans WHERE partner_id = ? AND status = 'defaulted'", p.id).c,
       })),

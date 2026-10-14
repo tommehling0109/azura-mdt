@@ -11,7 +11,7 @@
 - Namen von Mitgliedern sieht man nur bei sich selbst, als Superadmin und bei Mitgliedern **unterhalb** der eigenen Hierarchie (übergeordneter Rang / Vorgesetzten-Kette); sonst nur die Personalnummer.
 - Statistik: `stats.view` öffnet die App, jeder Abschnitt erscheint zusätzlich nur mit dem Ansichtsrecht des jeweiligen Bereichs.
 
-## Rechte (86)
+## Rechte (87)
 
 ### audit
 
@@ -96,6 +96,12 @@
 | `legal.cases.delete` | Rechtsfälle: Akten löschen |
 | `legal.cases.edit` | Rechtsfälle: Akten anlegen und bearbeiten (Beteiligte, Beweise, Verlauf, Termine, Dokumente) |
 | `legal.cases.view` | Rechtsfälle: Akten ansehen |
+
+### levels
+
+| Recht | Bedeutung |
+|---|---|
+| `partners.levels` | Partner-Level: XP vergeben/abziehen, Level setzen oder entziehen (Admins) |
 
 ### lookups
 
@@ -337,6 +343,8 @@
 | DELETE | `/api/legal/cases/:id/docs/:did` | `legal.cases.edit` |
 | POST | `/api/legal/cases/:id/related` | `legal.cases.edit` |
 | DELETE | `/api/legal/cases/:id/related/:rid` | `legal.cases.edit` |
+| GET | `/api/partners/:id/level` | `partners.view` |
+| POST | `/api/partners/:id/level/adjust` | `partners.levels` |
 | GET | `/api/lookups` | `lookups.view` \| `market.view` |
 | POST | `/api/lookups/:list` | `lookups.manage` |
 | PATCH | `/api/lookups/:list/:id` | `lookups.manage` |
@@ -488,6 +496,7 @@
 | GET | `/api/p/credit/loans/:id` | externer Zugang, App „credit“ freigeschaltet |
 | POST | `/api/p/credit/requests` | externer Zugang, App „credit“ freigeschaltet |
 | POST | `/api/p/credit/loans/:id/:action` | externer Zugang, App „credit“ freigeschaltet |
+| GET | `/api/p/level` | externer Zugang |
 | GET | `/api/p/market/catalog` | externer Zugang, App „market“ freigeschaltet |
 | GET | `/api/p/market/quote` | externer Zugang, App „market“ freigeschaltet |
 | GET | `/api/p/market/wanted` | externer Zugang, App „market“ freigeschaltet |

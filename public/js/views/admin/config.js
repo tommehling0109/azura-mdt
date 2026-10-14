@@ -1,5 +1,5 @@
 import { h, mount } from '../../ui/dom.js';
-import { button, busy, card, field, input, select, toggle, toast, skeletons, formError, empty, note, openModal } from '../../ui/kit.js';
+import { button, busy, card, field, input, select, toggle, toast, skeletons, formError, empty, note, openModal, levelBadge } from '../../ui/kit.js';
 import { fmtDateTime } from '../../ui/dom.js';
 import { api } from '../../api.js';
 import { icon } from '../../ui/icons.js';
@@ -166,7 +166,7 @@ function resetDialog() {
 const CATS = [
   { id: 'system', title: 'System & Zugang', icon: 'server', groups: ['Allgemein', 'Zugang', 'Mitglieder', 'Apps', 'Updates', 'Programm-Updates', 'Datensicherung', 'Gefahrenzone'] },
   { id: 'look', title: 'Darstellung', icon: 'palette', groups: ['Darstellung', 'Logo & Hintergrund', 'Dashboard', 'Dashboard-Widgets'] },
-  { id: 'modules', title: 'Apps & Module', icon: 'sliders', groups: ['Börse', 'Lager', 'Fahrzeuge', 'Karte', 'Kredit', 'Deckel', 'Tickets', 'Legal'] },
+  { id: 'modules', title: 'Apps & Module', icon: 'sliders', groups: ['Börse', 'Lager', 'Fahrzeuge', 'Karte', 'Kredit', 'Deckel', 'Tickets', 'Legal', 'Level', 'Level-Stufen'] },
   { id: 'external', title: 'Externe & Sonderzugänge', icon: 'link', groups: ['Externe Zugänge (neutral)', 'Exekutive-Zugang', 'Exekutive-Zugang (Hack-Link)'] },
 ];
 const OPEN_KEY = 'azura.cfg.open.v1';
@@ -194,6 +194,27 @@ function appsCard(host) {
       }));
   };
   draw();
+}
+
+/** Karte „Level-Stufen“: Name, Symbol und XP-Schwelle der zehn Partner-Level. */
+function levelsCard(host, setting, editable) {
+  const body = h('div');
+  host.append(card('Level-Stufen', body, { icon: 'star', flush: true }));
+  const rows = setting.value.map((l) => ({ ...l }));
+  const names = rows.map((l) => input({ value: l.name, maxLength: 24, disabled: !editable })), xps = rows.map((l) => input({ type: 'number', min: 0, step: '1', value: l.xp, disabled: !editable || l === rows[0] }));
+  const icons = rows.map((l) => select(Array.from({ length: 10 }, (_, i) => ({ value: `lv${i + 1}`, label: `Symbol ${i + 1}` })), l.icon, { disabled: !editable }));
+  const prev = rows.map((l, i) => h('span', { class: 'lvl-prev' }, icon(l.icon)));
+  icons.forEach((s, i) => s.addEventListener('change', () => mount(prev[i], icon(s.value))));
+  const err = h('div');
+  mount(body, h('div', { class: 'setting-row', style: { gridTemplateColumns: 'minmax(0,1fr)' } }, h('div', null, h('div', { class: 'lbl' }, 'Zehn Stufen für externe Partner'), h('div', { class: 'hlp' }, 'Die XP-Schwelle ist der Wert, ab dem das Level erreicht wird (aufsteigend, Level 1 beginnt bei 0). Je höher die Schwellen, desto länger dauert der Aufstieg.'))),
+    h('div', { style: { padding: '4px 20px 14px', display: 'grid', gridTemplateColumns: 'auto 1.2fr 1fr 1fr', gap: '8px 10px', alignItems: 'center' } },
+      h('span', { class: 'muted' }, 'Level'), h('span', { class: 'muted' }, 'Name'), h('span', { class: 'muted' }, 'Symbol'), h('span', { class: 'muted' }, 'ab XP'),
+      rows.map((l, i) => [h('span', { class: 'row', style: { gap: '6px', alignItems: 'center', flexWrap: 'nowrap' } }, prev[i], h('b', null, i + 1)), names[i], icons[i], xps[i]])),
+    editable && h('div', { style: { padding: '0 20px 16px' } }, err, button('Level-Stufen speichern', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
+      err.replaceChildren();
+      const value = rows.map((_, i) => ({ name: names[i].value.trim(), icon: icons[i].value, xp: i === 0 ? 0 : Number(xps[i].value) }));
+      try { await api.put('/api/config', { values: { 'level.levels': value } }); toast('Level-Stufen gespeichert.'); } catch (ex) { err.replaceChildren(formError(ex.message.includes('Struktur') ? 'Ungültig: Namen ausfüllen und die XP-Schwellen müssen aufsteigend sein.' : ex.message)); }
+    }) })));
 }
 
 export default async function render(container, ctx) {
@@ -292,6 +313,7 @@ export default async function render(container, ctx) {
   cards.forEach(place);
   mount(container, h('div', { class: 'stack', style: { gap: '18px' } }, err, bar, layout), settings.some((x) => !x.hidden && mayEdit(x)) && h('div', { class: 'savebar' }, save));
   if (can('system.apps')) appsCard(extras);
+  { const ls = settings.find((x) => x.key === 'level.levels'); if (ls) levelsCard(extras, ls, mayEdit(ls)); }
   if (full) addExtras(extras, editable); else if (can('hack.manage')) hackCard(extras);
   // ungespeicherte Live-Vorschau der Akzentfarbe beim Verlassen zurücksetzen
   return () => applyConfig(state.config); // ungespeicherte Vorschau verwerfen

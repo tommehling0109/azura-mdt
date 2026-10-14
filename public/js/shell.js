@@ -2,11 +2,12 @@ import { everySecond, timeParts, dateLong } from './clock.js';
 import { partnerScope, unseenCount } from './seen.js';
 import { h, mount, timeAgo } from './ui/dom.js';
 import { icon } from './ui/icons.js';
-import { avatar, userAvatar, skeletons, empty, toast, button, toggle } from './ui/kit.js';
+import { avatar, userAvatar, skeletons, empty, toast, button, toggle, levelBadge } from './ui/kit.js';
 import { state, canAny, can, applyConfig } from './state.js';
 import { NAV, allItems } from './modules.js';
 import { openAccountDialog } from './views/account.js';
 import { openSettingsDialog } from './views/settings.js';
+import { openLevelDialog } from './views/partner/level.js';
 import { createBoard } from './board.js';
 import { createChangelog } from './changelog.js';
 import { createTicker } from './ticker.js';
@@ -63,6 +64,7 @@ export const openApp = (id) => ui?.open(id);
 export async function openTarget(target) {
   if (!target || !ui) return;
   window.focus?.();
+  if (target.app === 'level') return openLevelDialog(); // Partner: Level-Fenster
   if (target.app === 'chat' && target.channelId) { try { sessionStorage.setItem('mdt:chat:channel', String(target.channelId)); } catch { /* egal */ } }
   if (target.app === 'tab' && target.statementId) { try { sessionStorage.setItem('mdt:tab:open', String(target.statementId)); } catch { /* egal */ } }
   if (target.partnerTicket) { const m = await import('./views/tickets.js'); return m.openPartnerTickets({ open: target.partnerTicket }); }
@@ -128,7 +130,9 @@ export function showApp(onLogout, opts = {}) {
   const dock = h('div', { class: 'dock', role: 'toolbar', 'aria-label': 'Apps' });
   const startMenu = h('div', { class: 'start-menu', hidden: true });
   const startBtn = h('button', { class: 'panel-btn start-btn', type: 'button', title: 'Menü', 'aria-label': 'App-Menü', 'aria-haspopup': 'true' }, h('div', { class: 'logo-phoenix' }));
-  let panelAvatar = null;
+  let panelAvatar = null, levelSlot = null;
+  // Partner: eigenes Level in der Kopfleiste aktuell halten (XP-Vergabe, Aktivierung, Anpassung durch das Team)
+  const refreshLevel = async () => { if (!levelSlot) return; try { const me = await api.get('/api/p/me'); state.user.level = me.partner.level ?? null; mount(levelSlot, levelBadge(state.user.level)); } catch { /* egal */ } };
   const clock = h('span', { class: 'panel-clock' });
   everySecond(clock, () => { const t = timeParts(); clock.textContent = `${t.hm}:${t.s}`; });
 
@@ -177,8 +181,8 @@ export function showApp(onLogout, opts = {}) {
     h('div', { class: 'panel-center' }, clock),
     h('div', { class: 'panel-right' },
       liveDot, bell, reportBtn, iconResetBtn, settingsBtn, lockBtn,
-      h('button', { class: 'panel-btn panel-user', type: 'button', title: opts.partner ? state.user.displayName : 'Konto & Sicherheit', onclick: opts.partner ? undefined : () => openAccountDialog() },
-        opts.partner ? icon('users') : (panelAvatar = userAvatar(state.user, 'sm')), h('span', null, state.user.displayName)),
+      h('button', { class: 'panel-btn panel-user', type: 'button', title: opts.partner ? state.user.displayName : 'Konto & Sicherheit', onclick: opts.partner ? () => openLevelDialog() : () => openAccountDialog() },
+        opts.partner ? icon('users') : (panelAvatar = userAvatar(state.user, 'sm')), h('span', null, state.user.displayName), opts.partner && (levelSlot = h('span', { class: 'panel-level' }, levelBadge(state.user.level)))),
       h('button', { class: 'panel-btn', type: 'button', title: 'Abmelden', 'aria-label': 'Abmelden', onclick: () => { clearLockState(); lockCtl?.destroy(); onLogout(); } }, icon('logout'))));
   const ticker = createTicker({ partner: !!opts.partner }); // Laufband zwischen Kopfleiste und Desktop
   const desktop = h('div', { class: 'desktop' }, panel, ticker.el, area, h('div', { class: 'dock-row' }, dock));
@@ -188,7 +192,7 @@ export function showApp(onLogout, opts = {}) {
   if (changelog) area.append(changelog.el);
   if (board) area.append(board.el); // im Desktop-Bereich: Fenster liegen darüber, die Fensterleisten bleiben bedienbar
   // Desktop-Symbole: Voreinstellung des Administrators, jeder Benutzer kann sie in seinen Einstellungen für sich an-/ausschalten
-  const iconsWanted = () => { const u = getSetting('icons'); return u === 'on' ? true : u === 'off' ? false : !!state.config['ui.desktop_icons']; };
+  const iconsWanted = () => { const u = getSetting('icons'); if (u === 'on') return true; if (u === 'off') return false; const pc = opts.partner ? state.config['ui.desktop_icons_partner'] : null; return pc === 'on' ? true : pc === 'off' ? false : !!state.config['ui.desktop_icons']; };
   const syncIcons = () => { const want = iconsWanted(); if (want && !iconsEl.isConnected) { area.append(iconsEl); renderIcons(); } else if (!want && iconsEl.isConnected) iconsEl.remove(); iconResetBtn.hidden = !iconsEl.isConnected || compact(); };
   if (iconsWanted()) area.append(iconsEl);
   iconResetBtn.hidden = !iconsEl.isConnected || compact();
@@ -488,7 +492,8 @@ export function showApp(onLogout, opts = {}) {
   if (!opts.partner) subscribe(['profile'], async () => { // eigenes Profilbild geändert/entfernt (auch durch einen Admin) → Kopfzeile sofort aktualisieren
     try { const { user } = await api.get('/api/auth/me'); state.user.avatarUrl = user.avatarUrl; const fresh = userAvatar(user, 'sm'); panelAvatar?.replaceWith(fresh); panelAvatar = fresh; } catch { /* egal */ }
   });
-  subscribe(opts.partner ? ['market', 'chat', 'credit'] : ['users', 'market', 'chat', 'credit'], async () => { await refreshCounters(); renderIcons(); }); // Zähler/Abzeichen live
+  subscribe(opts.partner ? ['market', 'chat', 'credit'] : ['users', 'market', 'chat', 'credit'], async () => { await refreshCounters(); renderIcons(); if (opts.partner) refreshLevel(); }); // Zähler/Abzeichen live
+  if (opts.partner) subscribe(['notification', 'partners'], refreshLevel);
   subscribe(['system', 'dashboard'], async () => { applyConfig((await api.get('/api/bootstrap')).config); }); // Farben/Logo/Namen live für alle
   if (opts.partner) subscribe(['partners'], () => api.get('/api/p/me')); // Zugang geändert/deaktiviert → sofort abgemeldet (401-Handler)
   // Sperrbildschirm (Timeout kommt aus der Konfiguration; Entsperren per Passwort bzw. Code)

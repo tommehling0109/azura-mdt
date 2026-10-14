@@ -1,7 +1,7 @@
 // Gemeinsame Bausteine der Börse – genutzt von der Mitarbeiter-App und dem Partner-Portal.
 import { h, mount, fmtDateTime, timeAgo } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
-import { button, busy, field, input, select, formError, openModal, confirmDialog, toast, skeletons, note } from '../ui/kit.js';
+import { button, busy, field, input, select, formError, openModal, confirmDialog, toast, skeletons, note, levelBadge } from '../ui/kit.js';
 import { api } from '../api.js';
 import { subscribe } from '../realtime.js';
 import { state, can } from '../state.js';
@@ -98,7 +98,7 @@ export function openDealModal({ side, base, id, onChange }) {
     const summary = h('div', { class: 'deal-summary' },
       h('div', { class: 'ds-main' },
         h('div', { class: 'ds-title' }, d.number && h('span', { class: 'member-no' }, d.number), d.item.name, ' ', catBadge(d.item.category)),
-        h('div', { class: 'ds-sub' }, side === 'staff' ? `${d.partner.number ?? ''} · ${partnerName} · ` : '', d.direction === 'sell' ? (side === 'staff' ? 'Unser Angebot an den Partner' : 'Angebot vom Team') : d.origin === 'wanted' ? 'Antwort auf Gesuch' : 'Angebot des Partners', ' · ', timeAgo(d.createdAt)),
+        h('div', { class: 'ds-sub' }, side === 'staff' ? `${d.partner.number ?? ''} · ${partnerName} · ` : '', side === 'staff' && levelBadge(d.partner.level), side === 'staff' && d.partner.level && ' · ', d.direction === 'sell' ? (side === 'staff' ? 'Unser Angebot an den Partner' : 'Angebot vom Team') : d.origin === 'wanted' ? 'Antwort auf Gesuch' : 'Angebot des Partners', ' · ', timeAgo(d.createdAt)),
         h('div', { class: 'chips', style: { marginTop: '8px' } }, dirBadge(d), dealBadge(d), turnBadge(d, side), side === 'staff' && d.warehouse && h('span', { class: 'badge no-dot b-mute', title: 'Quelle der Ware' }, `Lager: ${d.warehouse.name}`), d.assignee && h('span', { class: 'badge no-dot b-info' }, `${side === 'staff' ? 'Zuständig' : 'Ansprechpartner'}: ${d.assignee.displayName}`))),
       h('div', { class: 'ds-price' },
         h('div', { class: 'dp-total' }, money(d.total)),

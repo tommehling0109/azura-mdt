@@ -11,6 +11,7 @@ import { setupRequired } from './system.js';
 import { allocateNumber } from '../core/numbers.js';
 import { decodeDocument, DOC_MIME } from '../core/images.js';
 import { purgePartner } from '../core/purge.js';
+import { levelBrief } from '../core/levels.js';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { DB_PATH } from '../core/db.js';
@@ -25,7 +26,7 @@ const dto = (p, { withLink }) => ({
   lastLoginAt: p.last_login_at, createdAt: p.created_at,
   type: typeOf(p), typeLabel: TYPES[typeOf(p)], contactName: p.contact_name, firstName: p.first_name, lastName: p.last_name, birthDate: p.birth_date, postalCode: p.postal_code, street: p.street,
   umail: p.umail_local ? `${p.umail_local}@umail.com` : '', umailLocal: p.umail_local, phone: p.phone, accountNumber: p.account_number, 
-  itemsMode: p.items_mode, allowOther: !!p.allow_other, itemIds: p.items_mode === 'selected' ? all('SELECT item_id FROM partner_items WHERE partner_id = ?', p.id).map((x) => x.item_id) : [],
+  level: levelBrief(p.id), levelEnabled: !!p.level_enabled, itemsMode: p.items_mode, allowOther: !!p.allow_other, itemIds: p.items_mode === 'selected' ? all('SELECT item_id FROM partner_items WHERE partner_id = ?', p.id).map((x) => x.item_id) : [],
   docs: { id: !!p.id_doc_ext, license: !!p.license_doc_ext, weapon: !!p.weapon_doc_ext, clearance: !!p.clearance_doc_ext },
   locked: !!(p.locked_until && p.locked_until > now()), lockedUntil: p.locked_until && p.locked_until > now() ? p.locked_until : null,
   dealCount: p.deal_count ?? 0,
@@ -161,6 +162,7 @@ export default {
         if (cols.length) run(`UPDATE partners SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`, ...cols.map((c) => prof[c]), pid);
         for (const [k, v] of Object.entries(docBodies)) if (v) run(`UPDATE partners SET ${DOC_KINDS[k]} = ? WHERE id = ?`, saveDoc(pid, k, v), pid);
         if (marketAccess) applyMarketAccess(pid, marketAccess);
+        if (b.levelEnabled) run('UPDATE partners SET level_enabled = 1, level_since = ? WHERE id = ?', now(), pid);
         return pid;
       });
       audit(ctx, { action: 'partner.created', module: 'partners', targetType: 'partner', targetId: id, targetLabel: name, after: { name, apps } });
@@ -184,6 +186,7 @@ export default {
         if (b.note !== undefined) run('UPDATE partners SET note = ? WHERE id = ?', str(b.note, 'Notiz', { max: 300, required: false }), id);
         if (b.apps !== undefined) run('UPDATE partners SET apps = ? WHERE id = ?', JSON.stringify(cleanApps(b.apps)), id);
         const ma = marketAccessFrom(b); if (ma) applyMarketAccess(id, ma);
+        if (b.levelEnabled !== undefined) { const on = b.levelEnabled ? 1 : 0; if (on !== cur.level_enabled) run('UPDATE partners SET level_enabled = ?, level_since = CASE WHEN ? = 1 THEN ? ELSE level_since END WHERE id = ?', on, on, now(), id); }
         if (b.status !== undefined) {
           if (!['active', 'disabled'].includes(b.status)) throw bad('Ungültiger Status.');
           run('UPDATE partners SET status = ? WHERE id = ?', b.status, id);
@@ -268,7 +271,7 @@ export default {
       const p = byToken(ctx.params.token);
       if (!p || p.status !== 'active') throw invalid();
       const mine = ctx.partner && ctx.partner.id === p.id;
-      return { valid: true, authenticated: !!mine, partner: mine ? { number: p.partner_number, apps: parseApps(p) } : null };
+      return { valid: true, authenticated: !!mine, partner: mine ? { number: p.partner_number, apps: parseApps(p), level: levelBrief(p.id) } : null };
     });
 
     r.post('/api/p/:token/login', { auth: false }, (ctx) => {
@@ -291,7 +294,7 @@ export default {
       const s = createPartnerSession(p.id, { ip: ctx.ip, ua: ctx.req.headers['user-agent'], hours: getConfig('partners.session_hours') });
       ctx.headers['Set-Cookie'] = sessionCookie(ctx, s.token, s.expires);
       audit({ ip: ctx.ip, actorName: `Partner: ${p.name}` }, { action: 'partner.login', module: 'partners', targetType: 'partner', targetId: p.id, targetLabel: p.name });
-      return { partner: { number: p.partner_number, apps: parseApps(p) } };
+      return { partner: { number: p.partner_number, apps: parseApps(p), level: levelBrief(p.id) } };
     });
 
     r.post('/api/p/logout', { auth: false }, (ctx) => {
@@ -310,7 +313,7 @@ export default {
     });
 
     r.get('/api/p/me', { auth: 'partner' }, (ctx) => ({
-      partner: { number: ctx.partner.number, apps: [...ctx.partner.apps].filter(isPartnerApp) },
+      partner: { number: ctx.partner.number, apps: [...ctx.partner.apps].filter(isPartnerApp), level: levelBrief(ctx.partner.id) },
       apps: partnerApps().filter((a) => ctx.partner.apps.has(a.id)),
     }));
   },

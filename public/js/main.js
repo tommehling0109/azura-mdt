@@ -111,7 +111,7 @@ async function startPartner() {
   let session;
   try { session = await api.get(`/api/p/${encodeURIComponent(partnerToken)}/session`); } catch { return showInvalidLink(); }
   const enter = (partner) => {
-    state.user = { id: 0, username: '', displayName: partner.number ?? partner.name, status: 'active', roles: [], permissions: [], isAdmin: false, memberNumber: null, rank: null, department: null, isPartner: true };
+    state.user = { id: 0, username: '', displayName: partner.number ?? partner.name, status: 'active', roles: [], permissions: [], isAdmin: false, memberNumber: null, rank: null, department: null, isPartner: true, level: partner.level ?? null };
     const allowed = new Set(partner.apps);
     showApp(partnerLogout, { nav: PARTNER_NAV, allow: (i) => allowed.has(i.id), footerRole: 'Externer Zugang', partner: true });
     if (!partner.apps.length) toast('Für diesen Zugang sind noch keine Apps freigeschaltet.', 'warn');
