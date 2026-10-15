@@ -1,38 +1,36 @@
 import { h, mount } from '../ui/dom.js';
-import { button, busy, field, input, tabs, formError, openModal, confirmDialog, toast, empty, note } from '../ui/kit.js';
+import { button, tabs, empty } from '../ui/kit.js';
 import { api } from '../api.js';
 
-/** Legal: Gesetzessammlung (live eingebettetes Google-Dokument), Bußgeldrechner und Rechtsfälle (Platzhalter, noch in Planung). */
+/**
+ * Legal und Codex: Reiter Gesetzessammlung, Bußgeldkatalog und Codex (je ein live eingebettetes Google-Dokument; Link in der Konfiguration, ohne Link ein Platzhalter)
+ * sowie die Rechtsfälle (Aktensystem).
+ */
+const DOCS = {
+  laws: { label: 'Gesetzessammlung', icon: 'book', todo: 'Die Gesetzessammlung wurde noch nicht hinterlegt.' },
+  fines: { label: 'Bußgeldkatalog', icon: 'list', todo: 'Der Bußgeldkatalog wurde noch nicht hinterlegt.' },
+  codex: { label: 'Codex', icon: 'scale', todo: 'Der Codex wurde noch nicht hinterlegt.' },
+};
+
 export default async function render(container, ctx) {
   let data = await api.get('/api/legal');
-  const TABS = [{ id: 'laws', label: 'Gesetzessammlung' }, { id: 'fines', label: 'Bußgeldrechner' }, { id: 'cases', label: 'Rechtsfälle' }];
-  let tab = 'laws', docId = null, casesApi = null;
+  const TABS = [...Object.entries(DOCS).map(([id, d]) => ({ id, label: d.label })), ...(data.canCases ? [{ id: 'cases', label: 'Rechtsfälle' }] : [])];
+  let tab = 'laws', casesApi = null;
   const tabHost = h('div', { style: { marginBottom: '12px' } }), host = h('div', { class: 'legal-host' });
   mount(container, tabHost, host);
 
-  const todo = (title, text) => h('div', { class: 'card card-body' }, empty(title, text, 'clock'));
-  const current = () => data.docs.find((d) => d.id === docId) ?? data.docs[0];
-
-  function drawActions() {
-    const d = current();
-    ctx.setActions(tab === 'laws' && h('div', { class: 'row' },
-      d && button('Neu laden', { icon: 'refresh', onClick: () => laws() }),
-      d && button('In Google öffnen', { icon: 'link', onClick: () => window.open(d.openUrl, '_blank', 'noopener') }),
-      data.canManage && button('Dokumente verwalten', { icon: 'edit', onClick: manage })));
-  }
-
-  function laws() {
-    drawActions();
-    if (!data.docs.length) {
-      mount(host, h('div', { class: 'card card-body' }, empty('Noch kein Dokument hinterlegt', data.canManage ? 'Hinterlege über „Dokumente verwalten“ den Link zur Gesetzessammlung.' : 'Die Gesetzessammlung wurde noch nicht hinterlegt.', 'book')));
-      return;
+  function doc(id) {
+    const d = data[id], meta = DOCS[id];
+    ctx.setActions(d && h('div', { class: 'row' },
+      button('Neu laden', { icon: 'refresh', onClick: () => doc(id) }),
+      button('In Google öffnen', { icon: 'link', onClick: () => window.open(d.openUrl, '_blank', 'noopener') }),
+      data.canManage && button('Link ändern', { icon: 'edit', onClick: () => ctx.openApp('config') })));
+    if (!d) {
+      ctx.setActions(data.canManage && button('Link hinterlegen', { icon: 'edit', onClick: () => ctx.openApp('config') }));
+      return mount(host, h('div', { class: 'card card-body' }, empty(`${meta.label} – to be done`, data.canManage ? `${meta.todo} Hinterlege den Link unter Konfiguration → „Legal und Codex“.` : `${meta.todo} Sie folgt in einem späteren Update.`, 'clock')));
     }
-    const d = current();
-    const frame = h('iframe', { class: 'legal-frame', src: d.embedUrl, title: d.title, referrerpolicy: 'no-referrer', allow: 'clipboard-write' });
     mount(host,
-      data.docs.length > 1 && h('div', { class: 'row', style: { marginBottom: '10px', flexWrap: 'wrap' } },
-        data.docs.map((x) => button(x.title, { size: 'sm', variant: x.id === d.id ? 'primary' : '', onClick: () => { docId = x.id; laws(); } }))),
-      frame,
+      h('iframe', { class: 'legal-frame', src: d.embedUrl, title: meta.label, referrerpolicy: 'no-referrer', allow: 'clipboard-write' }),
       h('div', { class: 'muted', style: { fontSize: '12px', marginTop: '8px' } },
         'Live-Ansicht des Google-Dokuments – Änderungen im Dokument erscheinen hier nach „Neu laden“. Wird nichts angezeigt, muss das Dokument für „Jeder mit dem Link“ freigegeben sein.'));
   }
@@ -40,47 +38,18 @@ export default async function render(container, ctx) {
   function show(t) {
     tab = t; mount(tabHost, tabs(TABS, tab, show));
     if (t !== 'cases') delete host.dataset.lc; // Rechtsfälle schreiben nur, solange ihr Reiter offen ist
-    if (t === 'laws') laws();
-    else if (t === 'cases' && data.canCases) {
+    if (t === 'cases') {
+      ctx.setActions(null);
       mount(host, h('div', { class: 'muted' }, 'Lade …'));
       import('./legal-cases.js').then(async (mod) => { if (tab !== 'cases') return; try { casesApi = await mod.default(host, ctx, { setActions: (a) => ctx.setActions(a) }); } catch (e) { mount(host, empty('Fehler beim Laden', e.message, 'alert')); } });
-    } else {
-      drawActions();
-      mount(host, t === 'fines'
-        ? todo('Bußgeldrechner – to be done', 'Der Bußgeldrechner ist noch in Arbeit und folgt in einem späteren Update.')
-        : todo('Rechtsfälle', 'Für das Aktensystem fehlt dir das Recht „legal.cases.view“.'));
-    }
+    } else doc(t);
   }
 
-  function manage() {
-    const list = h('div');
-    const draw = () => mount(list, data.docs.length ? data.docs.map((d) => h('div', { class: 'row', style: { justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--line)' } },
-      h('div', null, h('strong', null, d.title), h('div', { class: 'muted', style: { fontSize: '12px' } }, d.kindLabel)),
-      h('div', { class: 'row' }, button('Ändern', { size: 'sm', icon: 'edit', onClick: () => edit(d) }), button('', { size: 'sm', variant: 'ghost', icon: 'trash', title: 'Entfernen', onClick: () => remove(d) })))) : h('div', { class: 'muted' }, 'Noch keine Dokumente.'));
-    async function refresh() { data = await api.get('/api/legal'); draw(); show(tab); }
-    async function remove(d) {
-      if (!await confirmDialog({ title: 'Dokument entfernen?', message: `„${d.title}“ wird aus dem MDT entfernt (das Google-Dokument selbst bleibt unberührt).`, confirmLabel: 'Entfernen' })) return;
-      try { await api.del(`/api/legal/docs/${d.id}`); if (docId === d.id) docId = null; await refresh(); toast('Dokument entfernt.'); } catch (e) { toast(e.message, 'err'); }
-    }
-    function edit(d) {
-      const err = h('div'), title = input({ value: d?.title ?? '', maxLength: 80 }), url = input({ value: d?.url ?? '', placeholder: 'https://docs.google.com/document/d/…' });
-      const mm = openModal({
-        title: d ? 'Dokument ändern' : 'Dokument hinzufügen',
-        body: h('div', null, err, field('Titel', title), field('Google-Link', url, { help: 'Link zu einem Google Dokument, einer Tabelle oder Präsentation. Freigabe: „Jeder mit dem Link“ (Ansehen).' })),
-        footer: [h('span', { class: 'grow' }), button('Abbrechen', { onClick: () => mm.close() }), button('Speichern', { variant: 'primary', icon: 'check', onClick: (e) => busy(e.currentTarget, async () => {
-          err.replaceChildren();
-          try {
-            const body = { title: title.value, url: url.value };
-            if (d) await api.patch(`/api/legal/docs/${d.id}`, body); else await api.post('/api/legal/docs', body);
-            mm.close(); await refresh(); toast('Gespeichert.');
-          } catch (ex) { err.replaceChildren(formError(ex.message)); }
-        }) })],
-      });
-    }
-    draw();
-    const m = openModal({ title: 'Dokumente verwalten', body: h('div', null, note('Hier hinterlegte Google-Dokumente werden live im MDT angezeigt.'), list), footer: [button('Dokument hinzufügen', { icon: 'plus', onClick: () => edit(null) }), h('span', { class: 'grow' }), button('Schließen', { onClick: () => m.close() })] });
-  }
-
-  ctx.live?.(['legal', 'contacts'], () => { if (tab === 'cases') casesApi?.refresh(); });
+  ctx.live?.(['legal', 'contacts', 'system'], async () => {
+    if (tab === 'cases') return casesApi?.refresh();
+    const before = JSON.stringify([data.laws, data.fines, data.codex]);
+    try { data = await api.get('/api/legal'); } catch { return; }
+    if (JSON.stringify([data.laws, data.fines, data.codex]) !== before) doc(tab); // nur neu laden, wenn sich ein Link geändert hat
+  });
   show('laws');
 }

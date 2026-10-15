@@ -162,10 +162,10 @@ export default {
       return { version: 0 };
     });
 
-    r.get('/api/config', { perm: ['config.view', 'hack.manage'] }, (ctx) => ({ settings: describeConfig(ctx.user) }));
+    r.get('/api/config', { perm: ['config.view', 'hack.manage', 'legal.manage'] }, (ctx) => ({ settings: describeConfig(ctx.user) }));
 
     // Änderungen: je Einstellung das passende Recht (Standard config.edit; Exekutive-Zugang: hack.manage)
-    r.put('/api/config', { perm: ['config.edit', 'hack.manage', 'system.apps'] }, (ctx) => {
+    r.put('/api/config', { perm: ['config.edit', 'hack.manage', 'system.apps', 'legal.manage'] }, (ctx) => {
       const changes = ctx.body.values;
       if (!changes || typeof changes !== 'object') throw bad('Keine Werte übergeben.');
       const applied = tx(() => {

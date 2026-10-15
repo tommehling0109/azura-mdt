@@ -187,9 +187,9 @@ Hier legst du Firmen an, änderst Daten und verwaltest die Zugänge der Firmen.`
     S('Tickets bearbeiten', `
 Mit dem Verwaltungsrecht weist du Tickets zu, setzt den Status und antwortest.`, ['tickets.manage']),
   ] },
-  { id: 'm-legal', aud: 'm', group: 'Apps', title: 'Legal', icon: 'scale', app: 'legal', perm: ['legal.view'], summary: 'Gesetzessammlung, Bußgeldrechner und Rechtsfälle.', sections: [
-    S('Gesetzessammlung', `
-Zeigt das hinterlegte Google-Dokument live im Panel. Mit „Neu laden“ holst du den neuesten Stand, mit „In Google öffnen“ öffnest du das Original.`),
+  { id: 'm-legal', aud: 'm', group: 'Apps', title: 'Legal und Codex', icon: 'scale', app: 'legal', perm: ['legal.view'], summary: 'Gesetzessammlung, Bußgeldkatalog, Codex und Rechtsfälle.', sections: [
+    S('Gesetzessammlung, Bußgeldkatalog und Codex', `
+Jeder dieser drei Reiter zeigt ein hinterlegtes Google-Dokument live im Panel. Mit „Neu laden“ holst du den neuesten Stand, mit „In Google öffnen“ öffnest du das Original. Ist noch kein Dokument hinterlegt, siehst du einen Platzhalter.`),
     S('Rechtsfälle (Aktensystem)', `
 Rechtsfälle werden als Akten geführt: Beteiligte, Verlauf, Dokumente und Abrechnung. Wähle einen Fall aus der Liste, um die Akte zu öffnen.`, ['legal.cases.view']),
     S('Akten bearbeiten', `

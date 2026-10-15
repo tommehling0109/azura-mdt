@@ -90,8 +90,8 @@
 
 | Recht | Bedeutung |
 |---|---|
-| `legal.manage` | Legal: Dokumente (Google-Links) hinterlegen, ändern und entfernen |
-| `legal.view` | Legal: Gesetzessammlung und Rechts-Bereiche ansehen |
+| `legal.manage` | Legal und Codex: Links zu Gesetzessammlung, Bußgeldkatalog und Codex in der Konfiguration hinterlegen und ändern |
+| `legal.view` | Legal und Codex: Gesetzessammlung, Bußgeldkatalog, Codex und Rechts-Bereiche ansehen |
 
 ### legalcases
 
@@ -334,9 +334,6 @@
 | DELETE | `/api/help/articles/:id` | `help.manage` |
 | GET | `/api/help/export.pdf` | *angemeldet (eigene Daten)* |
 | GET | `/api/legal` | `legal.view` |
-| POST | `/api/legal/docs` | `legal.manage` |
-| PATCH | `/api/legal/docs/:id` | `legal.manage` |
-| DELETE | `/api/legal/docs/:id` | `legal.manage` |
 | GET | `/api/legal/cases/options` | `legal.cases.view` |
 | GET | `/api/legal/cases/parties/search` | `legal.cases.view` |
 | GET | `/api/legal/cases` | `legal.cases.view` |
@@ -441,8 +438,8 @@
 | POST | `/api/setup` | *öffentlich* |
 | POST | `/api/admin/branding/:kind` | `config.edit` |
 | DELETE | `/api/admin/branding/:kind` | `config.edit` |
-| GET | `/api/config` | `config.view` \| `hack.manage` |
-| PUT | `/api/config` | `config.edit` \| `hack.manage` \| `system.apps` |
+| GET | `/api/config` | `config.view` \| `hack.manage` \| `legal.manage` |
+| PUT | `/api/config` | `config.edit` \| `hack.manage` \| `system.apps` \| `legal.manage` |
 | GET | `/api/permissions` | `roles.view` \| `users.view` \| `org.view` \| `permissions.manage` |
 | POST | `/api/permissions` | `permissions.manage` |
 | PATCH | `/api/permissions/:key` | `permissions.manage` |

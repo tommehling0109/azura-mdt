@@ -39,7 +39,8 @@ export function validateConfigValue(key, v) {
   if (!d) throw bad(`Unbekannte Einstellung: ${key}`);
   switch (d.type) {
     case 'string':
-      if (typeof v !== 'string' || !v.trim() || v.length > (d.max ?? 80)) throw bad(`${d.label}: ungültiger Text.`);
+      if (typeof v !== 'string' || (!v.trim() && !d.allowEmpty) || v.length > (d.max ?? 80)) throw bad(`${d.label}: ungültiger Text.`);
+      if (d.check && v.trim()) d.check(v.trim()); // z. B. nur Google-Links (wirft bad())
       return v.trim();
     case 'color':
       if (typeof v !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(v)) throw bad(`${d.label}: ungültige Farbe.`);

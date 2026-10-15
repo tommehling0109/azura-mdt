@@ -40,7 +40,7 @@ export const NAV = [
     section: 'Kommunikation',
     items: [
       { id: 'tickets', label: 'Tickets', subtitle: 'Fehler melden und verfolgen', icon: 'bug', path: '/tickets', win: { w: 1000, h: 640 }, view: () => import('./views/tickets.js') },
-      { id: 'legal', label: 'Legal', subtitle: 'Gesetzessammlung, Bußgeldrechner und Rechtsfälle', icon: 'scale', path: '/legal', perm: ['legal.view'], win: { w: 1180, h: 720 }, view: () => import('./views/legal.js') },
+      { id: 'legal', label: 'Legal und Codex', subtitle: 'Gesetzessammlung, Bußgeldkatalog, Codex und Rechtsfälle', icon: 'scale', path: '/legal', perm: ['legal.view'], win: { w: 1180, h: 720 }, view: () => import('./views/legal.js') },
       { id: 'contacts', label: 'Kontaktbuch', subtitle: 'Institutionen, Personen und Kontaktdaten', icon: 'book', path: '/contacts', perm: ['contacts.view'], win: { w: 1180, h: 700 }, view: () => import('./views/contacts.js') },
       { id: 'chat', label: 'Chat', subtitle: 'Kanäle, Nachrichten und Pinnwand', icon: 'chat', path: '/chat', perm: ['chat.view'], win: { w: 1000, h: 640 }, view: () => import('./views/chat.js'), badge: 'chatUnread' },
     ],
@@ -53,7 +53,7 @@ export const NAV = [
       { id: 'org', label: 'Organisation', subtitle: 'Ränge, Abteilungen und Hierarchie', icon: 'sitemap', path: '/admin/org', perm: ['org.view'], win: { w: 1020, h: 640 }, view: () => import('./views/admin/org.js') },
       { id: 'partners', label: 'Externe Zugänge', subtitle: 'Links und Codes für Partner verwalten', icon: 'link', path: '/admin/partners', perm: ['partners.view'], win: { w: 1000, h: 640 }, view: () => import('./views/admin/partners.js') },
       { id: 'lookups', label: 'Kategorien & Status', subtitle: 'Auswahllisten, Kategorien und Status-Beschriftungen', icon: 'list', path: '/admin/lookups', perm: ['lookups.view'], win: { w: 900, h: 620 }, view: () => import('./views/admin/lookups.js') },
-      { id: 'config', label: 'Konfiguration', subtitle: 'Darstellung und Systemverhalten anpassen', icon: 'settings', path: '/admin/config', perm: ['config.view', 'hack.manage'], view: () => import('./views/admin/config.js') },
+      { id: 'config', label: 'Konfiguration', subtitle: 'Darstellung und Systemverhalten anpassen', icon: 'settings', path: '/admin/config', perm: ['config.view', 'hack.manage', 'legal.manage'], view: () => import('./views/admin/config.js') },
       { id: 'audit', label: 'Audit-Log', subtitle: 'Nachvollziehbarkeit aller wichtigen Aktionen', icon: 'audit', path: '/admin/audit', perm: ['audit.view'], win: { w: 1020, h: 640 }, view: () => import('./views/admin/audit.js') },
     ],
   },
