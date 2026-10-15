@@ -1022,4 +1022,35 @@ export const SCHEMA_MIGRATIONS = [
   ALTER TABLE warehouses ADD COLUMN rent_due_date TEXT;
   ALTER TABLE warehouses ADD COLUMN rent_paid_date TEXT;
   `,
+  // 33: Hilfe-App – ueberschriebene/eigene Kapitel, Rueckmeldungen, Tour-Status
+  `
+  CREATE TABLE help_articles (
+    id         TEXT PRIMARY KEY,
+    builtin    INTEGER NOT NULL DEFAULT 0,
+    aud        TEXT,
+    grp        TEXT,
+    title      TEXT,
+    icon       TEXT,
+    summary    TEXT,
+    perm       TEXT,
+    sections   TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    hidden     INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    updated_by INTEGER
+  );
+  CREATE TABLE help_feedback (
+    article_id TEXT NOT NULL,
+    who        TEXT NOT NULL,
+    helpful    INTEGER NOT NULL,
+    comment    TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (article_id, who)
+  );
+  CREATE TABLE help_state (
+    who          TEXT PRIMARY KEY,
+    tour_done_at TEXT
+  );
+  `,
 ];

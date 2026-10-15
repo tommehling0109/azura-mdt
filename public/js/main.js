@@ -114,6 +114,7 @@ async function startPartner() {
   const enter = (partner) => {
     state.user = { id: 0, username: '', displayName: partner.number ?? partner.name, status: 'active', roles: [], permissions: [], isAdmin: false, memberNumber: null, rank: null, department: null, isPartner: true, level: partner.level ?? null };
     const allowed = new Set(partner.apps);
+    if (!(state.config['system.disabled_apps'] ?? []).includes('help')) allowed.add('help'); // Hilfe: für jeden Zugang (zeigt nur Kapitel zu den freigeschalteten Apps)
     showApp(partnerLogout, { nav: PARTNER_NAV, allow: (i) => allowed.has(i.id), footerRole: 'Externer Zugang', partner: true });
     if (!partner.apps.length) toast('Für diesen Zugang sind noch keine Apps freigeschaltet.', 'warn');
   };

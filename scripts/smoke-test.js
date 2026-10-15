@@ -1628,6 +1628,74 @@ try {
     await admin.call('POST', '/api/presence/leave', { tabId: 'tab-admin-1' });
     ok('Online-Liste: nur Mitglieder, Personalnummer + Rang, gesperrt/aktiv, Herzschlag/Abmelden, abschaltbar'); }
 
+  // ══ Hilfe-App ══
+  { const { HELP_ARTICLES } = await import('../server/core/help-content.js'); const { listPermissions } = await import('../server/core/permissions.js'); const { clearAttempts } = await import('../server/core/auth.js');
+    const known = new Set(listPermissions().map((p) => p.key));
+    for (const a of HELP_ARTICLES) for (const p of [...(a.perm ?? []), ...a.sections.flatMap((x) => x.perm ?? [])]) assert.ok(known.has(p), `Hilfe: unbekanntes Recht ${p} in ${a.id}`); // alle Rechte der Kapitel existieren
+    assert.equal(new Set(HELP_ARTICLES.map((a) => a.id)).size, HELP_ARTICLES.length);
+    assert.equal((await new Client().call('GET', '/api/help')).status, 401); assert.equal((await new Client().call('GET', '/api/p/help')).status, 401);
+    // Admin sieht alles, Superadmin darf exportieren
+    r = await admin.call('GET', '/api/help'); assert.equal(r.canManage, true); assert.equal(r.canExport, true); const adminIds = r.articles.map((a) => a.id);
+    for (const id of ['m-welcome', 'm-config', 'm-audit', 'm-market', 'm-users']) assert.ok(adminIds.includes(id), id); assert.equal(adminIds.some((i) => i.startsWith('p-')), false); // Partner-Kapitel nicht für Mitarbeiter
+    // Mitarbeiter: nur Kapitel und Abschnitte, für die die Person Rechte hat (die Rolle bringt eigene Rechte mit – deshalb gegen die tatsächlichen Rechte prüfen)
+    const checkScoped = async () => {
+      const have = new Set((await mod.call('GET', '/api/auth/me')).user.permissions); const res = await mod.call('GET', '/api/help'); const got = new Map(res.articles.map((a) => [a.id, a]));
+      let shown = 0, hiddenN = 0;
+      for (const a of HELP_ARTICLES.filter((x) => x.aud === 'm' && !x.cfg && !x.app_off)) {
+        const exp = !a.perm?.length || a.perm.some((p) => have.has(p)), title = a.sections.filter((x) => !x.perm?.length || x.perm.some((p) => have.has(p))).map((x) => x.title);
+        assert.equal(got.has(a.id), exp && title.length > 0, `Kapitel ${a.id}`);
+        if (got.has(a.id)) { assert.deepEqual(got.get(a.id).sections.map((x) => x.title), title, `Abschnitte ${a.id}`); shown++; } else hiddenN++;
+      }
+      assert.ok(shown > 5 && hiddenN > 0, `${shown}/${hiddenN}`); return { res, have };
+    };
+    await setPerms(['market.view', 'chat.view']); r = await mod.call('GET', '/api/help'); assert.equal(r.canManage, false); assert.equal(r.canExport, false); await checkScoped();
+    assert.ok(r.articles.some((a) => a.id === 'm-welcome') && r.articles.some((a) => a.id === 'm-tickets'));
+    assert.equal((await mod.call('GET', '/api/help/manage')).status, 403); assert.equal((await mod.call('POST', '/api/help/articles', { aud: 'm', title: 'xx', sections: [{ title: 'a', text: 'b' }] })).status, 403);
+    await setPerms(['market.view', 'chat.view', 'market.deals.manage', 'chat.send']); await checkScoped(); assert.ok((await mod.call('GET', '/api/help')).articles.find((a) => a.id === 'm-market').sections.some((x) => x.title === 'Geschäfte bearbeiten'));
+    // Rückmeldungen
+    { const seen = new Set((await mod.call('GET', '/api/help')).articles.map((x) => x.id)); const unseen = HELP_ARTICLES.find((x) => x.aud === 'm' && !seen.has(x.id)).id; assert.equal((await mod.call('POST', '/api/help/feedback', { articleId: unseen, helpful: true })).status, 404); } // Kapitel ohne Zugriff
+    assert.equal((await mod.call('POST', '/api/help/feedback', { articleId: 'm-market' })).status, 400);
+    assert.equal((await mod.call('POST', '/api/help/feedback', { articleId: 'm-market', helpful: false, comment: 'Zu knapp' })).status, 200); assert.equal((await mod.call('GET', '/api/help')).feedback['m-market'], 0);
+    assert.equal((await mod.call('POST', '/api/help/feedback', { articleId: 'm-market', helpful: true })).status, 200); assert.equal((await mod.call('GET', '/api/help')).feedback['m-market'], 1); // Antwort wird ersetzt, nicht verdoppelt
+    await mod.call('POST', '/api/help/feedback', { articleId: 'm-chat', helpful: false, comment: 'Unklar' });
+    r = await admin.call('GET', '/api/help/manage'); const am = r.articles.find((a) => a.id === 'm-market'), ac = r.articles.find((a) => a.id === 'm-chat'); assert.equal(am.yes, 1); assert.equal(am.no, 0); assert.equal(ac.no, 1);
+    r = await admin.call('GET', '/api/help/feedback/m-chat'); assert.equal(r.items.length, 1); assert.equal(r.items[0].comment, 'Unklar'); assert.equal(r.items[0].kind, 'member'); assert.equal(JSON.stringify(r).includes('displayName'), false);
+    // Tour
+    assert.equal((await mod.call('GET', '/api/help')).tourDone, false); await mod.call('POST', '/api/help/tour', { done: true }); assert.equal((await mod.call('GET', '/api/help')).tourDone, true); await mod.call('POST', '/api/help/tour', { done: false }); assert.equal((await mod.call('GET', '/api/help')).tourDone, false);
+    // Verwaltung: Standardkapitel anpassen, ausblenden, zurücksetzen
+    assert.equal((await admin.call('PUT', '/api/help/articles/m-chat', { title: 'Chat – angepasst', sections: [{ title: 'Neu', text: 'Eigener Text' }] })).status, 200);
+    r = await mod.call('GET', '/api/help'); const chat2 = r.articles.find((a) => a.id === 'm-chat'); assert.equal(chat2.title, 'Chat – angepasst'); assert.equal(chat2.sections.length, 1); assert.equal(chat2.sections[0].text, 'Eigener Text');
+    assert.equal((await admin.call('PUT', '/api/help/articles/m-chat', { sections: [] })).status, 400); assert.equal((await admin.call('PUT', '/api/help/articles/m-chat', { sections: [{ title: 'a', text: 'b', perm: ['gibt.es.nicht'] }] })).status, 400); assert.equal((await admin.call('PUT', '/api/help/articles/nix', { title: 'abc' })).status, 404);
+    await admin.call('PUT', '/api/help/articles/m-chat', { hidden: true }); assert.equal((await mod.call('GET', '/api/help')).articles.some((a) => a.id === 'm-chat'), false); assert.equal((await admin.call('GET', '/api/help')).articles.some((a) => a.id === 'm-chat'), false);
+    assert.equal((await admin.call('GET', '/api/help/manage')).articles.find((a) => a.id === 'm-chat').hidden, true);
+    assert.equal((await admin.call('DELETE', '/api/help/articles/m-chat')).status, 200); r = await mod.call('GET', '/api/help'); assert.equal(r.articles.find((a) => a.id === 'm-chat').title, 'Chat'); // Standard zurück
+    // Eigenes Kapitel mit Recht
+    const haveNow = new Set((await mod.call('GET', '/api/auth/me')).user.permissions); const lack = ['users.delete', 'finance.delete', 'tab.delete', 'credit.delete'].find((p) => !haveNow.has(p)); assert.ok(lack);
+    r = await admin.call('POST', '/api/help/articles', { aud: 'm', group: 'Server-Regeln', title: 'Geheime Regeln', summary: 'Nur für Audit', perm: [lack], sections: [{ title: 'Regel 1', text: '1. Erst\n2. Dann' }] }); assert.equal(r.status, 201); const cid = r.id;
+    assert.equal((await admin.call('POST', '/api/help/articles', { aud: 'm', title: 'Kaputt', perm: ['gibt.es.nicht'], sections: [{ title: 'a', text: 'b' }] })).status, 400);
+    assert.equal((await mod.call('GET', '/api/help')).articles.some((a) => a.id === cid), false); r = await admin.call('GET', '/api/help'); assert.ok(r.articles.some((a) => a.id === cid)); assert.ok(r.groups.includes('Server-Regeln'));
+    await setPerms(['market.view', lack]); assert.ok((await mod.call('GET', '/api/help')).articles.some((a) => a.id === cid)); // mit dem Recht sichtbar
+    assert.equal((await admin.call('DELETE', `/api/help/articles/${cid}`)).status, 200); assert.equal((await admin.call('GET', '/api/help')).articles.some((a) => a.id === cid), false);
+    // Partner: nur Partner-Kapitel zu den freigeschalteten Apps
+    for (const ip of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) clearAttempts(`pl|${ip}`);
+    const hp = await admin.call('POST', '/api/partners', { type: 'buyer', name: 'Hilfe Partner', contactName: 'X', apps: ['market'] }); const hc = new Client(); assert.equal((await hc.call('POST', `/api/p/${hp.partner.linkPath.split('/').pop()}/login`, { code: hp.code })).status, 200);
+    r = await hc.call('GET', '/api/p/help'); const pids = r.articles.map((a) => a.id); assert.equal(r.canManage, false); assert.ok(pids.includes('p-welcome') && pids.includes('p-market') && pids.includes('p-faq'));
+    for (const no of ['p-chat', 'p-credit', 'p-level']) assert.equal(pids.includes(no), false, no); assert.equal(pids.some((i) => i.startsWith('m-')), false);
+    assert.equal((await hc.call('POST', '/api/p/help/feedback', { articleId: 'p-chat', helpful: true })).status, 404); assert.equal((await hc.call('POST', '/api/p/help/feedback', { articleId: 'p-market', helpful: false, comment: 'Fehlt was' })).status, 200);
+    r = await admin.call('GET', '/api/help/feedback/p-market'); assert.equal(r.items[0].kind, 'partner'); assert.equal(r.items[0].who, hp.partner.number); assert.equal(JSON.stringify(r).includes('Hilfe Partner'), false);
+    assert.equal((await hc.call('POST', '/api/p/help/tour', { done: true })).status, 200); assert.equal((await hc.call('GET', '/api/p/help')).tourDone, true);
+    await admin.call('PATCH', `/api/partners/${hp.partner.id}`, { apps: ['market', 'chat', 'credit'] }); r = await hc.call('GET', '/api/p/help'); assert.ok(r.articles.some((a) => a.id === 'p-chat') && r.articles.some((a) => a.id === 'p-credit')); // neue Apps → neue Kapitel
+    await admin.call('PUT', '/api/help/articles/p-faq', { hidden: true }); assert.equal((await hc.call('GET', '/api/p/help')).articles.some((a) => a.id === 'p-faq'), false); await admin.call('DELETE', '/api/help/articles/p-faq');
+    // App abschalten
+    await admin.call('PUT', '/api/config', { values: { 'system.disabled_apps': ['help'] } }); assert.equal((await mod.call('GET', '/api/help')).status, 403); assert.equal((await hc.call('GET', '/api/p/help')).status, 403);
+    await admin.call('PUT', '/api/config', { values: { 'system.disabled_apps': [] } }); assert.equal((await mod.call('GET', '/api/help')).status, 200);
+    // PDF-Export: nur Superadmin
+    for (const aud of ['m', 'p']) { const pdf = await fetch(`${base}/api/help/export.pdf?aud=${aud}`, { headers: { cookie: admin.cookie } }); const buf = Buffer.from(await pdf.arrayBuffer()); assert.equal(pdf.status, 200); assert.equal(pdf.headers.get('content-type'), 'application/pdf'); assert.equal(buf.subarray(0, 5).toString(), '%PDF-'); assert.ok(buf.length > 4000); assert.ok(buf.toString('latin1').trimEnd().endsWith('%%EOF')); assert.ok(/\/Count (\d+)/.test(buf.toString('latin1')));
+      { const t = buf.toString('latin1'), xr = /xref\n0 (\d+)\n([\s\S]*?)trailer/.exec(t), ls = xr[2].trim().split('\n'); ls.forEach((l, i) => { if (i) assert.ok(t.slice(Number(l.slice(0, 10))).startsWith(`${i} 0 obj`), `PDF xref ${i}`); }); // Verweistabelle stimmt
+        const kids = [...t.match(/\/Kids \[([^\]]*)\]/)[1].matchAll(/(\d+) 0 R/g)].map((x) => Number(x[1])); assert.equal(kids.length, Number(/\/Count (\d+)/.exec(t)[1])); for (const k of kids) assert.ok(t.slice(Number(ls[k].slice(0, 10)), Number(ls[k].slice(0, 10)) + 200).includes('/Type /Page '), 'PDF Seitenverweis'); } }
+    assert.equal((await fetch(`${base}/api/help/export.pdf`, { headers: { cookie: mod.cookie } })).status, 403); assert.equal((await fetch(`${base}/api/help/export.pdf`)).status, 401);
+    ok('Hilfe: Kapitel/Abschnitte nur mit Zugriff (Mitarbeiter und Partner), Rückmeldungen, Tour-Status, Kapitel anpassen/ausblenden/eigene, abschaltbar, PDF nur Superadmin'); }
+
   // ══ Legal ══
   { assert.equal((await mod.call('GET', '/api/legal')).status, 403); assert.equal((await new Client().call('GET', '/api/legal')).status, 401); assert.equal((await tp.call('GET', '/api/legal')).status, 401);
     await setPerms(['legal.view']); r = await mod.call('GET', '/api/legal'); assert.equal(r.status, 200); assert.equal(r.canManage, false);

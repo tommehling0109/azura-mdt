@@ -76,6 +76,7 @@ const P = {
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
   map: '<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14"/>',
   bank: '<path d="M3 9.5L12 4l9 5.5M5 10v8M9.7 10v8M14.3 10v8M19 10v8M3 20.5h18"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.4 9.3a2.7 2.7 0 015.2.8c0 1.8-2.6 2.2-2.6 3.9M12 17.2v.01"/>',
   tag: '<path d="M3 12V4h8l10 10-8 8z"/><path d="M7.5 8.5v.01"/>',
 };
 

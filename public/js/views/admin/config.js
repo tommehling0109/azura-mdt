@@ -166,7 +166,7 @@ function resetDialog() {
 const CATS = [
   { id: 'system', title: 'System & Zugang', icon: 'server', groups: ['Allgemein', 'Zugang', 'Mitglieder', 'Apps', 'Updates', 'Programm-Updates', 'Datensicherung', 'Gefahrenzone'] },
   { id: 'look', title: 'Darstellung', icon: 'palette', groups: ['Darstellung', 'Logo & Hintergrund', 'Dashboard', 'Dashboard-Widgets'] },
-  { id: 'modules', title: 'Apps & Module', icon: 'sliders', groups: ['Börse', 'Lager', 'Fahrzeuge', 'Karte', 'Kredit', 'Deckel', 'Tickets', 'Legal', 'Level', 'Level-Stufen'] },
+  { id: 'modules', title: 'Apps & Module', icon: 'sliders', groups: ['Hilfe', 'Börse', 'Lager', 'Fahrzeuge', 'Karte', 'Kredit', 'Deckel', 'Tickets', 'Legal', 'Level', 'Level-Stufen'] },
   { id: 'external', title: 'Externe & Sonderzugänge', icon: 'link', groups: ['Externe Zugänge (neutral)', 'Exekutive-Zugang', 'Exekutive-Zugang (Hack-Link)'] },
 ];
 const OPEN_KEY = 'azura.cfg.open.v1';
@@ -194,6 +194,14 @@ function appsCard(host) {
       }));
   };
   draw();
+}
+
+/** Karte „Hilfe als PDF“: die komplette Anleitung (Mitarbeiter bzw. Partner) herunterladen – nur Superadmin. */
+function helpPdfCard(host) {
+  const body = h('div', { class: 'setting-row', style: { gridTemplateColumns: 'minmax(0,1fr) auto' } },
+    h('div', null, h('div', { class: 'lbl' }, 'Anleitung als PDF'), h('div', { class: 'hlp' }, 'Erzeugt aus allen aktuellen Hilfe-Kapiteln (inklusive eigener Anpassungen) ein PDF – für Mitarbeiter mit allen Bereichen, für Partner mit deren Apps. Ausgeblendete Kapitel fehlen.')),
+    h('div', { class: 'row' }, button('Mitarbeiter-PDF', { icon: 'download', onClick: () => window.open('/api/help/export.pdf?aud=m', '_blank', 'noopener') }), button('Partner-PDF', { icon: 'download', onClick: () => window.open('/api/help/export.pdf?aud=p', '_blank', 'noopener') })));
+  host.append(card('Hilfe', body, { icon: 'help', flush: true }));
 }
 
 /** Karte „Level-Stufen“: Name, Symbol und XP-Schwelle der zehn Partner-Level. */
@@ -313,6 +321,7 @@ export default async function render(container, ctx) {
   cards.forEach(place);
   mount(container, h('div', { class: 'stack', style: { gap: '18px' } }, err, bar, layout), settings.some((x) => !x.hidden && mayEdit(x)) && h('div', { class: 'savebar' }, save));
   if (can('system.apps')) appsCard(extras);
+  if (state.user?.isSuperadmin) helpPdfCard(extras);
   { const ls = settings.find((x) => x.key === 'level.levels'); if (ls) levelsCard(extras, ls, mayEdit(ls)); }
   if (full) addExtras(extras, editable); else if (can('hack.manage')) hackCard(extras);
   // ungespeicherte Live-Vorschau der Akzentfarbe beim Verlassen zurücksetzen

@@ -11,7 +11,7 @@
 - Namen von Mitgliedern sieht man nur bei sich selbst, als Superadmin und bei Mitgliedern **unterhalb** der eigenen Hierarchie (übergeordneter Rang / Vorgesetzten-Kette); sonst nur die Personalnummer.
 - Statistik: `stats.view` öffnet die App, jeder Abschnitt erscheint zusätzlich nur mit dem Ansichtsrecht des jeweiligen Bereichs.
 
-## Rechte (88)
+## Rechte (89)
 
 ### audit
 
@@ -79,6 +79,12 @@
 | Recht | Bedeutung |
 |---|---|
 | `hack.manage` | Exekutive-Zugang: Link ansehen/erneuern, Einstellungen und Zugriffsprotokoll |
+
+### help
+
+| Recht | Bedeutung |
+|---|---|
+| `help.manage` | Hilfe: Kapitel bearbeiten, ausblenden, eigene Kapitel anlegen und Rückmeldungen ansehen |
 
 ### legal
 
@@ -246,11 +252,17 @@
 | POST | `/api/auth/sessions/revoke-others` | *angemeldet (eigene Daten)* |
 | POST | `/api/auth/password` | *angemeldet (eigene Daten)* |
 | GET | `/api/board` | `board.view` |
+| GET | `/api/board/unread` | `board.view` |
+| POST | `/api/board/ack` | `board.view` |
+| GET | `/api/users/:id/board` | `users.view` |
 | GET | `/api/ticker` | *angemeldet (eigene Daten)* |
 | POST | `/api/board` | `board.manage` |
 | PATCH | `/api/board/:id` | `board.manage` |
 | DELETE | `/api/board/:id` | `board.manage` |
 | GET | `/api/changelog` | `changelog.view` |
+| GET | `/api/changelog/unread` | `changelog.view` |
+| POST | `/api/changelog/ack` | `changelog.view` |
+| GET | `/api/users/:id/changelog` | `users.view` |
 | POST | `/api/changelog` | `changelog.manage` |
 | PATCH | `/api/changelog/:id` | `changelog.manage` |
 | DELETE | `/api/changelog/:id` | `changelog.manage` |
@@ -312,6 +324,15 @@
 | POST | `/api/h/:token/start` | *öffentlich* |
 | POST | `/api/h/:token/hint` | *öffentlich* |
 | POST | `/api/h/:token/answer` | *öffentlich* |
+| GET | `/api/help` | *angemeldet (eigene Daten)* |
+| POST | `/api/help/feedback` | *angemeldet (eigene Daten)* |
+| POST | `/api/help/tour` | *angemeldet (eigene Daten)* |
+| GET | `/api/help/manage` | `help.manage` |
+| GET | `/api/help/feedback/:id` | `help.manage` |
+| PUT | `/api/help/articles/:id` | `help.manage` |
+| POST | `/api/help/articles` | `help.manage` |
+| DELETE | `/api/help/articles/:id` | `help.manage` |
+| GET | `/api/help/export.pdf` | *angemeldet (eigene Daten)* |
 | GET | `/api/legal` | `legal.view` |
 | POST | `/api/legal/docs` | `legal.manage` |
 | PATCH | `/api/legal/docs/:id` | `legal.manage` |
@@ -395,6 +416,10 @@
 | POST | `/api/users/:id/docs/:kind` | `users.personnel_edit` |
 | GET | `/api/users/:id/docs/:kind` | *angemeldet (eigene Daten)* |
 | DELETE | `/api/users/:id/docs/:kind` | `users.personnel_edit` |
+| POST | `/api/presence` | *angemeldet (eigene Daten)* |
+| POST | `/api/presence/leave` | *angemeldet (eigene Daten)* |
+| GET | `/api/presence` | *angemeldet (eigene Daten)* |
+| GET | `/api/problems` | *angemeldet (eigene Daten)* |
 | GET | `/api/avatars/:id` | *angemeldet (eigene Daten)* |
 | POST | `/api/account/avatar` | *angemeldet (eigene Daten)* |
 | DELETE | `/api/account/avatar` | *angemeldet (eigene Daten)* |
@@ -469,6 +494,7 @@
 | GET | `/api/warehouses/:id` | `warehouse.view` |
 | POST | `/api/warehouses` | `warehouse.manage` |
 | PATCH | `/api/warehouses/:id` | `warehouse.manage` |
+| POST | `/api/warehouses/:id/rent/paid` | `warehouse.manage` |
 | DELETE | `/api/warehouses/:id` | `warehouse.manage` |
 | POST | `/api/warehouses/:id/stock` | `warehouse.stock` |
 | POST | `/api/warehouses/:id/transfer` | `warehouse.stock` |
@@ -497,6 +523,9 @@
 | GET | `/api/p/credit/loans/:id` | externer Zugang, App „credit“ freigeschaltet |
 | POST | `/api/p/credit/requests` | externer Zugang, App „credit“ freigeschaltet |
 | POST | `/api/p/credit/loans/:id/:action` | externer Zugang, App „credit“ freigeschaltet |
+| GET | `/api/p/help` | externer Zugang |
+| POST | `/api/p/help/feedback` | externer Zugang |
+| POST | `/api/p/help/tour` | externer Zugang |
 | GET | `/api/p/level` | externer Zugang |
 | GET | `/api/p/market/catalog` | externer Zugang, App „market“ freigeschaltet |
 | GET | `/api/p/market/quote` | externer Zugang, App „market“ freigeschaltet |
@@ -511,6 +540,8 @@
 | POST | `/api/p/logout` | Zugangs-Link / Code |
 | POST | `/api/p/unlock` | externer Zugang |
 | GET | `/api/p/me` | externer Zugang |
+| POST | `/api/p/presence` | externer Zugang |
+| POST | `/api/p/presence/leave` | externer Zugang |
 | GET | `/api/p/events` | externer Zugang |
 | GET | `/api/p/notifications` | externer Zugang |
 | POST | `/api/p/notifications/read` | externer Zugang |

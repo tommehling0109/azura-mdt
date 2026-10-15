@@ -408,3 +408,45 @@ html.no-glass .online { backdrop-filter: none; background: var(--bg-2); }
 .right-col .online, .right-col .problems { flex-shrink: 0; }
 .ol-ext { flex: none; font-size: 10.5px; padding: 1px 7px; border-radius: 99px; background: rgba(91, 141, 239, 0.18); color: #9db9f5; }
 .ol-row .lvl-badge { font-size: 10.5px; padding: 0 6px 0 4px; }
+
+/* ── Hilfe-App ── */
+.help-layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 16px; align-items: start; }
+.help-side { position: sticky; top: 0; display: flex; flex-direction: column; gap: 10px; max-height: 100%; }
+.help-nav { display: flex; flex-direction: column; gap: 2px; }
+.help-group { margin-bottom: 10px; }
+.help-gt { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); padding: 6px 8px 4px; }
+.help-item { display: flex; gap: 10px; align-items: flex-start; text-align: left; padding: 8px 10px; border-radius: var(--r-md); border: 1px solid transparent; background: transparent; color: var(--text-2); cursor: pointer; font: inherit; width: 100%; }
+.help-item svg { width: 16px; height: 16px; flex: none; margin-top: 2px; color: var(--text-3); }
+.help-item:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
+.help-item.on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--text); }
+.help-item.on svg { color: var(--accent); }
+.help-item .ht { font-size: 13.5px; font-weight: 600; }
+.help-item .hs { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.help-article { min-width: 0; padding: 4px 4px 24px; }
+.help-head { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px; }
+.help-head h2 { margin: 0; font-size: 22px; }
+.help-hicon { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); flex: none; }
+.help-hicon svg { width: 22px; height: 22px; }
+.help-sec { margin: 18px 0; }
+.help-sec h3 { margin: 0 0 8px; font-size: 16px; }
+.help-body p { margin: 0 0 10px; line-height: 1.6; color: var(--text-2); }
+.help-steps { margin: 0 0 12px; padding: 0; list-style: none; counter-reset: st; display: flex; flex-direction: column; gap: 8px; }
+.help-steps li { counter-increment: st; position: relative; padding-left: 36px; line-height: 1.55; color: var(--text-2); }
+.help-steps li::before { content: counter(st); position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--accent); color: #fff; }
+.help-list { margin: 0 0 12px; padding-left: 20px; line-height: 1.6; color: var(--text-2); }
+.help-note { display: flex; gap: 10px; padding: 11px 14px; margin: 0 0 12px; border-radius: var(--r-md); background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--text-2); font-size: 13.5px; line-height: 1.5; }
+.help-note svg { width: 16px; height: 16px; flex: none; margin-top: 2px; color: var(--accent); }
+.help-note.warn { background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.4); }
+.help-note.warn svg { color: #f59e0b; }
+.help-fb { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 24px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md); color: var(--text-2); }
+.help-related { margin-top: 18px; }
+@media (max-width: 760px) { .help-layout { grid-template-columns: 1fr; } .help-side { position: static; } }
+
+/* ── Erste-Schritte-Tour ── */
+.tour-root { position: fixed; inset: 0; z-index: 90; }
+.tour-spot { position: fixed; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(3, 5, 10, 0.72), 0 0 0 2px var(--accent); transition: all 0.25s ease; pointer-events: none; }
+.tour-card { position: fixed; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r-lg, 14px); padding: 16px 18px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5); }
+.tour-card h3 { margin: 2px 0 6px; font-size: 17px; }
+.tour-card p { margin: 0 0 14px; color: var(--text-2); line-height: 1.55; font-size: 13.5px; }
+.tour-step { font-size: 11px; color: var(--text-3); letter-spacing: 0.08em; }
+.tour-btns { display: flex; gap: 8px; align-items: center; }

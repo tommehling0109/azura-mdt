@@ -40,7 +40,7 @@ export function sessionCookie(ctx, token, expires) {
 /** Apps, die sich für alle abschalten lassen → Beginn ihrer API-Pfade (Verwaltungs-Apps und die Konfiguration bleiben immer verfügbar). */
 export const DISABLEABLE_APPS = {
   dashboard: ['dashboard'], market: ['market'], map: ['map'], warehouse: ['warehouse', 'warehouses'], vehicles: ['vehicles'], finance: ['finance'], stats: ['stats'], credit: ['credit'],
-  tab: ['tab'], tickets: ['tickets'], legal: ['legal'], contacts: ['contacts'], chat: ['chat'],
+  tab: ['tab'], tickets: ['tickets'], legal: ['legal'], contacts: ['contacts'], chat: ['chat'], help: ['help'],
 };
 export default {
   name: 'system',

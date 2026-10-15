@@ -14,6 +14,7 @@ import { checkUpdatesAck } from './updates-ack.js';
 import { createProblems } from './problems.js';
 import { createOnline, startPresence } from './presence.js';
 import { createTicker } from './ticker.js';
+import { maybeStartTour, helpIds } from './tour.js';
 import { api } from './api.js';
 import { connect, disconnect, subscribe, onStatus } from './realtime.js';
 import { initLock, clearLockState } from './lockscreen.js';
@@ -168,6 +169,8 @@ export function showApp(onLogout, opts = {}) {
   onStatus((v) => { pulse.classList.toggle('off', !v); liveDot.title = v ? 'Live verbunden – Änderungen erscheinen sofort' : 'Verbindung unterbrochen – verbinde automatisch neu …'; });
   let lockCtl = null;
   const reportBtn = h('button', { class: 'panel-btn', type: 'button', title: opts.partner ? 'Fehler melden / Meine Tickets' : 'Fehler melden / Ticket eröffnen', 'aria-label': 'Fehler melden', onclick: () => import('./views/tickets.js').then((m) => (opts.partner ? m.openPartnerTickets() : m.openReportDialog({ app: document.querySelector('.win.active .wt')?.textContent ?? '' }))) }, icon('bug'));
+  const helpOn = () => { const it = findItem('help'); return !!it && allowed(it); };
+  const helpBtn = h('button', { class: 'panel-btn', type: 'button', hidden: !helpOn(), title: 'Hilfe & Anleitung', 'aria-label': 'Hilfe', onclick: () => openHelp() }, icon('help'));
   const lockBtn = h('button', { class: 'panel-btn', type: 'button', title: 'Bildschirm sperren', 'aria-label': 'Bildschirm sperren', onclick: () => lockCtl?.lock() }, icon('lockClosed'));
   const settingsBtn = h('button', { class: 'panel-btn', type: 'button', title: 'Einstellungen (Ton, Lautstärke, Hinweise)', 'aria-label': 'Einstellungen', onclick: () => openSettingsDialog() }, icon('settings'));
   const iconResetBtn = h('button', { class: 'panel-btn', type: 'button', hidden: true, title: 'Desktop-Symbole zurücksetzen (eigene Positionen verwerfen)', 'aria-label': 'Desktop-Symbole zurücksetzen', onclick: () => resetIcons() }, icon('refresh'));
@@ -201,7 +204,7 @@ export function showApp(onLogout, opts = {}) {
     h('div', { class: 'panel-left' }, startBtn),
     h('div', { class: 'panel-center' }, clock),
     h('div', { class: 'panel-right' },
-      liveDot, bell, reportBtn, iconResetBtn, settingsBtn, lockBtn,
+      liveDot, bell, helpBtn, reportBtn, iconResetBtn, settingsBtn, lockBtn,
       h('button', { class: 'panel-btn panel-user', type: 'button', title: opts.partner ? state.user.displayName : 'Konto & Sicherheit', onclick: opts.partner ? () => openLevelDialog() : () => openAccountDialog() },
         opts.partner ? icon('users') : (panelAvatar = userAvatar(state.user, 'sm')), h('span', null, state.user.displayName), opts.partner && (levelSlot = h('span', { class: 'panel-level' }, levelBadge(state.user.level)))),
       h('button', { class: 'panel-btn', type: 'button', title: 'Abmelden', 'aria-label': 'Abmelden', onclick: () => { clearLockState(); lockCtl?.destroy(); onLogout(); } }, icon('logout'))));
@@ -300,6 +303,7 @@ export function showApp(onLogout, opts = {}) {
   if (typeof ResizeObserver !== 'undefined') { let t; const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(() => { if (iconsEl.isConnected) renderIcons(); }, 80); }); [board?.el, changelog?.el, problems?.el, online?.el, area].forEach((e) => e && ro.observe(e)); }
   window.addEventListener('mdt:settings', syncIcons);
   window.addEventListener('mdt:config-applied', () => { // Apps wurden (de)aktiviert: offene Fenster schließen, Dock, Startmenü und Symbole aktualisieren
+    helpBtn.hidden = !helpOn();
     if (opts.partner) return syncIcons();
     for (const id of [...wins.keys()]) { const it = findItem(id); if (it && !allowed(it)) close(id); }
     renderTasks(); if (!startMenu.hidden) renderStart(); syncIcons(); if (iconsEl.isConnected) renderIcons();
@@ -454,8 +458,12 @@ export function showApp(onLogout, opts = {}) {
     const subtitle = h('div', { class: 'subtitle' }, item.subtitle ?? '');
     const content = h('main', { class: 'win-content' }, h('div', { class: 'view' }, skeletons(3, 90)));
     w.maxBtn = h('button', { class: 'win-btn max', type: 'button', 'aria-label': 'Maximieren' }, icon('maximize'));
+    const helpId = `${opts.partner ? 'p' : 'm'}-${item.id}`;
+    const winHelp = item.id === 'help' ? null : h('button', { class: 'win-btn', type: 'button', hidden: true, title: 'Hilfe zu dieser App', 'aria-label': 'Hilfe zu dieser App', onclick: () => openHelp(helpId) }, icon('help'));
+    if (winHelp && helpOn()) helpIds().then((ids) => { winHelp.hidden = !ids.has(helpId); });
     const titlebar = h('div', { class: 'win-title' }, icon(item.icon), h('div', { class: 'wt' }, item.label),
       h('div', { class: 'win-btns' },
+        winHelp,
         h('button', { class: 'win-btn', type: 'button', title: 'Minimieren', 'aria-label': 'Minimieren', onclick: () => minimize(id) }, icon('minimize')),
         w.maxBtn,
         h('button', { class: 'win-btn close', type: 'button', title: 'Schließen', 'aria-label': 'Schließen', onclick: () => close(id) }, icon('x'))));
@@ -477,6 +485,13 @@ export function showApp(onLogout, opts = {}) {
     updateMaxIcon(w);
     focus(id);
     load(w, content, actions);
+  }
+
+  /** Öffnet die Hilfe-App, auf Wunsch direkt bei einem Kapitel (Kontext-Hilfe). */
+  function openHelp(articleId) {
+    if (!helpOn()) return;
+    state.helpTarget = articleId ?? null; open('help');
+    window.dispatchEvent(new CustomEvent('mdt:help', { detail: { id: articleId ?? null } }));
   }
 
   async function load(w, content, actions) {
@@ -536,5 +551,6 @@ export function showApp(onLogout, opts = {}) {
     onLogout: () => { clearLockState(); lockCtl?.destroy(); onLogout(); },
   });
   startPresence(() => lockCtl?.isLocked(), opts.partner ? undefined : () => online?.refresh(), { partner: !!opts.partner }); // Online-Liste: diese Seite als online (aktiv/gesperrt) melden – Mitglieder und externe Partner
+  if (helpOn()) { maybeStartTour(() => lockCtl?.isLocked()); subscribe(['help'], () => helpIds(true)); } // Erste-Schritte-Tour beim ersten Anmelden
   if (opts.start) open(opts.start); // nichts öffnet sich von allein – der Benutzer startet seine Apps selbst
 }

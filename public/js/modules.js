@@ -9,6 +9,7 @@ export const NAV = [
     section: 'Übersicht',
     items: [
       { id: 'dashboard', label: 'Dashboard', subtitle: 'Aktuelle Lage auf einen Blick', icon: 'dashboard', path: '/dashboard', win: { w: 1040, h: 660 }, view: () => import('./views/dashboard.js') },
+      { id: 'help', label: 'Hilfe', subtitle: 'Anleitungen passend zu deinen Rechten', icon: 'help', path: '/help', win: { w: 1120, h: 700 }, view: () => import('./views/help.js') },
     ],
   },
   {
@@ -69,6 +70,7 @@ export const PARTNER_NAV = [
       { id: 'market', label: 'Börse', subtitle: 'Angebote, Gesuche und Geschäfte', icon: 'tag', win: { w: 1000, h: 660 }, view: () => import('./views/partner/market.js'), badge: 'marketNew' },
       { id: 'chat', label: 'Chat', subtitle: 'Nachrichten mit dem Team', icon: 'chat', win: { w: 960, h: 620 }, view: () => import('./views/partner/chat.js'), badge: 'chatUnread' },
       { id: 'credit', label: 'Kredit', subtitle: 'Kredite anfragen und Raten verfolgen', icon: 'bank', win: { w: 1000, h: 660 }, view: () => import('./views/partner/credit.js'), badge: 'creditNew' },
+      { id: 'help', label: 'Hilfe', subtitle: 'Anleitungen für deinen Zugang', icon: 'help', win: { w: 1040, h: 660 }, view: () => import('./views/help.js') },
     ],
   },
 ];
