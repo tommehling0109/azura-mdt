@@ -3,13 +3,12 @@ import { button, tabs, empty } from '../ui/kit.js';
 import { api } from '../api.js';
 
 /**
- * Legal und Codex: Reiter Gesetzessammlung, Bußgeldkatalog und Codex (je ein live eingebettetes Google-Dokument; Link in der Konfiguration, ohne Link ein Platzhalter)
+ * Legal: Reiter Gesetzessammlung und Bußgeldkatalog (je ein live eingebettetes Google-Dokument; Link in der Konfiguration, ohne Link ein Platzhalter)
  * sowie die Rechtsfälle (Aktensystem).
  */
 const DOCS = {
   laws: { label: 'Gesetzessammlung', icon: 'book', todo: 'Die Gesetzessammlung wurde noch nicht hinterlegt.' },
   fines: { label: 'Bußgeldkatalog', icon: 'list', todo: 'Der Bußgeldkatalog wurde noch nicht hinterlegt.' },
-  codex: { label: 'Codex', icon: 'scale', todo: 'Der Codex wurde noch nicht hinterlegt.' },
 };
 
 export default async function render(container, ctx) {
@@ -27,7 +26,7 @@ export default async function render(container, ctx) {
       data.canManage && button('Link ändern', { icon: 'edit', onClick: () => ctx.openApp('config') })));
     if (!d) {
       ctx.setActions(data.canManage && button('Link hinterlegen', { icon: 'edit', onClick: () => ctx.openApp('config') }));
-      return mount(host, h('div', { class: 'card card-body' }, empty(`${meta.label} – to be done`, data.canManage ? `${meta.todo} Hinterlege den Link unter Konfiguration → „Legal und Codex“.` : `${meta.todo} Sie folgt in einem späteren Update.`, 'clock')));
+      return mount(host, h('div', { class: 'card card-body' }, empty(`${meta.label} – to be done`, data.canManage ? `${meta.todo} Hinterlege den Link unter Konfiguration → „Legal“.` : `${meta.todo} Sie folgt in einem späteren Update.`, 'clock')));
     }
     mount(host,
       h('iframe', { class: 'legal-frame', src: d.embedUrl, title: meta.label, referrerpolicy: 'no-referrer', allow: 'clipboard-write' }),
@@ -47,9 +46,9 @@ export default async function render(container, ctx) {
 
   ctx.live?.(['legal', 'contacts', 'system'], async () => {
     if (tab === 'cases') return casesApi?.refresh();
-    const before = JSON.stringify([data.laws, data.fines, data.codex]);
+    const before = JSON.stringify([data.laws, data.fines]);
     try { data = await api.get('/api/legal'); } catch { return; }
-    if (JSON.stringify([data.laws, data.fines, data.codex]) !== before) doc(tab); // nur neu laden, wenn sich ein Link geändert hat
+    if (JSON.stringify([data.laws, data.fines]) !== before) doc(tab); // nur neu laden, wenn sich ein Link geändert hat
   });
   show('laws');
 }

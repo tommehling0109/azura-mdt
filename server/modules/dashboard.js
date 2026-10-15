@@ -5,6 +5,7 @@ import { audit } from '../core/audit.js';
 import { bad } from '../core/http.js';
 import { queryAudit } from '../core/audit.js';
 import { all } from '../core/db.js';
+import { codexInfo } from './legal.js';
 
 const STARTED = Date.now();
 
@@ -13,6 +14,7 @@ const STARTED = Date.now();
  * Sichtbarkeit/Reihenfolge lassen sich über die Einstellung `dashboard.widgets` überschreiben.
  */
 const WIDGETS = [
+  { id: 'codex', title: 'Codex', size: 'wide', pinTop: true, data: (ctx) => ({ codex: codexInfo(), canManage: can(ctx.user, 'legal.manage') }) },
   { id: 'welcome', title: 'Willkommen', size: 'wide', data: (ctx) => ({ roles: ctx.user.roles }) },
   { id: 'quick-links', title: 'Schnellzugriff', size: 'wide', data: () => ({}) },
   {
@@ -37,11 +39,13 @@ const WIDGETS = [
 /** Weitere Module melden hier ihre Widgets an. */
 export const registerWidget = (w) => { if (!WIDGETS.some((x) => x.id === w.id)) WIDGETS.push(w); };
 
+// Reihenfolge: gespeicherte Anordnung; Widgets, die dort noch nicht stehen, kommen ans Ende – nur „angeheftete“ (Codex) bleiben vorn
+const rank = (idx, w) => idx.get(w.id) ?? (w.pinTop ? -1 : 999);
 const orderedLayout = () => {
   const layout = getConfig('dashboard.widgets') ?? [];
   const idx = new Map(layout.map((w, i) => [w.id, i]));
   const off = new Set(layout.filter((w) => !w.enabled).map((w) => w.id));
-  return [...WIDGETS].sort((a, b) => (idx.get(a.id) ?? 999) - (idx.get(b.id) ?? 999)).map((w) => ({ id: w.id, title: w.title, size: w.size, permission: w.permission ?? null, enabled: !off.has(w.id) }));
+  return [...WIDGETS].sort((a, b) => rank(idx, a) - rank(idx, b)).map((w) => ({ id: w.id, title: w.title, size: w.size, permission: w.permission ?? null, enabled: !off.has(w.id) }));
 };
 
 const validLayout = (v) => Array.isArray(v) && v.every((w) => w && typeof w.id === 'string' && typeof w.enabled === 'boolean');
@@ -72,7 +76,7 @@ export default {
       const off = new Set(layout.filter((w) => !w.enabled).map((w) => w.id));
       const widgets = WIDGETS
         .filter((w) => !off.has(w.id) && (!w.permission || can(ctx.user, w.permission)))
-        .sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999));
+        .sort((a, b) => rank(order, a) - rank(order, b));
       return { widgets: widgets.map((w) => ({ id: w.id, title: w.title, size: w.size, data: w.data(ctx) })) };
     });
   },

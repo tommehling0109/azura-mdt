@@ -1,6 +1,6 @@
 import { h, mount, timeAgo, fmtDateTime } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
-import { card, roleChip, avatar, button, skeletons, empty, badge, toast } from '../ui/kit.js';
+import { card, roleChip, avatar, button, skeletons, empty, badge, toast, openModal } from '../ui/kit.js';
 import { api } from '../api.js';
 import { state, canAny } from '../state.js';
 import { actionLabel } from './admin/audit.js';
@@ -35,6 +35,24 @@ function stack(segments, total) {
 }
 
 const RENDERERS = {
+  /** Codex des Kartells: gut sichtbar ganz oben – öffnet das (live eingebettete) Dokument; ohne Link ein Platzhalter. */
+  codex: (w) => {
+    const c = w.data.codex;
+    const read = () => {
+      const m = openModal({ title: 'Codex', wide: true,
+        body: h('iframe', { class: 'codex-frame', src: c.embedUrl, title: 'Codex', referrerpolicy: 'no-referrer', allow: 'clipboard-write' }),
+        footer: [h('span', { class: 'grow' }), button('In Google öffnen', { icon: 'link', onClick: () => window.open(c.openUrl, '_blank', 'noopener') }), button('Schließen', { variant: 'primary', onClick: () => m.close() })] });
+    };
+    return h('section', { class: 'card codex-hero' },
+      h('div', { class: 'codex-ic' }, icon('scale')),
+      h('div', { class: 'codex-text' },
+        h('div', { class: 'hero-kicker' }, 'Pflichtlektüre'),
+        h('h2', null, 'Der Codex'),
+        h('p', null, c ? 'Das Gesetz des Kartells. Jeder kennt ihn, jeder hält sich daran.' : 'Der Codex wurde noch nicht hinterlegt. Er folgt in einem späteren Update.')),
+      c ? button('Codex lesen', { variant: 'primary', icon: 'book', onClick: read })
+        : (w.data.canManage ? button('Link hinterlegen', { icon: 'edit', onClick: () => openApp('config') }) : null));
+  },
+
   welcome: (w) => {
     const time = h('span', { class: 'hero-hm' }), sec = h('span', { class: 'hero-s' }), date = h('div', { class: 'hero-date' });
     const el = h('section', { class: 'card hero' },

@@ -450,3 +450,14 @@ html.no-glass .online { backdrop-filter: none; background: var(--bg-2); }
 .tour-card p { margin: 0 0 14px; color: var(--text-2); line-height: 1.55; font-size: 13.5px; }
 .tour-step { font-size: 11px; color: var(--text-3); letter-spacing: 0.08em; }
 .tour-btns { display: flex; gap: 8px; align-items: center; }
+
+/* ── Dashboard: Codex-Banner ── */
+.codex-hero { display: flex; align-items: center; gap: 20px; padding: 22px 26px; border: 1px solid rgba(214, 170, 60, 0.55); background: linear-gradient(120deg, rgba(214, 170, 60, 0.16), rgba(91, 130, 184, 0.10) 60%, transparent); box-shadow: 0 0 0 1px rgba(214, 170, 60, 0.12), 0 8px 30px rgba(0, 0, 0, 0.25); }
+.codex-ic { width: 56px; height: 56px; border-radius: 16px; flex: none; display: grid; place-items: center; background: rgba(214, 170, 60, 0.2); color: #e6c25a; }
+.codex-ic svg { width: 28px; height: 28px; }
+.codex-text { flex: 1; min-width: 0; }
+.codex-text h2 { margin: 2px 0 4px; font-size: 22px; letter-spacing: 0.01em; }
+.codex-text p { margin: 0; color: var(--text-2); }
+.codex-hero .hero-kicker { color: #e6c25a; }
+.codex-frame { width: 100%; height: 68vh; min-height: 320px; border: 0; border-radius: var(--r-md); background: #fff; display: block; }
+@media (max-width: 700px) { .codex-hero { flex-wrap: wrap; } }

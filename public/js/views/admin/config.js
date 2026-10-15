@@ -166,7 +166,7 @@ function resetDialog() {
 const CATS = [
   { id: 'system', title: 'System & Zugang', icon: 'server', groups: ['Allgemein', 'Zugang', 'Mitglieder', 'Apps', 'Updates', 'Programm-Updates', 'Datensicherung', 'Gefahrenzone'] },
   { id: 'look', title: 'Darstellung', icon: 'palette', groups: ['Darstellung', 'Logo & Hintergrund', 'Dashboard', 'Dashboard-Widgets'] },
-  { id: 'modules', title: 'Apps & Module', icon: 'sliders', groups: ['Hilfe', 'Börse', 'Lager', 'Fahrzeuge', 'Karte', 'Kredit', 'Deckel', 'Tickets', 'Legal und Codex', 'Legal', 'Level', 'Level-Stufen'] },
+  { id: 'modules', title: 'Apps & Module', icon: 'sliders', groups: ['Hilfe', 'Börse', 'Lager', 'Fahrzeuge', 'Karte', 'Kredit', 'Deckel', 'Tickets', 'Legal', 'Level', 'Level-Stufen'] },
   { id: 'external', title: 'Externe & Sonderzugänge', icon: 'link', groups: ['Externe Zugänge (neutral)', 'Exekutive-Zugang', 'Exekutive-Zugang (Hack-Link)'] },
 ];
 const OPEN_KEY = 'azura.cfg.open.v1';

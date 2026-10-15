@@ -3,15 +3,16 @@ import { bad } from '../core/http.js';
 import { getConfig, setConfig } from '../core/config.js';
 
 /**
- * Legal und Codex: drei Dokument-Reiter – Gesetzessammlung, Bußgeldkatalog und Codex –, je ein Google-Dokument, das live im MDT eingebettet wird, plus die Rechtsfälle (legalcases.js).
- * Die Links stehen in der Konfiguration (Gruppe „Legal und Codex“, Recht „legal.manage“); ohne Link zeigt der Reiter einen Platzhalter.
+ * Legal: zwei Dokument-Reiter – Gesetzessammlung und Bußgeldkatalog –, je ein Google-Dokument, das live im MDT eingebettet wird, plus die Rechtsfälle (legalcases.js).
+ * Dazu der Link zum Codex, der oben im Dashboard angezeigt wird (siehe modules/dashboard.js).
+ * Die Links stehen in der Konfiguration (Gruppe „Legal“, Recht „legal.manage“); ohne Link zeigt die Stelle einen Platzhalter.
  * Sehen: „legal.view“.
  */
 const KINDS = { document: 'Dokument', spreadsheets: 'Tabelle', presentation: 'Präsentation' };
 const SLOTS = [
   ['laws', 'legal.laws_url', 'Link zur Gesetzessammlung', 'Google-Dokument mit der Gesetzessammlung. Wird im Reiter „Gesetzessammlung“ live eingebettet. Leer lassen = Platzhalter.'],
   ['fines', 'legal.fines_url', 'Link zum Bußgeldkatalog', 'Google-Dokument oder -Tabelle mit dem Bußgeldkatalog. Wird im Reiter „Bußgeldkatalog“ live eingebettet. Leer lassen = Platzhalter.'],
-  ['codex', 'legal.codex_url', 'Link zum Codex', 'Google-Dokument mit dem Codex. Wird im Reiter „Codex“ live eingebettet. Leer lassen = Platzhalter.'],
+  ['codex', 'legal.codex_url', 'Link zum Codex', 'Google-Dokument mit dem Codex. Wird oben im Dashboard für alle angezeigt und dort live eingebettet. Leer lassen = Platzhalter.'],
 ];
 
 /** Erkennt einen Google-Docs-Link; liefert Art und ID oder wirft einen Fehler. */
@@ -31,13 +32,16 @@ const dto = (url) => {
   };
 };
 
+/** Codex für das Dashboard: eingebettetes Dokument oder null (Platzhalter). */
+export const codexInfo = () => dto(getConfig('legal.codex_url'));
+
 export default {
   name: 'legal',
   permissions: [
-    ['legal.view', 'Legal und Codex: Gesetzessammlung, Bußgeldkatalog, Codex und Rechts-Bereiche ansehen'],
-    ['legal.manage', 'Legal und Codex: Links zu Gesetzessammlung, Bußgeldkatalog und Codex in der Konfiguration hinterlegen und ändern'],
+    ['legal.view', 'Legal: Gesetzessammlung, Bußgeldkatalog und Rechts-Bereiche ansehen'],
+    ['legal.manage', 'Legal: Links zu Gesetzessammlung, Bußgeldkatalog und Codex in der Konfiguration hinterlegen und ändern'],
   ],
-  config: SLOTS.map(([, key, label, help]) => ({ key, group: 'Legal und Codex', label, help, type: 'string', default: '', max: 500, allowEmpty: true, perm: 'legal.manage', check: (v) => { parseGoogle(v); } })),
+  config: SLOTS.map(([, key, label, help]) => ({ key, group: 'Legal', label, help, type: 'string', default: '', max: 500, allowEmpty: true, perm: 'legal.manage', check: (v) => { parseGoogle(v); } })),
   init() {
     // Einmalig: bestehende Rechte vergeben …
     if (!get("SELECT 1 x FROM sequences WHERE name = 'legal_seeded'")) {
@@ -53,7 +57,7 @@ export default {
   },
   routes(r) {
     r.get('/api/legal', { perm: 'legal.view' }, (ctx) => ({
-      laws: dto(getConfig('legal.laws_url')), fines: dto(getConfig('legal.fines_url')), codex: dto(getConfig('legal.codex_url')),
+      laws: dto(getConfig('legal.laws_url')), fines: dto(getConfig('legal.fines_url')),
       canManage: ctx.user.perms.has('legal.manage'), canCases: ctx.user.perms.has('legal.cases.view'),
     }));
   },

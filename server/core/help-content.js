@@ -97,7 +97,7 @@ Lade die Seite neu (Strg + F5). Hilft das nicht, melde den Fehler als **Ticket**
   // ───────────── Mitarbeiter · Apps ─────────────
   { id: 'm-dashboard', aud: 'm', group: 'Apps', title: 'Dashboard', icon: 'dashboard', app: 'dashboard', summary: 'Die aktuelle Lage auf einen Blick.', sections: [
     S('Was zeigt das Dashboard?', `
-Das Dashboard fasst die wichtigsten Kennzahlen und Neuigkeiten zusammen. Welche Kacheln du siehst, hängt davon ab, auf welche Bereiche du Zugriff hast. Ein Klick auf eine Kachel führt dich in die zugehörige App.`),
+Ganz oben steht der **Codex** des Kartells – mit „Codex lesen“ öffnest du ihn direkt im Panel. Darunter fasst das Dashboard die wichtigsten Kennzahlen und Neuigkeiten zusammen. Welche Kacheln du siehst, hängt davon ab, auf welche Bereiche du Zugriff hast. Ein Klick auf eine Kachel führt dich in die zugehörige App.`),
   ] },
   { id: 'm-market', aud: 'm', group: 'Apps', title: 'Börse', icon: 'tag', app: 'market', perm: ['market.view'], summary: 'Ankauf und Verkauf mit externen Partnern.', sections: [
     S('Überblick', `
@@ -187,9 +187,9 @@ Hier legst du Firmen an, änderst Daten und verwaltest die Zugänge der Firmen.`
     S('Tickets bearbeiten', `
 Mit dem Verwaltungsrecht weist du Tickets zu, setzt den Status und antwortest.`, ['tickets.manage']),
   ] },
-  { id: 'm-legal', aud: 'm', group: 'Apps', title: 'Legal und Codex', icon: 'scale', app: 'legal', perm: ['legal.view'], summary: 'Gesetzessammlung, Bußgeldkatalog, Codex und Rechtsfälle.', sections: [
-    S('Gesetzessammlung, Bußgeldkatalog und Codex', `
-Jeder dieser drei Reiter zeigt ein hinterlegtes Google-Dokument live im Panel. Mit „Neu laden“ holst du den neuesten Stand, mit „In Google öffnen“ öffnest du das Original. Ist noch kein Dokument hinterlegt, siehst du einen Platzhalter.`),
+  { id: 'm-legal', aud: 'm', group: 'Apps', title: 'Legal', icon: 'scale', app: 'legal', perm: ['legal.view'], summary: 'Gesetzessammlung, Bußgeldkatalog und Rechtsfälle.', sections: [
+    S('Gesetzessammlung und Bußgeldkatalog', `
+Jeder dieser beiden Reiter zeigt ein hinterlegtes Google-Dokument live im Panel. Mit „Neu laden“ holst du den neuesten Stand, mit „In Google öffnen“ öffnest du das Original. Ist noch kein Dokument hinterlegt, siehst du einen Platzhalter.`),
     S('Rechtsfälle (Aktensystem)', `
 Rechtsfälle werden als Akten geführt: Beteiligte, Verlauf, Dokumente und Abrechnung. Wähle einen Fall aus der Liste, um die Akte zu öffnen.`, ['legal.cases.view']),
     S('Akten bearbeiten', `

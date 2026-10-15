@@ -90,8 +90,8 @@
 
 | Recht | Bedeutung |
 |---|---|
-| `legal.manage` | Legal und Codex: Links zu Gesetzessammlung, Bußgeldkatalog und Codex in der Konfiguration hinterlegen und ändern |
-| `legal.view` | Legal und Codex: Gesetzessammlung, Bußgeldkatalog, Codex und Rechts-Bereiche ansehen |
+| `legal.manage` | Legal: Links zu Gesetzessammlung, Bußgeldkatalog und Codex in der Konfiguration hinterlegen und ändern |
+| `legal.view` | Legal: Gesetzessammlung, Bußgeldkatalog und Rechts-Bereiche ansehen |
 
 ### legalcases
 

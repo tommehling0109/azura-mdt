@@ -1699,7 +1699,7 @@ try {
   // ══ Legal ══
   { assert.equal((await mod.call('GET', '/api/legal')).status, 403); assert.equal((await new Client().call('GET', '/api/legal')).status, 401); assert.equal((await tp.call('GET', '/api/legal')).status, 401);
     await setPerms(['legal.view']); r = await mod.call('GET', '/api/legal'); assert.equal(r.status, 200); assert.equal(r.canManage, false);
-    assert.equal(r.fines, null); assert.equal(r.codex, null); assert.equal(r.laws, null); // ohne Link: Platzhalter (Neuinstallation)
+    assert.equal(r.fines, null); assert.equal(r.laws, null); assert.equal(r.codex, undefined); // Codex gehört ins Dashboard, nicht in die Legal-App // ohne Link: Platzhalter (Neuinstallation)
     const G = 'https://docs.google.com/document/d/abcdefghijklmnopqrstuvwxyz/edit?tab=t.0';
     const cfgP = new Set((await mod.call('GET', '/api/auth/me')).user.permissions); const cfgEdit = cfgP.has('config.edit'), cfgView = cfgP.has('config.view'); // die Rolle bringt evtl. eigene Konfigurationsrechte mit
     if (!cfgEdit && !cfgP.has('legal.manage')) assert.equal((await mod.call('PUT', '/api/config', { values: { 'legal.laws_url': G } })).status, 403); // ohne legal.manage
@@ -1709,12 +1709,14 @@ try {
     for (const url of ['http://docs.google.com/document/d/abcdefghijklmnopqrstuvwxyz/edit', 'https://evil.example/document/d/abcdefghijklmnopqrstuvwxyz', 'https://docs.google.com.evil.example/document/d/abcdefghijklmnopqrstuvwxyz', 'https://docs.google.com/forms/d/abcdefghijklmnopqrstuvwxyz', 'kein link']) assert.equal((await mod.call('PUT', '/api/config', { values: { 'legal.fines_url': url } })).status, 400, url);
     if (!cfgEdit) assert.equal((await mod.call('PUT', '/api/config', { values: { 'system.name': 'Hack' } })).status, 403); // andere Einstellungen bleiben tabu
     r = await mod.call('PUT', '/api/config', { values: { 'legal.laws_url': G, 'legal.fines_url': 'https://docs.google.com/spreadsheets/d/abcdefghijklmnopqrstuvwxyz/edit#gid=0' } }); assert.equal(r.status, 200);
-    r = await mod.call('GET', '/api/legal'); assert.ok(r.laws.embedUrl.startsWith('https://docs.google.com/document/d/') && r.laws.embedUrl.endsWith('/preview')); assert.equal(r.fines.kind, 'spreadsheets'); assert.equal(r.codex, null); assert.equal(r.canManage, true);
-    r = await mod.call('PUT', '/api/config', { values: { 'legal.codex_url': 'https://docs.google.com/document/d/zyxwvutsrqponmlkjihgfedcba/edit' } }); assert.equal(r.status, 200); assert.ok((await mod.call('GET', '/api/legal')).codex);
+    r = await mod.call('GET', '/api/legal'); assert.ok(r.laws.embedUrl.startsWith('https://docs.google.com/document/d/') && r.laws.embedUrl.endsWith('/preview')); assert.equal(r.fines.kind, 'spreadsheets'); assert.equal(r.canManage, true);
+    r = await mod.call('PUT', '/api/config', { values: { 'legal.codex_url': 'https://docs.google.com/document/d/zyxwvutsrqponmlkjihgfedcba/edit' } }); assert.equal(r.status, 200);
+    r = await mod.call('GET', '/api/dashboard'); assert.equal(r.widgets[0].id, 'codex'); assert.ok(r.widgets[0].data.codex.embedUrl.endsWith('/preview')); assert.equal(r.widgets[0].data.canManage, true); // Codex-Banner ganz oben im Dashboard
     assert.equal((await mod.call('PUT', '/api/config', { values: { 'legal.fines_url': '' } })).status, 200); assert.equal((await mod.call('GET', '/api/legal')).fines, null); // leeren → wieder Platzhalter
     assert.equal((await mod.call('POST', '/api/legal/docs', { title: 'X', url: G })).status, 404); // alte Dokumentenliste gibt es nicht mehr
     for (const k of ['legal.laws_url', 'legal.codex_url']) await admin.call('PUT', '/api/config', { values: { [k]: '' } }); await setPerms([]);
-    ok('Legal und Codex: Links für Gesetzessammlung/Bußgeldkatalog/Codex in der Konfiguration (nur Google-Docs-Links, Recht legal.manage), ohne Link Platzhalter'); }
+    assert.equal((await admin.call('GET', '/api/dashboard')).widgets[0].data.codex, null); // ohne Link: Platzhalter
+    ok('Legal: Links für Gesetzessammlung/Bußgeldkatalog + Codex (Dashboard, ganz oben) in der Konfiguration (nur Google-Docs-Links, Recht legal.manage), ohne Link Platzhalter'); }
 
   // ══ Ticker (Laufband) ══
   { assert.equal((await new Client().call('GET', '/api/ticker')).status, 401); assert.equal((await new Client().call('GET', '/api/p/ticker')).status, 401); assert.equal((await mod.call('GET', '/api/p/ticker')).status, 401); // Mitglieder nutzen die interne, Partner die externe Schnittstelle
