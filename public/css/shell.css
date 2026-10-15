@@ -406,3 +406,5 @@ html.no-glass .online { backdrop-filter: none; background: var(--bg-2); }
 .ol-row.locked .ol-rank { margin-left: 0; }
 .ol-empty { padding: 6px 2px; color: var(--text-3); font-size: 12.5px; }
 .right-col .online, .right-col .problems { flex-shrink: 0; }
+.ol-ext { flex: none; font-size: 10.5px; padding: 1px 7px; border-radius: 99px; background: rgba(91, 141, 239, 0.18); color: #9db9f5; }
+.ol-row .lvl-badge { font-size: 10.5px; padding: 0 6px 0 4px; }

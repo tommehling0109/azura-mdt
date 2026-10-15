@@ -1614,6 +1614,15 @@ try {
     await mod.call('POST', '/api/presence', { tabId: 'tab-mod-2', locked: true }); r = await admin.call('GET', '/api/presence'); assert.equal(r.members.find((x) => x.id === meM.id).state, 'locked'); assert.ok(r.members.findIndex((x) => x.state === 'active') < r.members.findIndex((x) => x.state === 'locked'));
     // Seite geschlossen
     await mod.call('POST', '/api/presence/leave', { tabId: 'tab-mod-1' }); assert.equal((await admin.call('GET', '/api/presence')).members.some((x) => x.id === meM.id), true); await mod.call('POST', '/api/presence/leave', { tabId: 'tab-mod-2' }); assert.equal((await admin.call('GET', '/api/presence')).members.some((x) => x.id === meM.id), false);
+    // Externe Partner: erscheinen für Mitglieder (nur Zugangsnummer), sehen die Liste selbst aber nie
+    { const { clearAttempts } = await import('../server/core/auth.js'); for (const ip of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) clearAttempts(`pl|${ip}`);
+      const pp = await admin.call('POST', '/api/partners', { type: 'buyer', name: 'Online Partner', contactName: 'X', apps: ['market'] }); const pc = new Client(); assert.equal((await pc.call('POST', `/api/p/${pp.partner.linkPath.split('/').pop()}/login`, { code: pp.code })).status, 200);
+      assert.equal((await new Client().call('POST', '/api/p/presence', { tabId: 'partner-tab-1' })).status, 401); assert.equal((await pc.call('POST', '/api/p/presence', { tabId: 'x' })).ok, false);
+      assert.equal((await pc.call('POST', '/api/p/presence', { tabId: 'partner-tab-1', locked: false })).ok, true);
+      r = await admin.call('GET', '/api/presence'); const pm = r.members.find((x) => x.kind === 'partner' && x.id === pp.partner.id); assert.ok(pm); assert.equal(pm.label, pp.partner.number); assert.equal(pm.state, 'active'); assert.equal(pm.isMe, false); assert.equal(JSON.stringify(r).includes('Online Partner'), false); // nur die Zugangsnummer, kein Name
+      assert.equal((await pc.call('GET', '/api/presence')).status, 401); // Partner sehen die Liste nicht
+      await pc.call('POST', '/api/p/presence', { tabId: 'partner-tab-1', locked: true }); assert.equal((await admin.call('GET', '/api/presence')).members.find((x) => x.id === pp.partner.id && x.kind === 'partner').state, 'locked');
+      await pc.call('POST', '/api/p/presence/leave', { tabId: 'partner-tab-1' }); assert.equal((await admin.call('GET', '/api/presence')).members.some((x) => x.kind === 'partner' && x.id === pp.partner.id), false); }
     // Abschalten
     assert.equal((await admin.call('PUT', '/api/config', { values: { 'presence.enabled': false } })).status, 200); r = await admin.call('GET', '/api/presence'); assert.equal(r.enabled, false); assert.equal(r.members.length, 0); await admin.call('PUT', '/api/config', { values: { 'presence.enabled': true } });
     await admin.call('POST', '/api/presence/leave', { tabId: 'tab-admin-1' });
