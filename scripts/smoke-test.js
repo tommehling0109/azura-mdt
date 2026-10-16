@@ -1628,6 +1628,58 @@ try {
     await admin.call('POST', '/api/presence/leave', { tabId: 'tab-admin-1' });
     ok('Online-Liste: nur Mitglieder, Personalnummer + Rang, gesperrt/aktiv, Herzschlag/Abmelden, abschaltbar'); }
 
+  // ══ Termine & Aufträge ══
+  { const { runScheduleReminders } = await import('../server/modules/schedule.js');
+    assert.equal((await new Client().call('GET', '/api/schedule/options')).status, 401);
+    const meA = (await admin.call('GET', '/api/auth/me')).user, meM = (await mod.call('GET', '/api/auth/me')).user; const hasP = async (p) => new Set((await mod.call('GET', '/api/auth/me')).user.permissions).has(p);
+    await setPerms([]); if (!(await hasP('schedule.view'))) assert.equal((await mod.call('GET', '/api/schedule/options')).status, 403);
+    await setPerms(['schedule.view']);
+    r = await mod.call('GET', '/api/schedule/options'); assert.equal(r.status, 200); assert.ok(r.kinds.length >= 7); assert.ok(r.reminders.length >= 6); assert.equal(r.members.find((x) => x.id === meM.id).label, `${meM.memberNumber} (Du)`); assert.equal(r.members.find((x) => x.id === meA.id).label, meA.memberNumber); assert.equal(JSON.stringify(r).includes(meA.displayName ?? '§§'), false); const kind = r.kinds[0].id;
+    const D = (min) => new Date(Date.now() + min * 60_000).toISOString(); const startA = D(60 * 24 * 3), base = { title: 'Übergabe am Hafen', kindId: kind, startsAt: startA, endsAt: D(60 * 24 * 3 + 90), location: 'Pier 4', description: 'Ware bringen', participants: [meM.id], reminders: [0, 15] };
+    // Termin anlegen: Prüfungen
+    for (const bad of [{ title: 'x' }, { startsAt: 'morgen' }, { endsAt: D(60 * 24 * 3 - 30) }, { reminders: [7] }, { reminders: [0, 5, 15, 30, 60] }, { participants: [99999] }, { kindId: 99999 }, { visibility: 'geheim' }]) assert.equal((await admin.call('POST', '/api/schedule/events', { ...base, ...bad })).status, 400, JSON.stringify(bad));
+    if (!(await hasP('schedule.create'))) assert.equal((await mod.call('POST', '/api/schedule/events', base)).status, 403);
+    r = await admin.call('POST', '/api/schedule/events', base); assert.equal(r.status, 201); const ev = r.event; assert.deepEqual(ev.reminders, [0, 15]); assert.equal(ev.participants.length, 1); assert.equal(ev.participants[0].label, meM.memberNumber); assert.equal(ev.participants[0].rsvp, 'pending'); assert.equal(ev.kind.id, kind);
+    // Sichtbarkeit + Zu-/Absage
+    const rng = `from=${encodeURIComponent(D(-60))}&to=${encodeURIComponent(D(60 * 24 * 10))}`;
+    r = await mod.call('GET', `/api/schedule/events?${rng}`); const mine = r.events.find((x) => x.id === ev.id); assert.ok(mine); assert.equal(mine.rsvp, 'pending'); assert.equal(mine.canEdit, await hasP('schedule.manage')); assert.equal(JSON.stringify(r).includes(meA.displayName ?? '§§'), false);
+    if (!(await hasP('schedule.manage')) && !(await hasP('schedule.create'))) { assert.equal((await mod.call('PATCH', `/api/schedule/events/${ev.id}`, { title: 'Hack' })).status, 403); assert.equal((await mod.call('DELETE', `/api/schedule/events/${ev.id}`)).status, 403); }
+    assert.equal((await mod.call('POST', `/api/schedule/events/${ev.id}/rsvp`, { response: 'vielleicht' })).status, 400); assert.equal((await mod.call('POST', `/api/schedule/events/${ev.id}/rsvp`, { response: 'yes' })).status, 200);
+    assert.equal((await admin.call('GET', `/api/schedule/events/${ev.id}`)).event.participants[0].rsvp, 'yes'); assert.equal((await admin.call('POST', `/api/schedule/events/${ev.id}/rsvp`, { response: 'yes' })).status, 403); // nur Beteiligte
+    assert.ok((await admin.call('GET', '/api/notifications')).notifications.some((n) => /Zugesagt/.test(n.title))); // Ersteller wird informiert
+    // „Nur Beteiligte“-Termin: Außenstehende sehen ihn nicht
+    r = await admin.call('POST', '/api/schedule/events', { ...base, title: 'Vertraulich', visibility: 'invited', participants: [], reminders: [] }); const priv = r.event.id;
+    if (!(await hasP('schedule.manage'))) { assert.equal((await mod.call('GET', `/api/schedule/events/${priv}`)).status, 404); assert.equal((await mod.call('GET', `/api/schedule/events?${rng}`)).events.some((x) => x.id === priv), false); await setPerms(['schedule.view', 'schedule.manage']); assert.ok((await mod.call('GET', `/api/schedule/events/${priv}`)).event); await setPerms(['schedule.view']); }
+    // verschieben / absagen → Beteiligte werden benachrichtigt
+    assert.equal((await admin.call('PATCH', `/api/schedule/events/${ev.id}`, { startsAt: D(60 * 24 * 4), endsAt: D(60 * 24 * 4 + 90) })).status, 200); assert.ok((await mod.call('GET', '/api/notifications')).notifications.some((n) => n.title === 'Termin verschoben'));
+    assert.equal((await admin.call('PATCH', `/api/schedule/events/${ev.id}`, { status: 'cancelled' })).event.status, 'cancelled'); assert.ok((await mod.call('GET', '/api/notifications')).notifications.some((n) => n.title === 'Termin abgesagt'));
+    // Erinnerungen: einmal je Empfänger und Zeitpunkt
+    r = await admin.call('POST', '/api/schedule/events', { ...base, title: 'Gleich', startsAt: D(10), endsAt: null, reminders: [0, 15] }); const soon = r.event.id;
+    const sent1 = runScheduleReminders(); assert.ok(sent1 >= 2, `Erinnerungen ${sent1}`); assert.equal(runScheduleReminders(), 0); assert.ok((await mod.call('GET', '/api/notifications')).notifications.some((n) => /Termin in 15 Minuten: Gleich/.test(n.title)));
+    // Aufträge
+    if (!(await hasP('schedule.tasks.assign'))) assert.equal((await mod.call('POST', '/api/schedule/tasks', { title: 'Nicht erlaubt', assignees: [meA.id] })).status, 403);
+    for (const bad of [{ title: 'x' }, { assignees: [] }, { assignees: [99999] }, { priority: 'wichtig' }, { dueAt: 'bald' }, { eventId: 99999 }]) assert.equal((await admin.call('POST', '/api/schedule/tasks', { title: 'Farmen gehen', assignees: [meM.id], ...bad })).status, 400, JSON.stringify(bad));
+    r = await admin.call('POST', '/api/schedule/tasks', { title: 'Farmen gehen', description: '200 Stück Weizen', priority: 'high', dueAt: D(60 * 24 * 2), assignees: [meM.id], eventId: soon }); assert.equal(r.status, 201); const tk = r.task; assert.match(tk.number, /^AUF-\d{4}$/); assert.equal(tk.status, 'open'); assert.equal(tk.event.id, soon);
+    assert.ok((await mod.call('GET', '/api/notifications')).notifications.some((n) => /Neuer Auftrag/.test(n.title)));
+    r = await mod.call('GET', '/api/schedule/tasks?scope=mine'); assert.ok(r.tasks.some((x) => x.id === tk.id)); assert.equal(r.tasks.find((x) => x.id === tk.id).myState, 'open'); assert.equal((await mod.call('GET', '/api/schedule/tasks?scope=all')).status, (await hasP('schedule.manage')) ? 200 : 403);
+    assert.equal((await admin.call('GET', `/api/schedule/events?${rng}`)).tasks.some((x) => x.id === tk.id), true); // Fristen erscheinen im Kalender
+    assert.equal((await mod.call('POST', `/api/schedule/tasks/${tk.id}/state`, { state: 'egal' })).status, 400); assert.equal((await admin.call('POST', `/api/schedule/tasks/${tk.id}/state`, { state: 'done' })).status, 403); // nur Beauftragte
+    r = await mod.call('POST', `/api/schedule/tasks/${tk.id}/state`, { state: 'accepted' }); assert.equal(r.task.status, 'in_progress');
+    r = await mod.call('POST', `/api/schedule/tasks/${tk.id}/state`, { state: 'done', note: '200 abgegeben' }); assert.equal(r.task.status, 'done'); assert.ok(r.task.doneAt); assert.equal(r.task.assignees[0].note, '200 abgegeben');
+    assert.ok((await admin.call('GET', '/api/notifications')).notifications.some((n) => /Erledigt: Farmen gehen/.test(n.title)));
+    if (!(await hasP('schedule.manage')) && !(await hasP('schedule.tasks.assign'))) assert.equal((await mod.call('PATCH', `/api/schedule/tasks/${tk.id}`, { title: 'Hack' })).status, 403);
+    r = await admin.call('PATCH', `/api/schedule/tasks/${tk.id}`, { status: 'reopen' }); assert.equal(r.task.status, 'done'); // alle Beauftragten erledigt → bleibt erledigt
+    r = await admin.call('POST', '/api/schedule/tasks', { title: 'Zwei Personen', assignees: [meM.id, meA.id], dueAt: D(-60) }); const t2 = r.task.id; assert.equal(r.task.overdue, true);
+    r = await mod.call('POST', `/api/schedule/tasks/${t2}/state`, { state: 'done' }); assert.equal(r.task.status, 'in_progress'); r = await admin.call('POST', `/api/schedule/tasks/${t2}/state`, { state: 'declined', note: 'keine Zeit' }); assert.equal(r.task.status, 'done'); // Abgelehnte zählen nicht
+    r = await admin.call('POST', '/api/schedule/tasks', { title: 'Überfällig', assignees: [meM.id], dueAt: D(-30) }); const t3 = r.task.id; const s2 = runScheduleReminders(); assert.ok(s2 >= 2, `Auftragserinnerungen ${s2}`); assert.equal(runScheduleReminders(), 0); assert.ok((await mod.call('GET', '/api/notifications')).notifications.some((n) => /Auftrag überfällig: Überfällig/.test(n.title)));
+    assert.equal((await admin.call('PATCH', `/api/schedule/tasks/${t3}`, { status: 'cancelled' })).task.status, 'cancelled'); assert.equal((await mod.call('POST', `/api/schedule/tasks/${t3}/state`, { state: 'done' })).status, 400);
+    // Übersicht, Dashboard, Audit, Löschen
+    r = await mod.call('GET', '/api/schedule/summary'); assert.ok(r.openTasks >= 0); assert.ok(Array.isArray(r.next)); r = await mod.call('GET', '/api/dashboard'); assert.ok(r.widgets.some((w) => w.id === 'schedule' && typeof w.data.openTasks === 'number'));
+    r = await admin.call('GET', '/api/audit?module=schedule&limit=100'); assert.ok(r.rows.some((x) => x.action === 'schedule.task_created') && r.rows.some((x) => x.action === 'schedule.event_created'));
+    for (const id of [t2, t3, tk.id]) assert.equal((await admin.call('DELETE', `/api/schedule/tasks/${id}`)).status, 200); for (const id of [ev.id, priv, soon]) assert.equal((await admin.call('DELETE', `/api/schedule/events/${id}`)).status, 200);
+    assert.equal((await admin.call('GET', `/api/schedule/events/${ev.id}`)).status, 404); await setPerms([]);
+    ok('Termine & Aufträge: Termine mit Art/Beteiligten/Zu-/Absage/Sichtbarkeit, Erinnerungen einmalig, Aufträge mit Beauftragten und Status, Fristen im Kalender, nur Personalnummern, Rechte'); }
+
   // ══ Dock-Gruppen ══
   { const { NAV, DOCK_GROUPS, allItems } = await import('../public/js/modules.js'); const ids = new Set(allItems(NAV).map((i) => i.id)), seen = new Set();
     for (const g of DOCK_GROUPS) { assert.ok(g.label && g.items.length >= 2, g.id); for (const id of g.items) { assert.ok(ids.has(id), `Dock-Gruppe ${g.id}: unbekannte App ${id}`); assert.equal(seen.has(id), false, `App ${id} in zwei Gruppen`); seen.add(id); } }

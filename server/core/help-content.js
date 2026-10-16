@@ -180,6 +180,36 @@ Du erstellst Abrechnungen für einen Zeitraum und markierst Zahlungen als erhalt
     S('Firmen verwalten', `
 Hier legst du Firmen an, änderst Daten und verwaltest die Zugänge der Firmen.`, ['tab.manage_companies']),
   ] },
+  { id: 'm-schedule', aud: 'm', group: 'Apps', title: 'Termine & Aufträge', icon: 'calendar', app: 'schedule', perm: ['schedule.view'], summary: 'Kalender mit Terminen und Aufträge, die an Mitglieder verteilt werden.', sections: [
+    S('Kalender', `
+Der Kalender zeigt alle Termine im Monat oder als Agenda (die nächsten 45 Tage). Ein Klick auf einen Tag zeigt, was dort ansteht; ein Klick auf einen Termin öffnet die Details. Fristen von Aufträgen erscheinen mit einer Flagge im Kalender.`),
+    S('Auf Termine zu- oder absagen', `
+Bist du bei einem Termin beteiligt, wirst du benachrichtigt und kannst im Termin **Zusagen**, **Vielleicht** oder **Absagen** wählen. Wer den Termin angelegt hat, bekommt deine Antwort mitgeteilt.
+
+Hinweis: Fremde Mitglieder erscheinen überall nur mit Personalnummer, nie mit Namen.`),
+    S('Erinnerungen', `
+Bei jedem Termin lassen sich bis zu vier Erinnerungen einstellen (zum Termin, 5 Minuten bis 2 Tage vorher). Erinnert werden der Ersteller und alle Beteiligten, die nicht abgesagt haben – als Benachrichtigung. Bei Aufträgen erinnert das Panel kurz vor der Frist und bei Überfälligkeit.`),
+    S('Meine Aufträge', `
+Unter **Aufträge** siehst du, was dir zugewiesen wurde. Du meldest selbst, wie es steht:
+
+1. **Annehmen**, wenn du den Auftrag übernimmst.
+2. **Erledigt** melden, wenn er fertig ist – optional mit einer Notiz (z. B. was abgegeben wurde).
+3. **Ablehnen**, wenn du ihn nicht übernehmen kannst. Der Auftraggeber wird informiert.
+
+Tipp: Ein Zähler am App-Symbol zeigt, wie viele Aufträge für dich offen sind.`),
+    S('Termine anlegen', `
+1. Wähle „Neuer Termin“ (oder klicke auf einen Tag und dann „Termin“).
+2. Trage Titel, Art, Beginn, Ort und Beschreibung ein.
+3. Wähle Beteiligte und Erinnerungen. „Nur Beteiligte“ blendet den Termin für alle anderen aus.`, ['schedule.create']),
+    S('Aufträge vergeben', `
+1. Wähle „Neuer Auftrag“.
+2. Beschreibe, was beauftragt wird, setze Frist und Priorität und wähle die Beauftragten.
+3. Optional ordnest du den Auftrag einem Termin zu. Die Beauftragten werden sofort benachrichtigt.
+
+Unter „Von mir vergeben“ siehst du den Stand aller Aufträge, die du verteilt hast. Du kannst sie ändern, zurückziehen oder löschen.`, ['schedule.tasks.assign']),
+    S('Alles verwalten', `
+Mit diesem Recht siehst du alle Termine (auch „Nur Beteiligte“) und alle Aufträge und darfst sie ändern oder löschen.`, ['schedule.manage']),
+  ] },
   { id: 'm-tickets', aud: 'm', group: 'Apps', title: 'Tickets', icon: 'bug', app: 'tickets', summary: 'Fehler melden und verfolgen.', sections: [
     S('Ticket erstellen', `
 1. Öffne **Tickets** und wähle „Neues Ticket“.

@@ -35,6 +35,18 @@ function stack(segments, total) {
 }
 
 const RENDERERS = {
+  /** Termine & Aufträge: nächste Termine und eigene offene Aufträge. */
+  schedule: (w) => {
+    const d = w.data, go = () => openApp('schedule');
+    const when = (e) => (e.allDay ? new Date(e.startsAt).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' }) : new Date(e.startsAt).toLocaleString('de-DE', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
+    const body = h('div', { class: 'sch-widget' },
+      h('div', { class: 'sch-sub' }, 'Nächste Termine'),
+      d.next.length ? d.next.map((e) => h('div', { class: 'list-row clickable', onclick: go }, h('i', { class: 'sch-dot', style: { background: e.kind?.color ?? 'var(--accent)' } }), h('div', { class: 'grow' }, h('div', { class: 't' }, e.title), h('div', { class: 's' }, when(e))), e.rsvp === 'pending' && badge('Zusage offen', 'b-warn'))) : h('div', { class: 'muted', style: { padding: '4px 0 10px' } }, 'Keine anstehenden Termine.'),
+      h('div', { class: 'sch-sub', style: { marginTop: '10px' } }, 'Meine Aufträge', d.overdue > 0 && badge(`${d.overdue} überfällig`, 'b-err', false)),
+      d.tasks.length ? d.tasks.map((t) => h('div', { class: 'list-row clickable', onclick: go }, icon('flag'), h('div', { class: 'grow' }, h('div', { class: 't' }, t.title), h('div', { class: 's' }, t.dueAt ? (t.overdue ? 'überfällig – ' : 'fällig ') + new Date(t.dueAt).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'ohne Frist')), badge(t.priorityLabel, t.priority === 'urgent' ? 'b-err' : t.priority === 'high' ? 'b-warn' : 'b-info'))) : h('div', { class: 'muted', style: { padding: '4px 0' } }, 'Keine offenen Aufträge.'));
+    return card(w.title, body, { icon: 'calendar' });
+  },
+
   /** Codex des Kartells: gut sichtbar ganz oben – öffnet das (live eingebettete) Dokument; ohne Link ein Platzhalter. */
   codex: (w) => {
     const c = w.data.codex;

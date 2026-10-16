@@ -9,6 +9,7 @@ export const NAV = [
     section: 'Übersicht',
     items: [
       { id: 'dashboard', label: 'Dashboard', subtitle: 'Aktuelle Lage auf einen Blick', icon: 'dashboard', path: '/dashboard', win: { w: 1040, h: 660 }, view: () => import('./views/dashboard.js') },
+      { id: 'schedule', label: 'Termine & Aufträge', subtitle: 'Kalender, Termine und Aufträge für Mitglieder', icon: 'calendar', path: '/schedule', perm: ['schedule.view'], win: { w: 1180, h: 720 }, view: () => import('./views/schedule.js'), badge: 'scheduleOpen' },
       { id: 'help', label: 'Hilfe', subtitle: 'Anleitungen passend zu deinen Rechten', icon: 'help', path: '/help', win: { w: 1120, h: 700 }, view: () => import('./views/help.js') },
     ],
   },

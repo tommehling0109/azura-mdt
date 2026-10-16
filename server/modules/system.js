@@ -55,7 +55,7 @@ function validDockLayout(v) {
 
 export const DISABLEABLE_APPS = {
   dashboard: ['dashboard'], market: ['market'], map: ['map'], warehouse: ['warehouse', 'warehouses'], vehicles: ['vehicles'], finance: ['finance'], stats: ['stats'], credit: ['credit'],
-  tab: ['tab'], tickets: ['tickets'], legal: ['legal'], contacts: ['contacts'], chat: ['chat'], help: ['help'],
+  tab: ['tab'], tickets: ['tickets'], legal: ['legal'], contacts: ['contacts'], chat: ['chat'], help: ['help'], schedule: ['schedule'],
 };
 export default {
   name: 'system',

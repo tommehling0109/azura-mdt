@@ -11,7 +11,7 @@
 - Namen von Mitgliedern sieht man nur bei sich selbst, als Superadmin und bei Mitgliedern **unterhalb** der eigenen Hierarchie (übergeordneter Rang / Vorgesetzten-Kette); sonst nur die Personalnummer.
 - Statistik: `stats.view` öffnet die App, jeder Abschnitt erscheint zusätzlich nur mit dem Ansichtsrecht des jeweiligen Bereichs.
 
-## Rechte (89)
+## Rechte (93)
 
 ### audit
 
@@ -170,6 +170,15 @@
 |---|---|
 | `roles.manage` | Rollen erstellen, bearbeiten und löschen |
 | `roles.view` | Rollen ansehen |
+
+### schedule
+
+| Recht | Bedeutung |
+|---|---|
+| `schedule.create` | Termine & Aufträge: Termine anlegen und eigene Termine ändern |
+| `schedule.manage` | Termine & Aufträge: alle Termine und Aufträge sehen, ändern und löschen |
+| `schedule.tasks.assign` | Termine & Aufträge: Aufträge an Mitglieder vergeben und eigene Aufträge ändern |
+| `schedule.view` | Termine & Aufträge: Kalender sehen, auf Termine zu-/absagen, eigene Aufträge bearbeiten |
 
 ### stats
 
@@ -430,6 +439,20 @@
 | POST | `/api/roles` | `roles.manage` |
 | PATCH | `/api/roles/:id` | `roles.manage` |
 | DELETE | `/api/roles/:id` | `roles.manage` |
+| GET | `/api/schedule/options` | `schedule.view` |
+| GET | `/api/schedule/summary` | `schedule.view` |
+| GET | `/api/schedule/events` | `schedule.view` |
+| GET | `/api/schedule/events/:id` | `schedule.view` |
+| POST | `/api/schedule/events` | `schedule.create` |
+| PATCH | `/api/schedule/events/:id` | `schedule.view` |
+| DELETE | `/api/schedule/events/:id` | `schedule.view` |
+| POST | `/api/schedule/events/:id/rsvp` | `schedule.view` |
+| GET | `/api/schedule/tasks` | `schedule.view` |
+| GET | `/api/schedule/tasks/:id` | `schedule.view` |
+| POST | `/api/schedule/tasks` | `schedule.tasks.assign` |
+| PATCH | `/api/schedule/tasks/:id` | `schedule.view` |
+| POST | `/api/schedule/tasks/:id/state` | `schedule.view` |
+| DELETE | `/api/schedule/tasks/:id` | `schedule.view` |
 | GET | `/api/stats` | `stats.view` |
 | GET | `/api/bootstrap` | *öffentlich* |
 | GET | `/api/admin/update` | `config.view` |

@@ -1053,4 +1053,60 @@ export const SCHEMA_MIGRATIONS = [
     tour_done_at TEXT
   );
   `,
+  // 34: Termine & Auftraege (Kalender, Beteiligte, Erinnerungen, Auftraege mit Beauftragten)
+  `
+  CREATE TABLE cal_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    title       TEXT NOT NULL,
+    kind_id     INTEGER,
+    description TEXT NOT NULL DEFAULT '',
+    location    TEXT NOT NULL DEFAULT '',
+    starts_at   TEXT NOT NULL,
+    ends_at     TEXT,
+    all_day     INTEGER NOT NULL DEFAULT 0,
+    visibility  TEXT NOT NULL DEFAULT 'team',
+    status      TEXT NOT NULL DEFAULT 'planned',
+    reminders   TEXT NOT NULL DEFAULT '[]',
+    created_by  INTEGER,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+  );
+  CREATE INDEX idx_cal_events_start ON cal_events(starts_at);
+  CREATE TABLE cal_participants (
+    event_id INTEGER NOT NULL REFERENCES cal_events(id) ON DELETE CASCADE,
+    user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    rsvp     TEXT NOT NULL DEFAULT 'pending',
+    PRIMARY KEY (event_id, user_id)
+  );
+  CREATE TABLE cal_tasks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    priority    TEXT NOT NULL DEFAULT 'normal',
+    status      TEXT NOT NULL DEFAULT 'open',
+    due_at      TEXT,
+    event_id    INTEGER REFERENCES cal_events(id) ON DELETE SET NULL,
+    created_by  INTEGER,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    done_at     TEXT
+  );
+  CREATE INDEX idx_cal_tasks_due ON cal_tasks(due_at);
+  CREATE TABLE cal_task_assignees (
+    task_id    INTEGER NOT NULL REFERENCES cal_tasks(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    state      TEXT NOT NULL DEFAULT 'open',
+    note       TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (task_id, user_id)
+  );
+  CREATE TABLE cal_reminder_log (
+    kind    TEXT NOT NULL,
+    ref_id  INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    off     INTEGER NOT NULL,
+    sent_at TEXT NOT NULL,
+    PRIMARY KEY (kind, ref_id, user_id, off)
+  );
+  `,
 ];

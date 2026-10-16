@@ -74,7 +74,9 @@ export async function openTarget(target) {
   if (target.partnerTicket) { const m = await import('./views/tickets.js'); return m.openPartnerTickets({ open: target.partnerTicket }); }
   if (target.app === 'tickets' && target.ticketId) { try { sessionStorage.setItem('mdt:tickets:open', String(target.ticketId)); } catch { /* egal */ } }
   if (target.app === 'credit' && target.loanId) { try { sessionStorage.setItem('mdt:credit:open', String(target.loanId)); } catch { /* egal */ } }
+  if (target.app === 'schedule' && (target.eventId || target.taskId)) { try { sessionStorage.setItem('mdt:schedule:open', JSON.stringify({ eventId: target.eventId, taskId: target.taskId })); } catch { /* egal */ } }
   if (target.app) ui.open(target.app);
+  if (target.app === 'schedule' && (target.eventId || target.taskId)) window.dispatchEvent(new Event('mdt:schedule-open'));
   if (target.app === 'credit' && target.loanId) window.dispatchEvent(new Event('mdt:credit-open'));
   if (target.app === 'tab' && target.statementId) window.dispatchEvent(new Event('mdt:tab-open'));
   if (target.app === 'tickets' && target.ticketId) window.dispatchEvent(new Event('mdt:tickets-open'));
@@ -89,7 +91,7 @@ export async function openTarget(target) {
   }
 }
 
-const counters = { pendingUsers: 0, marketAwaiting: 0, chatUnread: 0, marketNew: 0, creditAwaiting: 0, creditNew: 0 };
+const counters = { scheduleOpen: 0, pendingUsers: 0, marketAwaiting: 0, chatUnread: 0, marketNew: 0, creditAwaiting: 0, creditNew: 0 };
 let baseTitle = null;
 let partnerMode = false;
 async function refreshCounters() {
@@ -105,6 +107,9 @@ async function refreshCounters() {
   }
   if (can('users.approve') || can('users.view')) {
     try { counters.pendingUsers = (await api.get('/api/users?status=pending')).counts.pending ?? 0; } catch { /* ignorieren */ }
+  }
+  if (can('schedule.view')) {
+    try { counters.scheduleOpen = (await api.get('/api/schedule/summary')).openTasks ?? 0; } catch { /* ignorieren */ }
   }
   if (can('chat.view')) {
     try { counters.chatUnread = (await api.get('/api/chat/unread')).unread ?? 0; } catch { /* ignorieren */ }
@@ -575,7 +580,7 @@ export function showApp(onLogout, opts = {}) {
   if (!opts.partner) subscribe(['profile'], async () => { // eigenes Profilbild geändert/entfernt (auch durch einen Admin) → Kopfzeile sofort aktualisieren
     try { const { user } = await api.get('/api/auth/me'); state.user.avatarUrl = user.avatarUrl; const fresh = userAvatar(user, 'sm'); panelAvatar?.replaceWith(fresh); panelAvatar = fresh; } catch { /* egal */ }
   });
-  subscribe(opts.partner ? ['market', 'chat', 'credit'] : ['users', 'market', 'chat', 'credit'], async () => { await refreshCounters(); renderIcons(); if (opts.partner) refreshLevel(); }); // Zähler/Abzeichen live
+  subscribe(opts.partner ? ['market', 'chat', 'credit'] : ['users', 'market', 'chat', 'credit', 'schedule'], async () => { await refreshCounters(); renderIcons(); if (opts.partner) refreshLevel(); }); // Zähler/Abzeichen live
   if (opts.partner) subscribe(['notification', 'partners'], refreshLevel);
   if (!opts.partner) subscribe(['users', 'roles', 'org'], async () => { try { const { user } = await api.get('/api/auth/me'); Object.assign(state.user, { displayName: user.displayName, rank: user.rank, department: user.department, roles: user.roles }); drawGreet(); } catch { /* egal */ } }, { wait: 300 }); // Rang/Abteilung/Rollen im Gruß aktuell halten
   subscribe(['system', 'dashboard'], async () => { applyConfig((await api.get('/api/bootstrap')).config); }); // Farben/Logo/Namen live für alle
