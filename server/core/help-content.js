@@ -44,7 +44,7 @@ Tipp: Desktop-Symbole kannst du in den Einstellungen ein- oder ausblenden und fr
     S('Schwarzes Brett', `
 Das Schwarze Brett zeigt aktuelle Mitteilungen der Führung. Wichtige Einträge musst du nach dem Lesen **bestätigen**.`, ['board.view']),
     S('Problemleiste', `
-Die Problemleiste erscheint nur, wenn es akute Probleme gibt – zum Beispiel beschädigte Fahrzeuge, wartende Börsen-Geschäfte, überfällige Lagerkosten oder offene Tickets. Sie zeigt dir **nur Probleme aus Bereichen, auf die du Zugriff hast**.
+Die Problemleiste erscheint nur, wenn es akute Probleme gibt – zum Beispiel beschädigte Fahrzeuge, wartende Börsen-Geschäfte, überfällige Lagerkosten, fast volle Lager (ab 75 % ein Problem, ab 90 % kritisch) oder offene Tickets. Sie zeigt dir **nur Probleme aus Bereichen, auf die du Zugriff hast**.
 
 Ein Klick auf einen Eintrag öffnet die passende App. Die Leiste lässt sich zuklappen.`),
     S('Online-Liste', `

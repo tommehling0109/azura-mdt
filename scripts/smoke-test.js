@@ -1586,6 +1586,21 @@ try {
     r = await admin.call('GET', '/api/problems'); const ids = r.problems.map((p) => p.id);
     for (const id of [`vehicle:${veh}:cond`, `vehicle:${veh}:insp`, `deal:${deal}`, `wh:${wh}:rent`]) assert.ok(ids.includes(id), id + ' fehlt'); assert.ok(r.problems.some((p) => p.area === 'legal' && /Einspruchsfrist/.test(p.title) && p.severity === 'critical'));
     assert.equal(r.problems[0].severity, 'critical'); // kritische zuerst
+    // Lager: ab 75 % gefüllt ein Problem, ab 90 % kritisch (nur mit festgelegter Kapazität)
+    { const fw = (await admin.call('POST', '/api/warehouses', { name: 'Voll-Lager', capacity: 100 })).warehouse.id, nofull = (await admin.call('POST', '/api/warehouses', { name: 'Ohne-Kapazität' })).warehouse.id;
+      const slot = (await admin.call('POST', '/api/warehouse/items', { name: 'Füll-Teil', unit: 'Stk', space: 1, stackSize: 1 })).item;
+      const fill = (n) => admin.call('POST', `/api/warehouses/${fw}/stock`, { itemId: slot.id, action: 'in', quantity: n }); const probs = async () => (await admin.call('GET', '/api/problems')).problems.filter((p) => p.id.startsWith(`wh:${fw}:fill`));
+      await fill(74); assert.equal((await probs()).length, 0); // 74 % noch ok
+      await fill(1); let p = await probs(); assert.equal(p.length, 1); assert.equal(p[0].severity, 'warn'); assert.equal(p[0].id, `wh:${fw}:fill:warn`); assert.match(p[0].title, /75 %/); assert.match(p[0].detail, /75 \/ 100/);
+      await fill(14); assert.equal((await probs())[0].severity, 'warn'); // 89 %
+      await fill(1); p = await probs(); assert.equal(p.length, 1); assert.equal(p[0].severity, 'critical'); assert.match(p[0].title, /fast voll \(90 %\)/);
+      assert.equal((await admin.call('GET', '/api/problems')).problems.some((x) => x.id.startsWith(`wh:${nofull}:fill`)), false); // ohne Kapazität kein Füllstand
+      assert.equal((await admin.call('GET', '/api/problems')).problems[0].severity, 'critical');
+      await setPerms([]); await scoped(); await setPerms(['warehouse.view']); assert.ok((await mod.call('GET', '/api/problems')).problems.some((x) => x.id === `wh:${fw}:fill:crit`)); await scoped(); await setPerms([]);
+      assert.equal((await admin.call('PUT', '/api/config', { values: { 'problems.warehouse_warn_percent': 95, 'problems.warehouse_critical_percent': 99 } })).status, 200); assert.equal((await probs()).length, 0); // Schwellen einstellbar
+      assert.equal((await admin.call('PUT', '/api/config', { values: { 'problems.warehouse_warn_percent': 0 } })).status, 200); assert.equal((await probs()).length, 0); // 0 = aus
+      await admin.call('PUT', '/api/config', { values: { 'problems.warehouse_warn_percent': 75, 'problems.warehouse_critical_percent': 90 } }); assert.equal((await probs()).length, 1);
+      await admin.call('DELETE', `/api/warehouses/${fw}?force=1`); await admin.call('DELETE', `/api/warehouses/${nofull}?force=1`); }
     // Rechte: nur Probleme aus Bereichen mit Zugriff
     await setPerms(['vehicles.view']); r = await mod.call('GET', '/api/problems'); assert.ok(r.problems.filter((p) => p.area === 'vehicles').length >= 2); await scoped();
     await setPerms(['market.view']); r = await mod.call('GET', '/api/problems'); assert.ok(r.problems.some((p) => p.id === `deal:${deal}`)); await scoped();
