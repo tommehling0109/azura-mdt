@@ -29,6 +29,7 @@ Tipp: Die Tour für Neulinge kannst du jederzeit unter „Hilfe“ → „Tour n
   { id: 'm-desktop', aud: 'm', group: 'Grundlagen', title: 'Der Desktop und die Fenster', icon: 'dashboard', summary: 'Dock, Startmenü, Fenster verschieben und Größe ändern.', sections: [
     S('Dock und Startmenü', `
 - Das **Dock** am unteren Rand zeigt deine Apps. Ein Klick öffnet die App, ein weiterer holt ein minimiertes Fenster zurück.
+- Zusammengehörige Apps sind im Dock in **Gruppen** zusammengefasst (Symbol mit mehreren kleinen Symbolen, wie ein Ordner auf dem Handy). Ein Klick darauf öffnet die Auswahl, ein Klick auf eine App startet sie.
 - Das **Startmenü** listet alle Apps nach Bereichen. Hier findest du auch Einstellungen, Konto und Abmelden.
 - Rote Zähler an einer App zeigen, dass dort etwas auf dich wartet (z. B. ungelesene Chat-Nachrichten).`),
     S('Fenster bedienen', `

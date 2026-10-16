@@ -1628,6 +1628,12 @@ try {
     await admin.call('POST', '/api/presence/leave', { tabId: 'tab-admin-1' });
     ok('Online-Liste: nur Mitglieder, Personalnummer + Rang, gesperrt/aktiv, Herzschlag/Abmelden, abschaltbar'); }
 
+  // ══ Dock-Gruppen ══
+  { const { NAV, DOCK_GROUPS, allItems } = await import('../public/js/modules.js'); const ids = new Set(allItems(NAV).map((i) => i.id)), seen = new Set();
+    for (const g of DOCK_GROUPS) { assert.ok(g.label && g.items.length >= 2, g.id); for (const id of g.items) { assert.ok(ids.has(id), `Dock-Gruppe ${g.id}: unbekannte App ${id}`); assert.equal(seen.has(id), false, `App ${id} in zwei Gruppen`); seen.add(id); } }
+    assert.equal(new Set(DOCK_GROUPS.map((g) => g.id)).size, DOCK_GROUPS.length); for (const id of ['dashboard', 'help', 'legal']) assert.equal(seen.has(id), false, `${id} bleibt einzelnes Symbol`);
+    ok('Dock-Gruppen: nur vorhandene Apps, keine App doppelt, Dashboard/Hilfe/Legal bleiben einzeln'); }
+
   // ══ Hilfe-App ══
   { const { HELP_ARTICLES } = await import('../server/core/help-content.js'); const { listPermissions } = await import('../server/core/permissions.js'); const { clearAttempts } = await import('../server/core/auth.js');
     const known = new Set(listPermissions().map((p) => p.key));

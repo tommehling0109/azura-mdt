@@ -4,7 +4,7 @@ import { h, mount, timeAgo } from './ui/dom.js';
 import { icon } from './ui/icons.js';
 import { avatar, userAvatar, skeletons, empty, toast, button, toggle, levelBadge } from './ui/kit.js';
 import { state, canAny, can, applyConfig } from './state.js';
-import { NAV, allItems } from './modules.js';
+import { NAV, allItems, DOCK_GROUPS } from './modules.js';
 import { openAccountDialog } from './views/account.js';
 import { openSettingsDialog } from './views/settings.js';
 import { openLevelDialog } from './views/partner/level.js';
@@ -136,6 +136,8 @@ export function showApp(onLogout, opts = {}) {
   const area = h('div', { class: 'desktop-area' });
   const iconsEl = h('div', { class: 'desktop-icons' });
   const dock = h('div', { class: 'dock', role: 'toolbar', 'aria-label': 'Apps' });
+  const dockPop = h('div', { class: 'dock-pop', role: 'menu', hidden: true }); // Auswahl einer Dock-Gruppe (Ordner)
+  let openGroup = null;
   const startMenu = h('div', { class: 'start-menu', hidden: true });
   const startBtn = h('button', { class: 'panel-btn start-btn', type: 'button', title: 'Menü', 'aria-label': 'App-Menü', 'aria-haspopup': 'true' }, h('div', { class: 'logo-phoenix' }));
   let panelAvatar = null, levelSlot = null;
@@ -209,7 +211,7 @@ export function showApp(onLogout, opts = {}) {
         opts.partner ? icon('users') : (panelAvatar = userAvatar(state.user, 'sm')), h('span', null, state.user.displayName), opts.partner && (levelSlot = h('span', { class: 'panel-level' }, levelBadge(state.user.level)))),
       h('button', { class: 'panel-btn', type: 'button', title: 'Abmelden', 'aria-label': 'Abmelden', onclick: () => { clearLockState(); lockCtl?.destroy(); onLogout(); } }, icon('logout'))));
   const ticker = createTicker({ partner: !!opts.partner }); // Laufband zwischen Kopfleiste und Desktop
-  const desktop = h('div', { class: 'desktop' }, panel, ticker.el, area, h('div', { class: 'dock-row' }, dock));
+  const desktop = h('div', { class: 'desktop' }, panel, ticker.el, area, h('div', { class: 'dock-row' }, dockPop, dock));
   const board = !opts.partner && can('board.view') ? createBoard() : null; // Schwarzes Brett: nur für Mitarbeiter
   mount(screen(), h('div', { class: 'wallpaper' }), widget, greet, desktop, startMenu, npanel);
   drawGreet(); window.addEventListener('resize', fitGreet); if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fitGreet).observe(dock);
@@ -341,22 +343,63 @@ export function showApp(onLogout, opts = {}) {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !startMenu.hidden) closeStart(); });
 
   // ── Dock ──
+  /** Einträge im Dock: einzelne Apps oder Gruppen („Ordner“) – eine Gruppe steht dort, wo ihre erste sichtbare App steht; mit nur einer sichtbaren App entfällt die Gruppe. */
+  function dockEntries() {
+    const vis = visibleSections().flatMap((sec) => sec.items), groups = opts.partner ? [] : DOCK_GROUPS, seen = new Set(), out = [];
+    for (const it of vis) {
+      const g = groups.find((x) => x.items.includes(it.id));
+      if (!g) { out.push({ app: it }); continue; }
+      if (seen.has(g.id)) continue; seen.add(g.id);
+      const items = vis.filter((v) => g.items.includes(v.id));
+      out.push(items.length > 1 ? { group: g, items } : { app: items[0] });
+    }
+    return out;
+  }
+  const badgeOf = (i) => (i.badge ? counters[i.badge] : 0);
+  /** Klick auf eine App im Dock: öffnen, zurückholen, in den Vordergrund oder minimieren. */
+  function activate(id) {
+    const w = wins.get(id);
+    if (!w) open(id);
+    else if (w.min) { restore(id); focus(id); }
+    else if (activeId === id) minimize(id);
+    else focus(id);
+  }
+  function closePop() { if (openGroup === null) return; openGroup = null; dockPop.hidden = true; dock.querySelector('.dock-folder.open')?.classList.remove('open'); }
+  function drawPop() {
+    const e = openGroup && dockEntries().find((x) => x.group?.id === openGroup), btn = e && dock.querySelector(`[data-group="${openGroup}"]`);
+    if (!e || !btn) return closePop();
+    mount(dockPop, h('div', { class: 'dp-title' }, e.group.label), h('div', { class: 'dp-grid' }, e.items.map((i) => {
+      const w = wins.get(i.id), n = badgeOf(i);
+      const b = h('button', { class: ['dp-item', w && 'running', w && !w.min && activeId === i.id && 'active', w?.min && 'minimized'].filter(Boolean).join(' '), type: 'button', role: 'menuitem', title: i.label },
+        h('div', { class: 'dock-img' }, icon(i.icon)), h('span', { class: 'dp-l' }, i.label), n > 0 && h('span', { class: 'badge-dot' }, n));
+      b.addEventListener('click', () => { const was = wins.has(i.id) && !wins.get(i.id).min && activeId === i.id; closePop(); if (was) focus(i.id); else activate(i.id); }); // aus der Auswahl heraus nie „minimieren“
+      return b;
+    })));
+    btn.classList.add('open'); dockPop.hidden = false;
+    const row = dockPop.parentElement.getBoundingClientRect(), r = btn.getBoundingClientRect(), half = dockPop.offsetWidth / 2;
+    dockPop.style.left = `${Math.max(half + 8, Math.min(row.width - half - 8, r.left + r.width / 2 - row.left))}px`;
+  }
+  document.addEventListener('pointerdown', (e) => { if (openGroup !== null && !dockPop.contains(e.target) && !e.target.closest?.('.dock-folder')) closePop(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openGroup !== null) closePop(); });
+
   function renderTasks() {
-    const items = visibleSections().flatMap((sec) => sec.items);
-    mount(dock, items.map((i) => {
-      const w = wins.get(i.id);
-      const n = i.badge ? counters[i.badge] : 0;
+    mount(dock, dockEntries().map((e) => {
+      if (e.group) { // Ordner: zeigt bis zu vier Mini-Symbole; Zähler/Laufzeit-Marker fassen die enthaltenen Apps zusammen
+        const ws = e.items.map((i) => wins.get(i.id)).filter(Boolean), n = e.items.reduce((a, i) => a + badgeOf(i), 0);
+        const cls = ['dock-item', 'dock-folder', ws.length && 'running', ws.some((w) => !w.min && activeId === w.id) && 'active', e.group.id === openGroup && 'open'].filter(Boolean).join(' ');
+        const b = h('button', { class: cls, type: 'button', 'data-label': e.group.label, 'data-group': e.group.id, 'aria-label': e.group.label, 'aria-haspopup': 'menu' },
+          h('div', { class: 'dock-img dock-folder-img' }, e.items.slice(0, 4).map((i) => h('span', { class: 'dock-mini' }, icon(i.icon)))), n > 0 && h('span', { class: 'badge-dot' }, n));
+        b.addEventListener('click', () => { if (openGroup === e.group.id) return closePop(); startMenu.hidden = true; startBtn.classList.remove('open'); openGroup = e.group.id; drawPop(); });
+        return b;
+      }
+      const i = e.app, w = wins.get(i.id), n = badgeOf(i);
       const cls = ['dock-item', w && 'running', w && !w.min && activeId === i.id && 'active', w?.min && 'minimized'].filter(Boolean).join(' ');
       const b = h('button', { class: cls, type: 'button', 'data-label': i.label, 'aria-label': i.label },
         h('div', { class: 'dock-img' }, icon(i.icon)), n > 0 && h('span', { class: 'badge-dot' }, n));
-      b.addEventListener('click', () => {
-        if (!w) open(i.id);
-        else if (w.min) { restore(i.id); focus(i.id); }
-        else if (activeId === i.id) minimize(i.id);
-        else focus(i.id);
-      });
+      b.addEventListener('click', () => { closePop(); activate(i.id); });
       return b;
     }));
+    if (openGroup !== null) drawPop();
   }
 
   // ── Fenster ──

@@ -59,6 +59,21 @@ export const NAV = [
   },
 ];
 
+/**
+ * Dock-Gruppen („Ordner“ wie auf dem Handy): mehrere Apps teilen sich ein Symbol im Dock; ein Klick öffnet die Auswahl.
+ * Apps, die in keiner Gruppe stehen (Dashboard, Hilfe, Legal …), bleiben einzelne Symbole – neue Apps erscheinen so automatisch im Dock
+ * und lassen sich hier bei Bedarf einer Gruppe zuordnen. Eine Gruppe mit nur einer sichtbaren App zeigt direkt diese App.
+ * Die Reihenfolge im Dock folgt der Navigation: eine Gruppe steht dort, wo ihre erste App steht.
+ */
+export const DOCK_GROUPS = [
+  { id: 'trade', label: 'Handel & Lager', items: ['trade', 'market', 'warehouse'] },
+  { id: 'ops', label: 'Einsatz', items: ['map', 'vehicles'] },
+  { id: 'money', label: 'Finanzen', items: ['finance', 'stats', 'credit', 'tab'] },
+  { id: 'comm', label: 'Kommunikation', items: ['chat', 'tickets', 'contacts'] },
+  { id: 'admin', label: 'Verwaltung', items: ['users', 'roles', 'org', 'partners'] },
+  { id: 'system', label: 'System', items: ['lookups', 'config', 'audit'] },
+];
+
 export const DEFAULT_PATH = '/dashboard';
 export const allItems = (nav = NAV) => nav.flatMap((s) => s.items);
 
