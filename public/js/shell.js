@@ -4,7 +4,7 @@ import { h, mount, timeAgo } from './ui/dom.js';
 import { icon } from './ui/icons.js';
 import { avatar, userAvatar, skeletons, empty, toast, button, toggle, levelBadge } from './ui/kit.js';
 import { state, canAny, can, applyConfig } from './state.js';
-import { NAV, allItems, DOCK_GROUPS } from './modules.js';
+import { NAV, allItems, defaultDockLayout, resolveDock } from './modules.js';
 import { openAccountDialog } from './views/account.js';
 import { openSettingsDialog } from './views/settings.js';
 import { openLevelDialog } from './views/partner/level.js';
@@ -343,17 +343,12 @@ export function showApp(onLogout, opts = {}) {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !startMenu.hidden) closeStart(); });
 
   // ── Dock ──
-  /** Einträge im Dock: einzelne Apps oder Gruppen („Ordner“) – eine Gruppe steht dort, wo ihre erste sichtbare App steht; mit nur einer sichtbaren App entfällt die Gruppe. */
+  /** Einträge im Dock: einzelne Apps oder Gruppen („Ordner“) in der vom Administrator eingestellten Reihenfolge; eine Gruppe mit nur einer sichtbaren App zeigt direkt diese App. */
   function dockEntries() {
-    const vis = visibleSections().flatMap((sec) => sec.items), groups = opts.partner ? [] : DOCK_GROUPS, seen = new Set(), out = [];
-    for (const it of vis) {
-      const g = groups.find((x) => x.items.includes(it.id));
-      if (!g) { out.push({ app: it }); continue; }
-      if (seen.has(g.id)) continue; seen.add(g.id);
-      const items = vis.filter((v) => g.items.includes(v.id));
-      out.push(items.length > 1 ? { group: g, items } : { app: items[0] });
-    }
-    return out;
+    const vis = visibleSections().flatMap((sec) => sec.items);
+    if (opts.partner) return vis.map((app) => ({ app }));
+    const saved = state.config['ui.dock_layout']; // vom Administrator eingestellt (Konfiguration → Dock) – sonst Standard
+    return resolveDock(Array.isArray(saved) && saved.length ? saved : defaultDockLayout(), vis);
   }
   const badgeOf = (i) => (i.badge ? counters[i.badge] : 0);
   /** Klick auf eine App im Dock: öffnen, zurückholen, in den Vordergrund oder minimieren. */

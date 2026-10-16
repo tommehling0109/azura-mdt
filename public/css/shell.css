@@ -482,3 +482,18 @@ html.no-glass .online { backdrop-filter: none; background: var(--bg-2); }
 .dp-item.running::after { content: ''; position: absolute; left: 50%; bottom: -1px; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: rgba(255, 255, 255, 0.75); }
 .dp-item.active::after { width: 16px; margin-left: -8px; border-radius: 3px; background: #fff; box-shadow: 0 0 10px var(--accent-glow); }
 .dp-item .badge-dot { top: -2px; right: 6px; }
+
+/* ── Konfiguration: Dock-Editor ── */
+.dk-scroll { padding: 8px 20px; overflow-x: auto; }
+.dk-strip { display: flex; align-items: stretch; gap: 0; min-height: 96px; padding: 12px 6px; border: 1px dashed var(--line); border-radius: var(--r-lg, 14px); background: rgba(255, 255, 255, 0.02); flex-wrap: wrap; row-gap: 10px; }
+.dk-gap { width: 14px; flex: none; border-radius: 8px; transition: background 0.12s, width 0.12s; } .dk-gap.over { width: 44px; background: var(--accent-soft); outline: 1px dashed var(--accent-line); }
+.dk-tile, .dk-folder { flex: none; border-radius: var(--r-md); transition: background 0.12s, box-shadow 0.12s; align-self: flex-start; }
+.dk-tile.combine, .dk-folder.combine { background: var(--accent-soft); box-shadow: 0 0 0 2px var(--accent); }
+.dk-tile.dragging, .dk-folder.dragging, .dk-chip.dragging { opacity: 0.4; }
+.dk-chip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 11px 7px 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg-2); cursor: grab; user-select: none; font-size: 13px; }
+.dk-chip:active { cursor: grabbing; } .dk-chip.small { padding: 5px 9px 5px 6px; font-size: 12.5px; }
+.dk-ic { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; color: #fff; background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 88%, white 6%), color-mix(in srgb, var(--accent2) 55%, var(--accent-lo))); } .dk-ic svg { width: 14px; height: 14px; }
+.dk-folder { min-width: 190px; max-width: 280px; padding: 8px; border: 1px solid var(--accent-line); background: rgba(255, 255, 255, 0.04); }
+.dk-fhead { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; } .dk-handle { cursor: grab; color: var(--text-3); display: grid; place-items: center; padding: 4px; } .dk-handle svg { width: 16px; height: 16px; }
+.dk-label { height: 30px; padding: 0 8px; font-size: 13px; font-weight: 600; flex: 1; min-width: 0; }
+.dk-fbody { display: flex; flex-wrap: wrap; gap: 6px; }

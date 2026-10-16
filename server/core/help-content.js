@@ -269,6 +269,14 @@ Die Konfiguration ist nach Kategorien gegliedert. Mit der Suche oben findest du 
 Ändere die Werte und klicke unten auf **Speichern**. Die meisten Änderungen gelten sofort für alle.`, ['config.edit']),
     S('Apps ein- und ausschalten', `
 Mit dem entsprechenden Recht schaltest du Apps für alle Benutzer ab. Daten bleiben erhalten.`, ['system.apps']),
+    S('Dock anordnen', `
+Unter „Dock“ legst du für alle fest, wie die Apps im Dock gruppiert sind.
+
+1. Ziehe eine App auf eine andere, um eine Gruppe zu bilden, oder in eine bestehende Gruppe hinein.
+2. Ziehe sie zwischen die Symbole, damit sie einzeln im Dock steht. Gruppen verschiebst du am Griff, umbenennen kannst du sie direkt.
+3. Klicke im Dock-Bereich auf „Speichern“ – die Änderung gilt sofort für alle.
+
+Tipp: „Standard wiederherstellen“ setzt die ursprüngliche Anordnung zurück. Neue Apps erscheinen automatisch ganz hinten.`, ['system.apps']),
   ] },
   { id: 'm-audit', aud: 'm', group: 'Verwaltung', title: 'Audit-Log', icon: 'audit', app: 'audit', perm: ['audit.view'], summary: 'Nachvollziehbarkeit aller wichtigen Aktionen.', sections: [
     S('Aktionen nachvollziehen', `

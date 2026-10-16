@@ -1632,7 +1632,18 @@ try {
   { const { NAV, DOCK_GROUPS, allItems } = await import('../public/js/modules.js'); const ids = new Set(allItems(NAV).map((i) => i.id)), seen = new Set();
     for (const g of DOCK_GROUPS) { assert.ok(g.label && g.items.length >= 2, g.id); for (const id of g.items) { assert.ok(ids.has(id), `Dock-Gruppe ${g.id}: unbekannte App ${id}`); assert.equal(seen.has(id), false, `App ${id} in zwei Gruppen`); seen.add(id); } }
     assert.equal(new Set(DOCK_GROUPS.map((g) => g.id)).size, DOCK_GROUPS.length); for (const id of ['dashboard', 'help', 'legal']) assert.equal(seen.has(id), false, `${id} bleibt einzelnes Symbol`);
-    ok('Dock-Gruppen: nur vorhandene Apps, keine App doppelt, Dashboard/Hilfe/Legal bleiben einzeln'); }
+    // Anordnung im Panel einstellbar (nur mit Recht system.apps), gilt für alle
+    { const { defaultDockLayout, resolveDock } = await import('../public/js/modules.js'); const def = defaultDockLayout(); assert.ok(def.some((e) => e.gid === 'money') && def.some((e) => e.app === 'dashboard'));
+      const vis = allItems(NAV).filter((i) => ['dashboard', 'finance', 'stats', 'chat'].includes(i.id));
+      let dk = resolveDock(def, vis); assert.deepEqual(dk.map((e) => e.app?.id ?? e.group.id), ['dashboard', 'money', 'chat']); assert.equal(dk[1].items.length, 2); // Gruppe mit zwei sichtbaren Apps bleibt Ordner
+      dk = resolveDock(def, vis.filter((i) => i.id !== 'stats')); assert.deepEqual(dk.map((e) => e.app?.id ?? e.group.id), ['dashboard', 'finance', 'chat']); // nur eine sichtbare App: direkt
+      dk = resolveDock([{ app: 'chat' }, { gid: 'x', label: 'Meine', items: ['stats', 'nix', 'dashboard'] }], vis); assert.deepEqual(dk.map((e) => e.app?.id ?? e.group.id), ['chat', 'x', 'finance']); assert.deepEqual(dk[1].items.map((i) => i.id), ['stats', 'dashboard']); // eigene Reihenfolge, Unbekanntes entfällt, nicht erwähnte Apps ans Ende
+      const me = new Set((await mod.call('GET', '/api/auth/me')).user.permissions); const good = [{ app: 'dashboard' }, { gid: 'g1', label: 'Geld', items: ['finance', 'stats'] }, { app: 'chat' }];
+      if (!me.has('system.apps') && !me.has('config.edit')) assert.equal((await mod.call('PUT', '/api/config', { values: { 'ui.dock_layout': good } })).status, 403);
+      for (const bad of ['x', [{ app: 'A!' }], [{ app: 'chat' }, { app: 'chat' }], [{ app: 'chat' }, { gid: 'g', label: 'X', items: ['chat'] }], [{ gid: 'g', label: '', items: ['chat'] }], [{ gid: 'g', label: 'X', items: [] }], [{ gid: 'g', label: 'X', items: ['chat'], extra: 1 }], [{ gid: 'g', label: 'X', items: ['chat'] }, { gid: 'g', label: 'Y', items: ['map'] }], [{ app: 'chat', gid: 'g' }], Array.from({ length: 61 }, (_, i) => ({ app: `app${i}` }))]) assert.equal((await admin.call('PUT', '/api/config', { values: { 'ui.dock_layout': bad } })).status, 400, JSON.stringify(bad).slice(0, 60));
+      assert.equal((await admin.call('PUT', '/api/config', { values: { 'ui.dock_layout': good } })).status, 200); assert.deepEqual((await mod.call('GET', '/api/bootstrap')).config['ui.dock_layout'], good); // alle bekommen die neue Anordnung
+      assert.equal((await admin.call('PUT', '/api/config', { values: { 'ui.dock_layout': [] } })).status, 200); assert.deepEqual((await mod.call('GET', '/api/bootstrap')).config['ui.dock_layout'], []); } // zurück auf Standard
+    ok('Dock-Gruppen: nur vorhandene Apps, keine App doppelt, Dashboard/Hilfe/Legal bleiben einzeln; Anordnung im Panel einstellbar (system.apps), geprüft, für alle, Standard wiederherstellbar'); }
 
   // ══ Hilfe-App ══
   { const { HELP_ARTICLES } = await import('../server/core/help-content.js'); const { listPermissions } = await import('../server/core/permissions.js'); const { clearAttempts } = await import('../server/core/auth.js');

@@ -74,6 +74,30 @@ export const DOCK_GROUPS = [
   { id: 'system', label: 'System', items: ['lookups', 'config', 'audit'] },
 ];
 
+/** Standard-Anordnung des Docks (wenn der Administrator nichts eingestellt hat): Einträge { app } bzw. { gid, label, items }, in Navigationsreihenfolge. */
+export function defaultDockLayout(nav = NAV) {
+  const items = allItems(nav), ids = new Set(items.map((i) => i.id)), seen = new Set(), out = [];
+  for (const it of items) {
+    const g = DOCK_GROUPS.find((x) => x.items.includes(it.id));
+    if (!g) { out.push({ app: it.id }); continue; }
+    if (seen.has(g.id)) continue; seen.add(g.id);
+    out.push({ gid: g.id, label: g.label, items: g.items.filter((id) => ids.has(id)) });
+  }
+  return out;
+}
+
+/** Layout + sichtbare Apps → Dock-Einträge ([{ app }] oder [{ group:{id,label}, items }]). Unbekannte/unsichtbare Apps entfallen, Gruppen mit nur einer sichtbaren App zeigen diese direkt, nicht erwähnte Apps (neue) kommen ans Ende. */
+export function resolveDock(layout, visible) {
+  const byId = new Map(visible.map((i) => [i.id, i])), used = new Set(), out = [];
+  for (const e of layout) {
+    if (e.app) { const it = byId.get(e.app); if (it && !used.has(it.id)) { used.add(it.id); out.push({ app: it }); } continue; }
+    const items = (e.items ?? []).map((id) => byId.get(id)).filter((it) => it && !used.has(it.id)); items.forEach((i) => used.add(i.id));
+    if (items.length > 1) out.push({ group: { id: e.gid, label: e.label }, items }); else if (items.length === 1) out.push({ app: items[0] });
+  }
+  for (const it of visible) if (!used.has(it.id)) out.push({ app: it });
+  return out;
+}
+
 export const DEFAULT_PATH = '/dashboard';
 export const allItems = (nav = NAV) => nav.flatMap((s) => s.items);
 
