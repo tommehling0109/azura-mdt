@@ -13,7 +13,7 @@ const KINDS = { document: 'Dokument', spreadsheets: 'Tabelle', presentation: 'Pr
 const SLOTS = [
   ['laws', 'legal.laws_url', 'Link zur Gesetzessammlung', 'Google-Dokument mit der Gesetzessammlung. Wird im Reiter „Gesetzessammlung“ live eingebettet. Leer lassen = Platzhalter.'],
   ['fines', 'legal.fines_url', 'Link zum Bußgeldkatalog', 'Google-Dokument oder -Tabelle mit dem Bußgeldkatalog. Wird im Reiter „Bußgeldkatalog“ live eingebettet. Leer lassen = Platzhalter.'],
-  ['codex', 'legal.codex_url', 'Link zum Codex', 'Google-Dokument oder anderer sicherer https-Link (z. B. eigenes System wie Zipline) mit dem Codex. Wird oben im Dashboard für alle angezeigt und dort eingebettet. Leer lassen = Platzhalter.'],
+  ['codex', 'legal.codex_url', 'Link zum Codex', 'Google-Dokument oder anderer sicherer https-Link (z. B. eigenes System wie Zipline) mit dem Codex. Wird oben im Dashboard für alle angezeigt und dort eingebettet. Bei Zipline den Link „/view/…“ nehmen (bei „/u/…“ und „/raw/…“ sperrt Zipline die PDF-Anzeige). Nach einer Änderung die Seite einmal neu laden (Strg+F5), weil die Frame-Freigabe beim Laden gilt. Leer lassen = Platzhalter.'],
 ];
 
 /** Erkennt einen Google-Docs-Link; liefert Art und ID oder wirft einen Fehler. */
