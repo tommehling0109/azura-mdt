@@ -1571,7 +1571,7 @@ try {
     for (const ip of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) clearAttempts(`pl|${ip}`);
     const pr = await admin.call('POST', '/api/partners', { type: 'buyer', name: 'Problem Partner', contactName: 'X', apps: ['market'] }); const ptc = new Client(); assert.equal((await ptc.call('POST', `/api/p/${pr.partner.linkPath.split('/').pop()}/login`, { code: pr.code })).status, 200);
     assert.equal((await ptc.call('GET', '/api/problems')).status, 401); // Externe Partner: nie
-    await setPerms([]); const PERM = { vehicles: 'vehicles.view', market: 'market.view', legal: 'legal.cases.view', warehouse: 'warehouse.view', credit: 'credit.view', tab: 'tab.view', tickets: 'tickets.manage', users: 'users.approve' };
+    await setPerms([]); const PERM = { vehicles: 'vehicles.view', market: 'market.view', legal: 'legal.cases.view', warehouse: 'warehouse.view', credit: 'credit.view', tab: 'tab.view', tickets: 'tickets.manage', users: 'users.approve', schedule: 'schedule.view' };
     const scoped = async () => { const pm = (await mod.call('GET', '/api/auth/me')).user.permissions, pl = (await mod.call('GET', '/api/problems')).problems; assert.ok(pl.every((p) => pm.includes(PERM[p.area])), 'Problem ohne Zugriffsrecht sichtbar'); return pl; }; // jedes Problem nur mit dem Recht des Bereichs
     await scoped();
     // Fahrzeug beschädigt, TÜV überfällig
@@ -1586,6 +1586,16 @@ try {
     r = await admin.call('GET', '/api/problems'); const ids = r.problems.map((p) => p.id);
     for (const id of [`vehicle:${veh}:cond`, `vehicle:${veh}:insp`, `deal:${deal}`, `wh:${wh}:rent`]) assert.ok(ids.includes(id), id + ' fehlt'); assert.ok(r.problems.some((p) => p.area === 'legal' && /Einspruchsfrist/.test(p.title) && p.severity === 'critical'));
     assert.equal(r.problems[0].severity, 'critical'); // kritische zuerst
+    // Aufträge überfällig: normal 24 Std. Problem / 72 Std. kritisch; Hoch/Dringend: 6 Std. / 24 Std.
+    { const meId = (await admin.call('GET', '/api/auth/me')).user.id, H = (h) => new Date(Date.now() - h * 3600_000).toISOString(); const mkT = async (title, priority, hours) => (await admin.call('POST', '/api/schedule/tasks', { title, priority, dueAt: H(hours), assignees: [meId] })).task.id;
+      const tn = [['Normal 20h', 'normal', 20, null], ['Normal 30h', 'normal', 30, 'warn'], ['Normal 80h', 'normal', 80, 'critical'], ['Wichtig 5h', 'high', 5, null], ['Wichtig 8h', 'high', 8, 'warn'], ['Dringend 30h', 'urgent', 30, 'critical'], ['Niedrig 30h', 'low', 30, 'warn']];
+      const ids = []; for (const [title, pr, h] of tn) ids.push(await mkT(title, pr, h)); const tp = async () => (await admin.call('GET', '/api/problems')).problems.filter((p) => p.area === 'schedule');
+      let pl = await tp(); tn.forEach(([title, , , sev], i) => { const p = pl.find((x) => x.id.startsWith(`task:${ids[i]}:`)); if (sev) { assert.ok(p, title); assert.equal(p.severity, sev, title); assert.deepEqual(p.target, { app: 'schedule', taskId: ids[i] }); } else assert.equal(p, undefined, title); });
+      assert.equal((await admin.call('POST', `/api/schedule/tasks/${ids[1]}/state`, { state: 'done' })).task.status, 'done'); assert.equal((await tp()).some((x) => x.id.startsWith(`task:${ids[1]}:`)), false); // erledigt: verschwindet
+      assert.equal((await admin.call('PATCH', `/api/schedule/tasks/${ids[2]}`, { status: 'cancelled' })).task.status, 'cancelled'); assert.equal((await tp()).some((x) => x.id.startsWith(`task:${ids[2]}:`)), false);
+      await setPerms([]); await scoped(); await setPerms(['schedule.view']); assert.equal((await mod.call('GET', '/api/problems')).problems.some((x) => x.area === 'schedule' && x.id.startsWith(`task:${ids[5]}:`)), (await mod.call('GET', '/api/auth/me')).user.permissions.includes('schedule.manage')); await scoped(); await setPerms([]); // Außenstehende ohne Verwaltungsrecht sehen fremde Aufträge nicht
+      assert.equal((await admin.call('PUT', '/api/config', { values: { 'problems.task_warn_hours': 48 } })).status, 200); assert.equal((await tp()).some((x) => x.id.startsWith(`task:${ids[0]}:`) || x.id.startsWith(`task:${ids[6]}:`)), false); await admin.call('PUT', '/api/config', { values: { 'problems.task_warn_hours': 24 } }); // Schwellen einstellbar
+      for (const id of ids) await admin.call('DELETE', `/api/schedule/tasks/${id}`); }
     // Lager: ab 75 % gefüllt ein Problem, ab 90 % kritisch (nur mit festgelegter Kapazität)
     { const fw = (await admin.call('POST', '/api/warehouses', { name: 'Voll-Lager', capacity: 100 })).warehouse.id, nofull = (await admin.call('POST', '/api/warehouses', { name: 'Ohne-Kapazität' })).warehouse.id;
       const slot = (await admin.call('POST', '/api/warehouse/items', { name: 'Füll-Teil', unit: 'Stk', space: 1, stackSize: 1 })).item;
@@ -1642,6 +1652,24 @@ try {
     assert.equal((await admin.call('PUT', '/api/config', { values: { 'presence.enabled': false } })).status, 200); r = await admin.call('GET', '/api/presence'); assert.equal(r.enabled, false); assert.equal(r.members.length, 0); await admin.call('PUT', '/api/config', { values: { 'presence.enabled': true } });
     await admin.call('POST', '/api/presence/leave', { tabId: 'tab-admin-1' });
     ok('Online-Liste: nur Mitglieder, Personalnummer + Rang, gesperrt/aktiv, Herzschlag/Abmelden, abschaltbar'); }
+
+  // ══ Karte: Zonen ══
+  { const sq = (x, y, s = 100) => [[x, y], [x + s, y], [x + s, y + s], [x, y + s]]; const cfgM = (await admin.call('GET', '/api/map/config')); assert.ok(cfgM.zoneKinds.length >= 6); const danger = cfgM.zoneKinds.find((k) => k.key === 'danger').id;
+    assert.equal((await new Client().call('GET', '/api/map/zones')).status, 401);
+    for (const bad of [{ name: '', points: sq(0, 0) }, { name: 'Zwei', points: [[0, 0], [1, 1]] }, { name: 'Doppelt', points: [[0, 0], [0, 0], [1, 1], [1, 1]] }, { name: 'Text', points: 'abc' }, { name: 'Zahl', points: [[0, 0], [1, 'x'], [2, 2]] }, { name: 'Weit', points: [[0, 0], [99999, 1], [2, 2]] }, { name: 'Art', kindId: 99999, points: sq(0, 0) }, { name: 'Farbe', color: 'rot', points: sq(0, 0) }, { name: 'Deckkraft', opacity: 0.99, points: sq(0, 0) }, { name: 'Sicht', visibility: 'x', points: sq(0, 0) }, { name: 'Viele', points: Array.from({ length: 450 }, (_, i) => [i, i * i % 997]) }]) assert.equal((await admin.call('POST', '/api/map/zones', bad)).status, 400, JSON.stringify(bad).slice(0, 50));
+    r = await admin.call('POST', '/api/map/zones', { name: 'Gefahrenzone Hafen', description: '- Schießerei möglich', kindId: danger, opacity: 0.4, points: [...sq(1000, 1000, 250), [1000, 1000]] }); assert.equal(r.status, 201); const z1 = r.zone;
+    assert.equal(z1.points.length, 4); assert.equal(z1.kind.key, undefined); assert.equal(z1.kind.id, danger); assert.equal(z1.color, cfgM.zoneKinds.find((k) => k.key === 'danger').color); assert.equal(z1.opacity, 0.4); assert.equal(z1.visibility, 'all'); // Schlusspunkt = Startpunkt wird entfernt
+    r = await admin.call('POST', '/api/map/zones', { name: 'Geheimes Gebiet', visibility: 'editors', color: '#112233', points: sq(-500, -500) }); const z2 = r.zone; assert.equal(z2.ownColor, '#112233'); assert.ok(z2.kind); // Standardart „Sonstiges“
+    r = await admin.call('GET', '/api/map/zones'); assert.ok(r.zones.some((z) => z.id === z1.id) && r.zones.some((z) => z.id === z2.id));
+    // Rechte: sehen mit map.view, ändern nur mit map.edit; „nur Bearbeiter“ bleibt verborgen
+    const meMap = new Set((await mod.call('GET', '/api/auth/me')).user.permissions);
+    await setPerms(['map.view']); if (!meMap.has('map.edit') && !(new Set((await mod.call('GET', '/api/auth/me')).user.permissions)).has('map.edit')) { r = await mod.call('GET', '/api/map/zones'); assert.ok(r.zones.some((z) => z.id === z1.id)); assert.equal(r.zones.some((z) => z.id === z2.id), false); assert.equal(r.zones[0].canEdit, false); assert.equal((await mod.call('POST', '/api/map/zones', { name: 'Nein', points: sq(0, 0) })).status, 403); assert.equal((await mod.call('PATCH', `/api/map/zones/${z1.id}`, { name: 'Hack' })).status, 403); assert.equal((await mod.call('DELETE', `/api/map/zones/${z1.id}`)).status, 403); }
+    await setPerms(['map.view', 'map.edit']); r = await mod.call('GET', '/api/map/zones'); assert.ok(r.zones.some((z) => z.id === z2.id)); assert.equal(r.zones[0].canEdit, true);
+    r = await admin.call('PATCH', `/api/map/zones/${z1.id}`, { name: 'Gefahrenzone Hafen Süd', opacity: 0.2, points: sq(1000, 1000, 400) }); assert.equal(r.zone.name, 'Gefahrenzone Hafen Süd'); assert.equal(r.zone.points[2][0], 1400); assert.equal(r.zone.opacity, 0.2);
+    assert.equal((await admin.call('PATCH', `/api/map/zones/${z1.id}`, { points: [[0, 0]] })).status, 400); assert.equal((await admin.call('PATCH', '/api/map/zones/99999', { name: 'x' })).status, 404);
+    r = await admin.call('GET', '/api/audit?module=map&limit=100'); assert.ok(r.rows.some((x) => x.action === 'map.zone_created') && r.rows.some((x) => x.action === 'map.zone_updated'));
+    for (const id of [z1.id, z2.id]) assert.equal((await admin.call('DELETE', `/api/map/zones/${id}`)).status, 200); assert.equal((await admin.call('GET', '/api/map/zones')).zones.length, 0); await setPerms([]);
+    ok('Karte: Zonen frei einzeichnen (Polygon, Art/Farbe/Deckkraft/Notizen), Prüfung der Punkte, nur Bearbeiter sehen verborgene, Rechte, Audit'); }
 
   // ══ Termine & Aufträge ══
   { const { runScheduleReminders } = await import('../server/modules/schedule.js');

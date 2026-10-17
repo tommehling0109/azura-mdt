@@ -120,7 +120,7 @@
 
 | Recht | Bedeutung |
 |---|---|
-| `map.edit` | Karte: Waypoints setzen, bearbeiten und löschen |
+| `map.edit` | Karte: Waypoints und Zonen (eingezeichnete Bereiche) setzen, bearbeiten und löschen |
 | `map.view` | Karte öffnen und Waypoints ansehen |
 
 ### market
@@ -385,6 +385,10 @@
 | POST | `/api/map/points` | `map.edit` |
 | PATCH | `/api/map/points/:id` | `map.edit` |
 | DELETE | `/api/map/points/:id` | `map.edit` |
+| GET | `/api/map/zones` | `map.view` |
+| POST | `/api/map/zones` | `map.edit` |
+| PATCH | `/api/map/zones/:id` | `map.edit` |
+| DELETE | `/api/map/zones/:id` | `map.edit` |
 | GET | `/api/map/vehicles` | `map.view` |
 | GET | `/api/market/summary` | `market.view` |
 | GET | `/api/market/deals` | `market.view` |

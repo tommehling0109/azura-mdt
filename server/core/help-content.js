@@ -131,6 +131,12 @@ Hinweis: Auch Mitglieder sammeln XP und steigen im Level auf, wenn das Level-Sys
 Verschiebe die Karte mit gedrückter Maustaste, zoome mit dem Mausrad. Waypoints und Postleitzahlen helfen dir bei der Orientierung.`),
     S('Waypoints bearbeiten', `
 Mit dem Recht zum Bearbeiten kannst du Waypoints setzen, verschieben und entfernen. Änderungen sehen alle anderen sofort.`, ['map.edit']),
+    S('Zonen einzeichnen', `
+Mit **Zone (Punkte)** klickst du die Eckpunkte eines Bereichs nacheinander an. Doppelklick, Enter oder „Fertig“ schließt die Form, die Rücktaste nimmt den letzten Punkt zurück. Mit **Zone (Freihand)** hältst du die Maustaste gedrückt und zeichnest den Bereich frei; beim Loslassen wird die Form geschlossen und geglättet.
+
+Danach gibst du Name, Art (z. B. Gefahrenzone, Sperrgebiet, Farming-Gebiet), Farbe, Deckkraft und Notizen an. Über „Zonen“ blendest du alle Bereiche ein oder aus. Ein Klick auf eine Zone zeigt die Details; dort lässt sie sich auch ändern, neu zeichnen oder löschen.`, ['map.edit']),
+    S('Zonen ansehen', `
+Eingezeichnete Bereiche (z. B. Gefahrenzonen) erscheinen farbig auf der Karte und in der Liste links unter „Zonen“. Ein Klick darauf zoomt zur Zone und zeigt die Notizen.`),
   ] },
   { id: 'm-warehouse', aud: 'm', group: 'Apps', title: 'Lager', icon: 'storage', app: 'warehouse', perm: ['warehouse.view'], summary: 'Lagerstandorte, Bestand und Preisspannen.', sections: [
     S('Lager ansehen', `

@@ -3,6 +3,7 @@ import { getConfig } from '../core/config.js';
 import { lookupEntries } from '../core/lookups.js';
 import { levelFor } from './warehouses.js';
 import { usedSpace } from '../core/stock.js';
+import { overdueTaskProblems } from './schedule.js';
 import { mayAccessCase } from './legalcases.js';
 
 /**
@@ -57,6 +58,7 @@ const SOURCES = [
   } },
   { area: 'warehouse', label: 'Lager', icon: 'storage', perm: 'warehouse.view', list: (user) => [...fillProblems(user), ...all("SELECT * FROM warehouses WHERE is_active = 1 AND rent_enabled = 1 AND rent_due_date IS NOT NULL AND (rent_paid_date IS NULL OR rent_paid_date < rent_due_date)")
     .filter((w) => levelFor(user, w)).map((w) => ({ id: `wh:${w.id}:rent`, severity: 'warn', title: `${w.warehouse_number} · Lagerkosten fällig`, detail: `${w.name}${w.rent_cents ? ` · ${(w.rent_cents / 100).toLocaleString('de-DE', { minimumFractionDigits: 2 })} ${getConfig('market.currency') ?? '$'}` : ''} · noch nicht als bezahlt bestätigt`, since: `${w.rent_due_date}T00:00:00.000Z`, target: { app: 'warehouse' } }))] },
+  { area: 'schedule', label: 'Aufträge', icon: 'flag', perm: 'schedule.view', list: (user) => overdueTaskProblems(user) },
   { area: 'credit', label: 'Kredit', icon: 'bank', perm: 'credit.view', list: () => [
     ...all("SELECT i.id, i.seq, i.due_date, l.id loan_id, l.loan_number, p.partner_number FROM credit_installments i JOIN credit_loans l ON l.id = i.loan_id JOIN partners p ON p.id = l.partner_id WHERE l.status = 'active' AND i.status = 'open' AND i.due_date < ? ORDER BY i.due_date", today())
       .map((r) => ({ id: `inst:${r.id}`, severity: 'critical', title: `${r.loan_number} · Rate ${r.seq} überfällig`, detail: `${r.partner_number} · fällig war ${r.due_date.split('-').reverse().join('.')}`, since: `${r.due_date}T00:00:00.000Z`, target: { app: 'credit', loanId: r.loan_id } })),

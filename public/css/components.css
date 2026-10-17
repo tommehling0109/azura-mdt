@@ -622,3 +622,12 @@ tr.row-flash td { animation: row-flash 2.4s ease-out; } @keyframes row-flash { 0
 .lvl-row.on { background: var(--accent-soft); border-color: var(--accent-line); }
 .lvl-row.locked { opacity: 0.55; }
 .panel-level { display: inline-flex; margin-left: 4px; }
+
+/* ── Karte: Zonen ── */
+.map-hint { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 12px; white-space: normal; text-align: center; border-radius: 18px; top: 12px; left: 64px; right: 12px; transform: none; width: max-content; max-width: calc(100% - 76px); margin-left: auto; } .map-hint-btns { display: inline-flex; gap: 6px; }
+.map-hint .btn { box-shadow: none; }
+.leaflet-container.drawing, .leaflet-container.drawing .leaflet-interactive { cursor: crosshair !important; }
+.leaflet-container.drawing .leaflet-interactive { pointer-events: none !important; }
+.zone-label { transform: translate(-50%, -50%); padding: 2px 8px; border-radius: 99px; font-size: 11.5px; font-weight: 700; white-space: nowrap; color: #fff; background: color-mix(in srgb, var(--c, #5b82b8) 75%, #000); border: 1px solid rgba(255, 255, 255, 0.4); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); pointer-events: none; }
+.ms-sec { padding: 8px 12px 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
+.ms-item .mi.zone { border-radius: 7px; }

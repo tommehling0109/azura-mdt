@@ -28,6 +28,7 @@ const LABELS = {
   'changelog.acknowledged': 'Changelog bestätigt (gelesen)', 'changelog.created': 'Changelog-Eintrag erstellt', 'changelog.updated': 'Changelog-Eintrag geändert', 'changelog.deleted': 'Changelog-Eintrag gelöscht',
   'schedule.event_created': 'Termin angelegt', 'schedule.event_updated': 'Termin geändert', 'schedule.event_cancelled': 'Termin abgesagt', 'schedule.event_deleted': 'Termin gelöscht', 'schedule.event_rsvp': 'Zu-/Absage zu Termin',
   'schedule.task_created': 'Auftrag vergeben', 'schedule.task_updated': 'Auftrag geändert', 'schedule.task_state': 'Auftragsstatus geändert', 'schedule.task_deleted': 'Auftrag gelöscht',
+  'map.zone_created': 'Kartenzone eingezeichnet', 'map.zone_updated': 'Kartenzone geändert', 'map.zone_deleted': 'Kartenzone gelöscht',
   'role.created': 'Rolle erstellt', 'role.updated': 'Rolle bearbeitet', 'role.deleted': 'Rolle gelöscht',
 };
 export const actionLabel = (a) => LABELS[a] ?? a;

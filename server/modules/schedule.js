@@ -153,6 +153,26 @@ export function runScheduleReminders(at = new Date()) {
   return sent;
 }
 
+/**
+ * Problemleiste: überfällige Aufträge. Normal: ab 24 Std. überfällig ein Problem, ab 72 Std. kritisch. Wichtige/dringende Aufträge (Priorität „Hoch“/„Dringend“): ab 6 Std. Problem, ab 24 Std. kritisch.
+ * Sichtbar für Beauftragte, Auftraggeber und alle mit „schedule.manage“ (gleiche Sicht wie in der App); Schwellen in der Konfiguration (Gruppe „Probleme“).
+ */
+export function overdueTaskProblems(user) {
+  const num = (k, d) => { const v = Number(getConfig(k)); return Number.isFinite(v) && v >= 0 ? v : d; };
+  const lim = { normal: [num('problems.task_warn_hours', 24), num('problems.task_critical_hours', 72)], important: [num('problems.task_important_warn_hours', 6), num('problems.task_important_critical_hours', 24)] };
+  const t = Date.now(), out = [];
+  for (const tk of all("SELECT * FROM cal_tasks WHERE status IN ('open','in_progress') AND due_at IS NOT NULL AND due_at < ? ORDER BY due_at", new Date(t).toISOString())) {
+    if (!canSeeTask(user, tk)) continue;
+    const [warn, crit0] = lim[['high', 'urgent'].includes(tk.priority) ? 'important' : 'normal'], crit = Math.max(warn, crit0), hours = (t - Date.parse(tk.due_at)) / 3600_000;
+    if (hours < warn) continue;
+    const open = all("SELECT user_id FROM cal_task_assignees WHERE task_id = ? AND state IN ('open','accepted')", tk.id).map((a) => ({ id: a.user_id, member_number: userRow(a.user_id)?.member_number }));
+    const critical = hours >= crit, who = open.length ? open.map((a) => (a.id === user.id ? 'Du' : a.member_number ?? `Mitglied #${a.id}`)).join(', ') : '–';
+    out.push({ id: `task:${tk.id}:over:${critical ? 'crit' : 'warn'}`, severity: critical ? 'critical' : 'warn', title: `${taskNo(tk.id)} · Auftrag überfällig: ${tk.title}`,
+      detail: `${PRIORITIES[tk.priority]} · fällig war ${when(tk.due_at, false)} · offen bei ${who}`, since: tk.due_at, target: { app: 'schedule', taskId: tk.id } });
+  }
+  return out;
+}
+
 function summary(u) {
   const mine = all("SELECT t.* FROM cal_tasks t JOIN cal_task_assignees a ON a.task_id = t.id WHERE a.user_id = ? AND a.state IN ('open','accepted') AND t.status IN ('open','in_progress') ORDER BY t.due_at IS NULL, t.due_at, t.id", u.id);
   const n = now(), next = all("SELECT * FROM cal_events WHERE status = 'planned' AND COALESCE(ends_at, starts_at) >= ? ORDER BY starts_at LIMIT 40", n).filter((e) => canSeeEvent(u, e) && (e.created_by === u.id || isParticipant(e, u.id) || e.visibility === 'team')).slice(0, 4);
@@ -169,6 +189,10 @@ export default {
     ['schedule.manage', 'Termine & Aufträge: alle Termine und Aufträge sehen, ändern und löschen'],
   ],
   config: [
+    { key: 'problems.task_warn_hours', group: 'Probleme', label: 'Aufträge: überfällig gilt als Problem nach (Stunden)', help: 'Ein vergebener Auftrag, der so lange über der Frist ist, erscheint in der Problemleiste (Auftraggeber, Beauftragte und Verwaltung sehen ihn).', type: 'number', default: 24, min: 0, max: 720 },
+    { key: 'problems.task_critical_hours', group: 'Probleme', label: 'Aufträge: überfällig gilt als kritisch nach (Stunden)', type: 'number', default: 72, min: 0, max: 720 },
+    { key: 'problems.task_important_warn_hours', group: 'Probleme', label: 'Wichtige Aufträge (Hoch/Dringend): Problem nach (Stunden)', help: 'Ausnahme für Aufträge mit Priorität „Hoch“ oder „Dringend“.', type: 'number', default: 6, min: 0, max: 720 },
+    { key: 'problems.task_important_critical_hours', group: 'Probleme', label: 'Wichtige Aufträge (Hoch/Dringend): kritisch nach (Stunden)', type: 'number', default: 24, min: 0, max: 720 },
     { key: 'schedule.task_reminder_hours', group: 'Termine & Aufträge', label: 'Auftragserinnerung (Stunden vor der Frist)', help: 'Beauftragte werden so viele Stunden vor der Frist erinnert; bei Überfälligkeit einmal zusätzlich auch der Auftraggeber. 0 = nur bei Überfälligkeit.', type: 'number', default: 24, min: 0, max: 720 },
   ],
   init() {

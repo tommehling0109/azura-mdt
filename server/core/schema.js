@@ -1109,4 +1109,20 @@ export const SCHEMA_MIGRATIONS = [
     PRIMARY KEY (kind, ref_id, user_id, off)
   );
   `,
+  // 35: Karte – frei eingezeichnete Bereiche/Zonen (Polygone in Spielkoordinaten)
+  `
+  CREATE TABLE map_zones (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    kind_id     INTEGER REFERENCES lookups(id) ON DELETE SET NULL,
+    color       TEXT,
+    opacity     REAL NOT NULL DEFAULT 0.25,
+    points      TEXT NOT NULL,
+    visibility  TEXT NOT NULL DEFAULT 'all' CHECK (visibility IN ('all','editors')),
+    created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+  );
+  `,
 ];
