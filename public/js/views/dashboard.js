@@ -53,7 +53,7 @@ const RENDERERS = {
     const read = () => {
       const m = openModal({ title: 'Codex', wide: true,
         body: h('iframe', { class: 'codex-frame', src: c.embedUrl, title: 'Codex', referrerpolicy: 'no-referrer', allow: 'clipboard-write' }),
-        footer: [h('span', { class: 'grow' }), button('In Google öffnen', { icon: 'link', onClick: () => window.open(c.openUrl, '_blank', 'noopener') }), button('Schließen', { variant: 'primary', onClick: () => m.close() })] });
+        footer: [h('span', { class: 'grow' }), button(c.source === 'google' ? 'In Google öffnen' : `Auf ${c.host} öffnen`, { icon: 'link', onClick: () => window.open(c.openUrl, '_blank', 'noopener') }), button('Schließen', { variant: 'primary', onClick: () => m.close() })] });
     };
     return h('section', { class: 'card codex-hero' },
       h('div', { class: 'codex-ic' }, icon('scale')),

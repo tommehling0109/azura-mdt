@@ -98,7 +98,7 @@ Lade die Seite neu (Strg + F5). Hilft das nicht, melde den Fehler als **Ticket**
   // ───────────── Mitarbeiter · Apps ─────────────
   { id: 'm-dashboard', aud: 'm', group: 'Apps', title: 'Dashboard', icon: 'dashboard', app: 'dashboard', summary: 'Die aktuelle Lage auf einen Blick.', sections: [
     S('Was zeigt das Dashboard?', `
-Ganz oben steht der **Codex** des Kartells – mit „Codex lesen“ öffnest du ihn direkt im Panel. Darunter fasst das Dashboard die wichtigsten Kennzahlen und Neuigkeiten zusammen. Welche Kacheln du siehst, hängt davon ab, auf welche Bereiche du Zugriff hast. Ein Klick auf eine Kachel führt dich in die zugehörige App.`),
+Ganz oben steht der **Codex** des Kartells – mit „Codex lesen“ öffnest du ihn direkt im Panel. Darunter fasst das Dashboard die wichtigsten Kennzahlen und Neuigkeiten zusammen. Welche Kacheln du siehst, hängt davon ab, auf welche Bereiche du Zugriff hast. Ein Klick auf eine Kachel führt dich in die zugehörige App. Der Codex kann ein Google-Dokument oder ein sicherer https-Link auf ein eigenes System sein (z. B. Zipline).`),
   ] },
   { id: 'm-market', aud: 'm', group: 'Apps', title: 'Börse', icon: 'tag', app: 'market', perm: ['market.view'], summary: 'Ankauf und Verkauf mit externen Partnern.', sections: [
     S('Überblick', `

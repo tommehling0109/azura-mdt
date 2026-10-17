@@ -1796,11 +1796,19 @@ try {
     r = await mod.call('GET', '/api/legal'); assert.ok(r.laws.embedUrl.startsWith('https://docs.google.com/document/d/') && r.laws.embedUrl.endsWith('/preview')); assert.equal(r.fines.kind, 'spreadsheets'); assert.equal(r.canManage, true);
     r = await mod.call('PUT', '/api/config', { values: { 'legal.codex_url': 'https://docs.google.com/document/d/zyxwvutsrqponmlkjihgfedcba/edit' } }); assert.equal(r.status, 200);
     r = await mod.call('GET', '/api/dashboard'); assert.equal(r.widgets[0].id, 'codex'); assert.ok(r.widgets[0].data.codex.embedUrl.endsWith('/preview')); assert.equal(r.widgets[0].data.canManage, true); // Codex-Banner ganz oben im Dashboard
+    // Codex: zusätzlich sichere externe https-Links (z. B. Zipline), aber nichts Unsicheres – und die CSP erlaubt genau diese Herkunft als Frame
+    for (const url of ['http://zipline.example.org/u/codex.pdf', 'javascript:alert(1)', 'https://user:pw@zipline.example.org/u/codex.pdf', 'https://127.0.0.1/codex.pdf', 'https://localhost/codex.pdf', 'https://intern/codex.pdf', 'kein link']) assert.equal((await mod.call('PUT', '/api/config', { values: { 'legal.codex_url': url } })).status, 400, url);
+    assert.equal((await mod.call('PUT', '/api/config', { values: { 'legal.laws_url': 'https://zipline.example.org/u/gesetze.pdf' } })).status, 400); // Gesetzessammlung bleibt Google-only
+    r = await mod.call('PUT', '/api/config', { values: { 'legal.codex_url': 'https://zipline.example.org/u/codex.pdf' } }); assert.equal(r.status, 200);
+    r = await mod.call('GET', '/api/dashboard'); assert.equal(r.widgets[0].data.codex.source, 'extern'); assert.equal(r.widgets[0].data.codex.embedUrl, 'https://zipline.example.org/u/codex.pdf'); assert.equal(r.widgets[0].data.codex.host, 'zipline.example.org');
+    { const csp = (await fetch(`${base}/`)).headers.get('content-security-policy'); assert.ok(csp.includes('frame-src https://docs.google.com https://zipline.example.org;'), csp); }
+    r = await mod.call('PUT', '/api/config', { values: { 'legal.codex_url': 'https://docs.google.com/document/d/zyxwvutsrqponmlkjihgfedcba/edit' } }); assert.equal(r.status, 200);
+    { const csp = (await fetch(`${base}/`)).headers.get('content-security-policy'); assert.ok(csp.includes('frame-src https://docs.google.com;'), csp); } // wieder nur Google
     assert.equal((await mod.call('PUT', '/api/config', { values: { 'legal.fines_url': '' } })).status, 200); assert.equal((await mod.call('GET', '/api/legal')).fines, null); // leeren → wieder Platzhalter
     assert.equal((await mod.call('POST', '/api/legal/docs', { title: 'X', url: G })).status, 404); // alte Dokumentenliste gibt es nicht mehr
     for (const k of ['legal.laws_url', 'legal.codex_url']) await admin.call('PUT', '/api/config', { values: { [k]: '' } }); await setPerms([]);
     assert.equal((await admin.call('GET', '/api/dashboard')).widgets[0].data.codex, null); // ohne Link: Platzhalter
-    ok('Legal: Links für Gesetzessammlung/Bußgeldkatalog + Codex (Dashboard, ganz oben) in der Konfiguration (nur Google-Docs-Links, Recht legal.manage), ohne Link Platzhalter'); }
+    ok('Legal: Links für Gesetzessammlung/Bußgeldkatalog + Codex (Dashboard, ganz oben) in der Konfiguration (Gesetze/Bußgeld nur Google-Docs, Codex zusätzlich sichere https-Links, Recht legal.manage), ohne Link Platzhalter'); }
 
   // ══ Ticker (Laufband) ══
   { assert.equal((await new Client().call('GET', '/api/ticker')).status, 401); assert.equal((await new Client().call('GET', '/api/p/ticker')).status, 401); assert.equal((await mod.call('GET', '/api/p/ticker')).status, 401); // Mitglieder nutzen die interne, Partner die externe Schnittstelle
